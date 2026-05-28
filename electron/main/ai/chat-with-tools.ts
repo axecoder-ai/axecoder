@@ -3,6 +3,7 @@ import type { AgentLoopMessage, AgentToolCall } from '../agent/agent-types'
 import { AGENT_TOOLS } from '../agent/agent-tool-defs'
 import { buildOpenAiChatUrl } from './providers/openai'
 import { buildAnthropicMessagesUrl } from './providers/anthropic'
+import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from './request-timeout'
 import { agentLoopToOpenAiWire, parseOpenAiAssistantParts } from './openai-messages'
 
 export type ChatWithToolsResult =
@@ -56,9 +57,8 @@ export const chatOpenAiWithTools = async (
   const url = buildOpenAiChatUrl(model.baseUrl)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
-  let res: Response
   try {
-    res = await fetch(url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -68,26 +68,25 @@ export const chatOpenAiWithTools = async (
         tool_choice: 'auto',
         stream: false,
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
     })
+    if (!res.ok) {
+      const errText = await res.text()
+      return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
+    }
+    const data = (await res.json()) as { choices?: { message?: Record<string, unknown> }[] }
+    const message = data.choices?.[0]?.message ?? {}
+    const parts = parseOpenAiAssistantParts(message)
+    const toolCalls = parseOpenAiToolCalls(message)
+    return {
+      ok: true,
+      text: parts.displayText,
+      content: parts.content,
+      reasoningContent: parts.reasoningContent,
+      toolCalls,
+    }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '网络错误'
-    return { ok: false, error: msg }
-  }
-  if (!res.ok) {
-    const errText = await res.text()
-    return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
-  }
-  const data = (await res.json()) as { choices?: { message?: Record<string, unknown> }[] }
-  const message = data.choices?.[0]?.message ?? {}
-  const parts = parseOpenAiAssistantParts(message)
-  const toolCalls = parseOpenAiToolCalls(message)
-  return {
-    ok: true,
-    text: parts.displayText,
-    content: parts.content,
-    reasoningContent: parts.reasoningContent,
-    toolCalls,
+    return { ok: false, error: formatAiFetchError(e) }
   }
 }
 
@@ -158,9 +157,8 @@ export const chatAnthropicWithTools = async (
   if (!apiKey.trim()) return { ok: false, error: 'Anthropic 需要 API Key' }
   const system = messages.find((m) => m.role === 'system')?.content ?? ''
   const url = buildAnthropicMessagesUrl(model.baseUrl)
-  let res: Response
   try {
-    res = await fetch(url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -174,33 +172,32 @@ export const chatAnthropicWithTools = async (
         messages: toAnthropicMessages(messages),
         tools: anthropicTools(),
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
     })
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : '网络错误'
-    return { ok: false, error: msg }
-  }
-  if (!res.ok) {
-    const errText = await res.text()
-    return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
-  }
-  const data = (await res.json()) as {
-    content?: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[]
-  }
-  const blocks = data.content ?? []
-  let text = ''
-  const toolCalls: AgentToolCall[] = []
-  for (const b of blocks) {
-    if (b.type === 'text' && b.text) text += b.text
-    if (b.type === 'tool_use' && b.id && b.name) {
-      toolCalls.push({
-        id: b.id,
-        name: b.name as AgentToolCall['name'],
-        arguments: b.input ?? {},
-      })
+    if (!res.ok) {
+      const errText = await res.text()
+      return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
     }
+    const data = (await res.json()) as {
+      content?: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[]
+    }
+    const blocks = data.content ?? []
+    let text = ''
+    const toolCalls: AgentToolCall[] = []
+    for (const b of blocks) {
+      if (b.type === 'text' && b.text) text += b.text
+      if (b.type === 'tool_use' && b.id && b.name) {
+        toolCalls.push({
+          id: b.id,
+          name: b.name as AgentToolCall['name'],
+          arguments: b.input ?? {},
+        })
+      }
+    }
+    return { ok: true, text, toolCalls }
+  } catch (e) {
+    return { ok: false, error: formatAiFetchError(e) }
   }
-  return { ok: true, text, toolCalls }
 }
 
 export const chatWithToolsForModel = async (

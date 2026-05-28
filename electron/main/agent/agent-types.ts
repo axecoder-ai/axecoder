@@ -1,7 +1,7 @@
-export type AgentBasicToolName = 'Read' | 'Edit' | 'Write' | 'Grep' | 'Delete' | 'Move'
+export type AgentBasicToolName = 'Read' | 'Edit' | 'Write' | 'Glob' | 'Grep' | 'Delete' | 'Move'
 
 /** 新增复杂 tool 时在此追加名称 */
-export type AgentComplexToolName = never
+export type AgentComplexToolName = 'ExpandChapter' | 'SummarizeChapter'
 
 export type AgentToolName = AgentBasicToolName | AgentComplexToolName
 

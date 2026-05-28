@@ -46,6 +46,17 @@ export const BASIC_AGENT_TOOLS: AgentToolDef[] = [
     },
   },
   {
+    name: 'Glob',
+    description: 'List project files matching a glob pattern (e.g. **/*参数*.md).',
+    parameters: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Ripgrep glob, e.g. **/*.md' },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
     name: 'Grep',
     description: 'Search file contents in the project using ripgrep.',
     parameters: {
@@ -86,9 +97,12 @@ export const AGENT_TOOLS: AgentToolDef[] = [...BASIC_AGENT_TOOLS, ...COMPLEX_AGE
 const AGENT_SYSTEM_PROMPT_BASE = `You are WritCraft project assistant with file tools.
 - Use Read before Edit on the same file.
 - Prefer Edit over Write for existing files.
-- Use Grep to find files before reading.
+- When the user message does not include full file contents, use Glob (by path/name) or Grep (by content) to locate files, then Read before answering or editing.
+- Do not assume project files are already in the user message unless the user attached them explicitly.
 - file_path / from_path / to_path must be relative paths under the project root (e.g. README.md). Never invent absolute paths or paths on other machines.
-- Do not use shell commands for file operations.`
+- Do not use shell commands for file operations.
+- For messy or lengthy chapter text, call SummarizeChapter to get numbered key points before rewrite.
+- For chapter expansion requests, call ExpandChapter first to get key points and workflow, then expand each point and Edit the chapter body.`
 
 export const buildAgentSystemPrompt = (projectRoot: string) => {
   const root = projectRoot.trim()

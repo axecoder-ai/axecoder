@@ -12,7 +12,6 @@ const props = defineProps<{
   mode: 'markdown' | 'preview'
   fontSize?: number
   appTheme?: AppTheme
-  recentFiles?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -21,8 +20,6 @@ const emit = defineEmits<{
   select: [path: string]
   close: [path: string]
   'cursor-change': [line: number, col: number]
-  'open-recent': [path: string]
-  'open-project': []
 }>()
 
 const monacoRef = ref<InstanceType<typeof MonacoEditor> | null>(null)
@@ -105,22 +102,7 @@ defineExpose({ revealLine, focusEditor })
       />
       <div v-show="mode === 'preview'" class="preview" v-html="previewHtml" />
       <div v-if="!activePath" class="editor-empty">
-        <p class="welcome-title">WritCraft</p>
-        <p class="welcome-desc">从左侧打开文件，或使用 ⌘O 打开项目</p>
-        <button type="button" class="welcome-btn" @click="emit('open-project')">打开项目</button>
-        <div v-if="recentFiles?.length" class="recent-block">
-          <p class="recent-label">最近打开</p>
-          <button
-            v-for="f in recentFiles.slice(0, 8)"
-            :key="f"
-            type="button"
-            class="recent-item"
-            :title="f"
-            @click="emit('open-recent', f)"
-          >
-            {{ fileName(f) }}
-          </button>
-        </div>
+        <p>从左侧选择文件，或使用 ⌘P 命令面板</p>
       </div>
     </div>
   </section>
@@ -255,58 +237,6 @@ defineExpose({ revealLine, focusEditor })
   gap: 8px;
 }
 
-.welcome-title {
-  font-size: 18px;
-  color: var(--wc-text);
-  margin-bottom: 4px;
-}
-
-.welcome-desc {
-  margin-bottom: 8px;
-}
-
-.welcome-btn {
-  padding: 8px 20px;
-  background: var(--wc-accent);
-  color: #fff;
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-.welcome-btn:hover {
-  filter: brightness(1.1);
-}
-
-.recent-block {
-  margin-top: 24px;
-  text-align: center;
-}
-
-.recent-label {
-  font-size: 11px;
-  color: var(--wc-text-dim);
-  margin-bottom: 8px;
-}
-
-.recent-item {
-  display: block;
-  width: 100%;
-  max-width: 320px;
-  padding: 6px 12px;
-  margin: 4px auto;
-  text-align: left;
-  border-radius: 4px;
-  color: var(--wc-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recent-item:hover {
-  background: var(--wc-hover);
-  color: var(--wc-text);
-}
-
 .preview {
   height: 100%;
   overflow: auto;
@@ -341,5 +271,35 @@ defineExpose({ revealLine, focusEditor })
 .preview :deep(th) {
   background: var(--wc-hover);
   font-weight: 600;
+}
+
+.preview :deep(pre) {
+  margin: 10px 0;
+  padding: 10px 14px;
+  background: var(--wc-code-block-bg);
+  border: 1px solid var(--wc-border);
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: var(--wc-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.preview :deep(code) {
+  font-family: var(--wc-font-mono);
+  font-size: 12px;
+}
+
+.preview :deep(:not(pre) > code) {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--wc-code-block-bg);
+  border: 1px solid var(--wc-border);
+}
+
+.preview :deep(pre code) {
+  padding: 0;
+  background: transparent;
+  border: none;
 }
 </style>

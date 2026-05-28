@@ -81,16 +81,18 @@ defineExpose({ load })
 <template>
   <aside v-show="visible" class="agents-panel" :style="{ width: `${width}px` }">
     <div class="panel-top">
-      <div class="search-row">
-        <input v-model="filter" type="text" class="search-agents" placeholder="搜索对话…" />
+      <div class="panel-top-bar">
         <button type="button" class="panel-toggle" title="隐藏 Agents 历史" @click="emit('toggle')">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-            <rect x="2.5" y="4.5" width="11" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1" />
-            <rect x="10.5" y="5" width="2.5" height="6" rx="0.5" fill="currentColor" />
+          <svg class="sidebar-toggle-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" />
+            <rect x="9" y="4.5" width="3.5" height="7" rx="0.5" fill="currentColor" stroke="none" />
           </svg>
         </button>
       </div>
-      <button type="button" class="new-agent" @click="emit('newSession')">新建对话</button>
+      <div class="panel-top-box">
+        <input v-model="filter" type="text" class="search-agents" placeholder="搜索对话…" />
+        <button type="button" class="new-agent" @click="emit('newSession')">新建对话</button>
+      </div>
     </div>
     <div class="panel-list">
       <div v-if="!filtered.length" class="empty">暂无对话记录</div>
@@ -179,26 +181,44 @@ defineExpose({ load })
 
 .panel-top {
   flex-shrink: 0;
-  padding: 12px 12px 0;
+}
+
+.panel-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 35px;
+  padding: 0 8px;
+  background: var(--wc-bg-dark);
+  border-bottom: 1px solid var(--wc-border);
+}
+
+.panel-top-box {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.search-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  padding: 8px 10px 0;
 }
 
 .search-agents {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   height: 32px;
   padding: 0 10px;
-  background: var(--wc-input-bg);
+  background: var(--wc-hover);
+  border: 1px solid var(--wc-border);
   border-radius: 6px;
   font-size: 12px;
+  color: var(--wc-text);
+}
+
+.search-agents::placeholder {
+  color: var(--wc-text-dim);
+}
+
+.search-agents:focus {
+  outline: none;
+  border-color: var(--wc-border-light);
 }
 
 .panel-toggle {
@@ -217,15 +237,20 @@ defineExpose({ load })
   color: var(--wc-text);
 }
 
+.panel-toggle .sidebar-toggle-icon {
+  width: 16px;
+  height: 16px;
+}
+
 .new-agent {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--wc-border-light);
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   color: var(--wc-text);
-  background: transparent;
+  background: var(--wc-bg-dark);
 }
 
 .new-agent:hover {

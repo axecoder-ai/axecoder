@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import BackgroundMaterialsIcon from '../icons/BackgroundMaterialsIcon.vue'
+
 const items = [
   { id: 'explorer', title: '资源管理器' },
   { id: 'search', title: '搜索' },
-  { id: 'scm', title: '源代码管理' },
+  { id: 'background', title: '背景资料' },
   { id: 'extensions', title: '扩展' },
 ] as const
 
@@ -40,12 +42,7 @@ defineEmits<{
         <circle cx="7" cy="7" r="4" stroke="currentColor" />
         <path d="M10 10l3.5 3.5" stroke="currentColor" stroke-linecap="round" />
       </svg>
-      <svg v-else-if="item.id === 'scm'" class="view-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <circle cx="5" cy="4" r="1.2" fill="currentColor" />
-        <circle cx="11" cy="8" r="1.2" fill="currentColor" />
-        <circle cx="5" cy="12" r="1.2" fill="currentColor" />
-        <path d="M5 5.2v5.6M5.8 4.8l4.4 2.4M5.8 11.2l4.4-2.4" stroke="currentColor" />
-      </svg>
+      <BackgroundMaterialsIcon v-else-if="item.id === 'background'" class="view-icon" />
       <svg v-else class="view-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="0.5" stroke="currentColor" />
         <rect x="9" y="2.5" width="4.5" height="4.5" rx="0.5" stroke="currentColor" />

@@ -4,6 +4,7 @@ import { PATH_OUTSIDE_PROJECT_ERROR, relativeInProject, resolvePathInProject } f
 import { applyStringReplace, patchToUnifiedDiff } from './edit-utils'
 import {
   deleteProjectPath,
+  globProject,
   grepProject,
   moveProjectPath,
   readProjectFile,
@@ -59,6 +60,16 @@ export const executeAgentTool = async (
       kind: 'immediate',
       content: res.numbered,
       log: { name, summary: `Read ${relativeInProject(ctx.projectRoot, resolved)}`, ok: true },
+    }
+  }
+
+  if (name === 'Glob') {
+    const pattern = str(args.pattern)
+    const res = await globProject(ctx.projectRoot, pattern)
+    return {
+      kind: 'immediate',
+      content: res.ok ? res.text : `Error: ${res.error}`,
+      log: { name, summary: `Glob ${pattern}`, ok: res.ok },
     }
   }
 

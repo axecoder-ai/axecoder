@@ -3,8 +3,9 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { rgPath } from '@vscode/ripgrep'
 import { isPathInsideRoot, parseRipgrepJsonLine, type SearchHit } from '../fs-utils'
+import { runRipgrepFiles } from '../rg-files'
 import { MAX_AGENT_FILE_BYTES, formatNumberedContent } from './edit-utils'
-import { PATH_OUTSIDE_PROJECT_ERROR, resolvePathInProject } from './agent-path'
+import { PATH_OUTSIDE_PROJECT_ERROR, relativeInProject, resolvePathInProject } from './agent-path'
 
 const pathExists = async (p: string) => {
   try {
@@ -86,6 +87,31 @@ const runRipgrep = (rootPath: string, query: string): Promise<SearchHit[]> => {
       else reject(new Error(`grep failed (code ${code})`))
     })
   })
+}
+
+export const GLOB_MAX_PATHS = 500
+
+export const globProject = async (
+  projectRoot: string,
+  pattern: string,
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> => {
+  const pat = pattern.trim()
+  if (!pat) return { ok: false, error: 'Empty pattern' }
+  try {
+    const absFiles = await runRipgrepFiles(projectRoot, pat)
+    const rel = absFiles.map((f) => relativeInProject(projectRoot, f))
+    const truncated = rel.length > GLOB_MAX_PATHS
+    const shown = rel.slice(0, GLOB_MAX_PATHS)
+    if (!shown.length) return { ok: true, text: 'No files found.' }
+    let text = shown.join('\n')
+    if (truncated) {
+      text += `\n\n(Truncated: showing ${GLOB_MAX_PATHS} of ${rel.length} matches)`
+    }
+    return { ok: true, text }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'glob failed'
+    return { ok: false, error: msg }
+  }
 }
 
 export const grepProject = async (

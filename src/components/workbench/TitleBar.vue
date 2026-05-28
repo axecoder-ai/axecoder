@@ -61,10 +61,9 @@ defineEmits<{
         title="显示/隐藏 AI 面板"
         @click="$emit('toggleAiPanel')"
       >
-        <svg class="title-icon chat-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path
-            d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
-          />
+        <svg class="sidebar-toggle-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" />
+          <rect x="9" y="4.5" width="3.5" height="7" rx="0.5" fill="currentColor" stroke="none" />
         </svg>
       </button>
       <button type="button" class="icon-btn" title="设置" @click="$emit('openModelSettings')">

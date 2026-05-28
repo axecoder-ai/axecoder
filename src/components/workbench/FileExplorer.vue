@@ -133,6 +133,12 @@ const openProject = async () => {
   applyProject(res)
 }
 
+const openProjectAt = async (rootPath: string) => {
+  const res = await fs.openProject(rootPath)
+  if (!res) return
+  applyProject(res)
+}
+
 const loadLastProject = async () => {
   const last = await fs.getLastProject()
   if (!last) return
@@ -415,14 +421,18 @@ const cancelRename = () => {
 }
 
 const onDelete = async () => {
+  const target = menuTarget.value
   closeMenu()
-  if (!menuTarget.value) return
-  const name = menuTarget.value.name
-  if (!window.confirm(`确定删除「${name}」？`)) return
-  const deleted = menuTarget.value.path
-  await fs.delete(deleted)
-  await refresh()
-  emit('file-deleted', deleted)
+  if (!target) return
+  if (!window.confirm(`Delete "${target.name}"?`)) return
+  try {
+    await fs.delete(target.path)
+    await refresh()
+    emit('file-deleted', target.path)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Delete failed'
+    window.alert(msg)
+  }
 }
 
 const onReveal = async () => {
@@ -435,6 +445,39 @@ const onCopyPath = async () => {
   if (!menuTarget.value) return
   await navigator.clipboard.writeText(menuTarget.value.path)
   closeMenu()
+}
+
+const isMenuMdFile = () => {
+  const t = menuTarget.value
+  return t?.type === 'file' && t.name.toLowerCase().endsWith('.md')
+}
+
+const onExportPdf = async () => {
+  if (!menuTarget.value || !isMenuMdFile()) return
+  const src = menuTarget.value.path
+  closeMenu()
+  try {
+    const res = await fs.exportMarkdownPdf(src)
+    if ('cancelled' in res) return
+    await fs.revealInFinder(res.path)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '导出 PDF 失败'
+    window.alert(msg)
+  }
+}
+
+const onExportDocx = async () => {
+  if (!menuTarget.value || !isMenuMdFile()) return
+  const src = menuTarget.value.path
+  closeMenu()
+  try {
+    const res = await fs.exportMarkdownDocx(src)
+    if ('cancelled' in res) return
+    await fs.revealInFinder(res.path)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '导出 DOCX 失败'
+    window.alert(msg)
+  }
 }
 
 const flatNodes = computed(() => {
@@ -505,7 +548,13 @@ const onTreeKeydown = (e: KeyboardEvent) => {
   }
 }
 
-defineExpose({ openProject, newFile: onNewFile, refresh, getRootPath: () => rootPath.value })
+defineExpose({
+  openProject,
+  openProjectAt,
+  newFile: onNewFile,
+  refresh,
+  getRootPath: () => rootPath.value,
+})
 
 onMounted(() => {
   loadLastProject()
@@ -702,20 +751,23 @@ onUnmounted(() => {
       :style="{ left: `${menuX}px`, top: `${menuY}px` }"
       @click.stop
     >
-      <li @click="openProject">打开项目…</li>
+      <li @click="openProject">Open Project…</li>
       <li class="sep" />
-      <li :class="{ disabled: !rootPath }" @click="rootPath && onNewFile()">新建文件</li>
-      <li :class="{ disabled: !rootPath }" @click="rootPath && onNewFolder()">新建文件夹</li>
+      <li :class="{ disabled: !rootPath }" @click="rootPath && onNewFile()">New File</li>
+      <li :class="{ disabled: !rootPath }" @click="rootPath && onNewFolder()">New Folder</li>
       <li class="sep" />
-      <li :class="{ disabled: !menuTarget }" @click="menuTarget && onCut()">剪切</li>
-      <li :class="{ disabled: !menuTarget }" @click="menuTarget && onCopy()">复制</li>
-      <li :class="{ disabled: !clipboard }" @click="clipboard && onPaste()">粘贴</li>
+      <li :class="{ disabled: !menuTarget }" @click="menuTarget && onCut()">Cut</li>
+      <li :class="{ disabled: !menuTarget }" @click="menuTarget && onCopy()">Copy</li>
+      <li :class="{ disabled: !clipboard }" @click="clipboard && onPaste()">Paste</li>
       <li class="sep" />
-      <li :class="{ disabled: !menuTarget }" @click="menuTarget && startRename()">重命名…</li>
-      <li :class="{ disabled: !menuTarget }" @click="menuTarget && onDelete()">删除</li>
+      <li :class="{ disabled: !menuTarget }" @click="menuTarget && startRename()">Rename…</li>
+      <li :class="{ disabled: !menuTarget }" @click="menuTarget && onDelete()">Delete</li>
+      <li v-if="isMenuMdFile()" class="sep" />
+      <li v-if="isMenuMdFile()" @click="onExportPdf()">Export PDF…</li>
+      <li v-if="isMenuMdFile()" @click="onExportDocx()">Export DOCX…</li>
       <li class="sep" />
-      <li :class="{ disabled: !menuTarget }" @click="menuTarget && onReveal()">在 Finder 中显示</li>
-      <li :class="{ disabled: !menuTarget }" @click="menuTarget && onCopyPath()">复制路径</li>
+      <li :class="{ disabled: !menuTarget }" @click="menuTarget && onReveal()">Reveal in Finder</li>
+      <li :class="{ disabled: !menuTarget }" @click="menuTarget && onCopyPath()">Copy Path</li>
     </ul>
   </aside>
 </template>

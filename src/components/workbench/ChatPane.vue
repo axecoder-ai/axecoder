@@ -19,6 +19,12 @@ import {
   CHAT_IDLE_HINTS,
   type AgentProgressStep,
 } from '../../utils/agent-progress'
+import { runSlashCommand } from '../../slash-commands/run'
+import type { SlashContext } from '../../slash-commands/types'
+import {
+  formatInitProgressLogLine,
+  normalizeInitProgressPayload,
+} from '../../utils/background-init-progress'
 
 const md = new MarkdownIt()
 
@@ -118,6 +124,13 @@ const resizeInput = () => {
   el.style.height = `${Math.min(el.scrollHeight, 200)}px`
 }
 
+const scrollMessages = async () => {
+  await nextTick()
+  if (messagesEl.value) {
+    messagesEl.value.scrollTop = messagesEl.value.scrollHeight
+  }
+}
+
 const renderMarkdown = (text: string) => md.render(text)
 
 const selectSession = async (id: string): Promise<boolean> => {
@@ -182,6 +195,11 @@ const newChat = async () => {
 
 const deleteSession = async (id: string) => {
   if (!hasProject.value || !id) return
+  const wasActive = activeId.value === id
+  if (wasActive) {
+    activeSession.value = null
+    activeId.value = ''
+  }
   await window.writcraft.deleteChatSession(props.projectRoot, id)
   sessionMetas.value = sessionMetas.value.filter((s) => s.id !== id)
   if (!sessionMetas.value.length) {
@@ -189,7 +207,7 @@ const deleteSession = async (id: string) => {
     emit('sessionsChanged')
     return
   }
-  if (activeId.value === id) {
+  if (wasActive) {
     await selectSession(sessionMetas.value[0].id)
   }
   emit('sessionsChanged')
@@ -402,9 +420,111 @@ const onRejectPending = async (msg: ChatMessage, pendingId: string) => {
   }
 }
 
+const hasPendingWritesInSession = () => {
+  const msgs = activeSession.value?.messages ?? []
+  for (const m of msgs) {
+    if (m.pendingWrites?.length) return true
+  }
+  return false
+}
+
+const buildSlashContext = (): SlashContext => ({
+  projectRoot: props.projectRoot,
+  getSession: () => activeSession.value,
+  setSession: (s) => {
+    activeSession.value = s
+  },
+  persist,
+  newChat,
+  getModelsFile: () => modelsFile.value,
+  setModelsFile: (m) => {
+    modelsFile.value = m
+  },
+  setActiveModel: async (id) => {
+    const res = await window.writcraft.setActiveModel(id)
+    return { ok: res.ok, data: res.ok ? res.data : undefined }
+  },
+  openModelsSettings: () => emit('openModelsSettings'),
+  initBackground: (modelId?: string) =>
+    window.writcraft.initBackground(props.projectRoot, modelId),
+})
+
 const send = async () => {
   const text = input.value.trim()
-  if (!hasProject.value || !text || !activeSession.value || loading.value) return
+  if (!hasProject.value || !text || !activeSession.value) return
+
+  if (text.startsWith('/')) {
+    if (loading.value || pendingBusy.value || hasPendingWritesInSession()) {
+      activeSession.value.messages.push({
+        role: 'assistant',
+        text: '请等待当前回复或完成 Agent 写盘确认后再使用斜杠命令。',
+      })
+      activeSession.value.updatedAt = Date.now()
+      await persist()
+      return
+    }
+    input.value = ''
+    await nextTick()
+    resizeInput()
+
+    const isInitCmd = /^\/init\b/i.test(text.trim())
+    let initProgressUnsub: (() => void) | null = null
+    let initProgressMsg: ChatMessage | null = null
+    if (isInitCmd) {
+      initProgressMsg = { role: 'assistant', text: '**/init** 进行中…\n\n' }
+      activeSession.value.messages.push(initProgressMsg)
+      activeSession.value.updatedAt = Date.now()
+      await persist()
+      initProgressUnsub = window.writcraft.onBackgroundInitProgress((raw) => {
+        if (!initProgressMsg) return
+        const line = formatInitProgressLogLine(normalizeInitProgressPayload(raw))
+        if (line) initProgressMsg.text += `${line}\n`
+        void scrollMessages()
+      })
+    }
+
+    let slashResult
+    try {
+      slashResult = await runSlashCommand(text, buildSlashContext())
+    } finally {
+      initProgressUnsub?.()
+    }
+
+    if (slashResult === null) {
+      if (initProgressMsg) {
+        activeSession.value.messages = activeSession.value.messages.filter((m) => m !== initProgressMsg)
+      }
+      activeSession.value.messages.push({
+        role: 'assistant',
+        text: '暂无已注册的斜杠命令。',
+      })
+      activeSession.value.updatedAt = Date.now()
+      await persist()
+      return
+    }
+    if (!slashResult.ok) {
+      if (initProgressMsg) {
+        initProgressMsg.text += `\n**失败：** ${slashResult.message}`
+      } else {
+        activeSession.value.messages.push({ role: 'assistant', text: slashResult.message })
+      }
+      activeSession.value.updatedAt = Date.now()
+      await persist()
+      return
+    }
+    if (!slashResult.silent && slashResult.message) {
+      if (initProgressMsg) {
+        initProgressMsg.text += `\n---\n\n${slashResult.message}`
+      } else {
+        activeSession.value.messages.push({ role: 'assistant', text: slashResult.message })
+      }
+      activeSession.value.updatedAt = Date.now()
+      await persist()
+    }
+    return
+  }
+
+  if (loading.value) return
   const modelId = modelsFile.value.activeModelId
   const model = activeModel.value
   if (!modelId || !model) {
@@ -471,13 +591,16 @@ const send = async () => {
   }
 }
 
-const canSend = computed(
-  () =>
+const canSend = computed(() => {
+  const text = input.value.trim()
+  const slash = text.startsWith('/')
+  return (
     hasProject.value &&
-    !!input.value.trim() &&
+    !!text &&
     !loading.value &&
-    enabledModels.value.length > 0,
-)
+    (enabledModels.value.length > 0 || slash)
+  )
+})
 
 const lastAssistantText = computed(() => {
   for (let i = messages.value.length - 1; i >= 0; i--) {
@@ -613,9 +736,9 @@ defineExpose({
         title="显示 Agents 历史"
         @click="emit('showAgentsSidebar')"
       >
-        <svg viewBox="0 0 16 16" width="16" height="16">
-          <rect x="2.5" y="4.5" width="11" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1" />
-          <rect x="10.5" y="5" width="2.5" height="6" rx="0.5" fill="currentColor" />
+        <svg class="sidebar-toggle-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" />
+          <rect x="9" y="4.5" width="3.5" height="7" rx="0.5" fill="currentColor" stroke="none" />
         </svg>
       </button>
     </div>
@@ -864,6 +987,11 @@ defineExpose({
 .agents-expand:hover {
   background: var(--wc-hover);
   color: var(--wc-text);
+}
+
+.agents-expand .sidebar-toggle-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .chat-tab {

@@ -80,9 +80,37 @@ contextBridge.exposeInMainWorld('writcraft', {
     ipcRenderer.invoke('fs:move', srcPath, destPath, onConflict) as Promise<{ path: string; skipped?: true }>,
   revealInFinder: (targetPath: string) =>
     ipcRenderer.invoke('fs:revealInFinder', targetPath) as Promise<{ ok: true }>,
+  exportMarkdownPdf: (filePath: string) =>
+    ipcRenderer.invoke('fs:exportMarkdownPdf', filePath) as Promise<
+      { ok: true; path: string } | { cancelled: true }
+    >,
+  exportMarkdownDocx: (filePath: string) =>
+    ipcRenderer.invoke('fs:exportMarkdownDocx', filePath) as Promise<
+      { ok: true; path: string } | { cancelled: true }
+    >,
   search: (rootPath: string, query: string) =>
     ipcRenderer.invoke('fs:search', rootPath, query) as Promise<{ hits: import('../../src/types/writcraft').SearchHit[] }>,
+  readBackgroundMaterials: (projectRoot: string) =>
+    ipcRenderer.invoke('fs:readBackgroundMaterials', cloneForIpc(projectRoot)) as Promise<
+      import('../../src/types/writcraft').BackgroundMaterialsResult
+    >,
+  initBackground: (projectRoot: string, modelId?: string) =>
+    ipcRenderer.invoke('fs:initBackground', cloneForIpc(projectRoot), modelId) as Promise<
+      import('../../src/types/writcraft').InitBackgroundResult
+    >,
+  onBackgroundInitProgress: (
+    callback: (payload: import('../../src/types/writcraft').BackgroundInitProgressPayload) => void,
+  ) => {
+    const listener = (
+      _: unknown,
+      payload: import('../../src/types/writcraft').BackgroundInitProgressPayload,
+    ) => callback(payload)
+    ipcRenderer.on('background:initProgress', listener)
+    return () => ipcRenderer.off('background:initProgress', listener)
+  },
   getRecentFiles: () => ipcRenderer.invoke('fs:getRecentFiles') as Promise<{ files: string[] }>,
+  getRecentProjects: () =>
+    ipcRenderer.invoke('fs:getRecentProjects') as Promise<{ projects: string[] }>,
   watchStart: (rootPath: string) => ipcRenderer.invoke('fs:watchStart', rootPath) as Promise<{ ok: true }>,
   watchStop: () => ipcRenderer.invoke('fs:watchStop') as Promise<{ ok: true }>,
   getSettings: () => ipcRenderer.invoke('fs:getSettings') as Promise<import('../../src/types/writcraft').AppSettings>,
@@ -243,7 +271,7 @@ function useLoading() {
   oStyle.innerHTML = styleContent
   oDiv.className = 'app-loading-wrap'
   oDiv.innerHTML =
-    '<img class="app-loading-donkey" src="/donkey-loading.png" width="80" height="80" alt="" />'
+    '<img class="app-loading-donkey" src="./donkey-loading.png" width="80" height="80" alt="" />'
 
   return {
     appendLoading() {

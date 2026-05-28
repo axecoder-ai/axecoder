@@ -1,4 +1,5 @@
 import type { AiChatMessage } from '../../models-types'
+import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from '../request-timeout'
 import { aiChatToOpenAiWire, parseOpenAiAssistantParts } from '../openai-messages'
 
 export const buildOpenAiChatUrl = (baseUrl: string): string => {
@@ -19,27 +20,21 @@ export const chatOpenAi = async (
   const url = buildOpenAiChatUrl(baseUrl)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
-  let res: Response
   try {
-    res = await fetch(url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({ model: modelId, messages: aiChatToOpenAiWire(messages), stream: false }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
     })
-  } catch (e) {
-    const name = e instanceof Error ? e.name : ''
-    if (name === 'TimeoutError' || name === 'AbortError') {
-      return { ok: false, error: '请求超时（120s），请检查网络或减小引用文件大小' }
+    if (!res.ok) {
+      const errText = await res.text()
+      return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
     }
-    const msg = e instanceof Error ? e.message : '网络错误'
-    return { ok: false, error: msg }
+    const data = (await res.json()) as { choices?: { message?: Record<string, unknown> }[] }
+    const parts = parseOpenAiAssistantParts(data.choices?.[0]?.message)
+    return { ok: true, text: parts.displayText, content: parts.content, reasoningContent: parts.reasoningContent }
+  } catch (e) {
+    return { ok: false, error: formatAiFetchError(e) }
   }
-  if (!res.ok) {
-    const errText = await res.text()
-    return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
-  }
-  const data = (await res.json()) as { choices?: { message?: Record<string, unknown> }[] }
-  const parts = parseOpenAiAssistantParts(data.choices?.[0]?.message)
-  return { ok: true, text: parts.displayText, content: parts.content, reasoningContent: parts.reasoningContent }
 }

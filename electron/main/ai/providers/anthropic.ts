@@ -1,4 +1,5 @@
 import type { AiChatMessage } from '../../models-types'
+import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from '../request-timeout'
 
 export const buildAnthropicMessagesUrl = (baseUrl: string): string => {
   const base = baseUrl.trim().replace(/\/+$/, '')
@@ -25,25 +26,30 @@ export const chatAnthropic = async (
 > => {
   if (!apiKey.trim()) return { ok: false, error: 'Anthropic 需要 API Key' }
   const url = buildAnthropicMessagesUrl(baseUrl)
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: modelId,
-      max_tokens: 4096,
-      messages: toAnthropicMessages(messages),
-    }),
-  })
-  if (!res.ok) {
-    const errText = await res.text()
-    return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey.trim(),
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: modelId,
+        max_tokens: 4096,
+        messages: toAnthropicMessages(messages),
+      }),
+      signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+    })
+    if (!res.ok) {
+      const errText = await res.text()
+      return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
+    }
+    const data = (await res.json()) as { content?: { type: string; text?: string }[] }
+    const block = data.content?.find((c) => c.type === 'text')
+    const text = block?.text ?? ''
+    return { ok: true, text, content: text }
+  } catch (e) {
+    return { ok: false, error: formatAiFetchError(e) }
   }
-  const data = (await res.json()) as { content?: { type: string; text?: string }[] }
-  const block = data.content?.find((c) => c.type === 'text')
-  const text = block?.text ?? ''
-  return { ok: true, text, content: text }
 }

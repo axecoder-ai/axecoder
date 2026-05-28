@@ -14,6 +14,94 @@ export type SearchHit = {
   text: string
 }
 
+export type BackgroundMaterialEntry = {
+  path: string
+  relativePath: string
+  exists: boolean
+  aiContextAllowed: boolean
+}
+
+export type BackgroundParameterStatus = 'responded' | 'pending'
+
+export type BackgroundParameterKind = 'technical' | 'business'
+
+export type BackgroundParameter = {
+  id: string
+  label: string
+  title: string
+  status: BackgroundParameterStatus
+  kind?: BackgroundParameterKind
+  sourcePath?: string
+}
+
+export type BackgroundProjectInfo = {
+  projectName?: string
+  projectCode?: string
+  purchaser?: string
+  projectAmount?: string
+  servicePeriod?: string
+  bidDeadline?: string
+  location?: string
+  qualification?: string
+  paymentTerms?: string
+  warranty?: string
+  extra?: string
+}
+
+export type BackgroundMaterialCategory = {
+  id: string
+  label: string
+  entries: BackgroundMaterialEntry[]
+}
+
+export type BackgroundMaterialsResult =
+  | {
+      ok: true
+      categories: BackgroundMaterialCategory[]
+      parameters: BackgroundParameter[]
+      projectInfo?: BackgroundProjectInfo
+      manifestPath: string
+    }
+  | { ok: false; error: string; code: 'NO_PROJECT' | 'MANIFEST_MISSING' | 'MANIFEST_INVALID' }
+
+export type InitBackgroundResult =
+  | {
+      ok: true
+      manifestPath: string
+      summaryPath?: string
+      parameters?: BackgroundParameter[]
+      projectInfo?: BackgroundProjectInfo
+      counts: Record<string, number>
+    }
+  | { ok: false; error: string }
+
+export type BackgroundInitProgressPayload =
+  | {
+      type: 'stage'
+      stage:
+        | 'scan'
+        | 'inspect'
+        | 'aiExtract'
+        | 'aiExtractFull'
+        | 'mergeParams'
+        | 'projectInfo'
+        | 'checkResponse'
+        | 'writeManifest'
+        | 'done'
+      status: 'start' | 'done' | 'error'
+    }
+  | { type: 'file'; relativePath: string; current: number; total: number }
+  | {
+      type: 'ai'
+      phase: 'think' | 'act'
+      relativePath: string
+      text: string
+      current: number
+      total: number
+      round?: 1 | 2
+      chunk?: { index: number; total: number }
+    }
+
 export type AppTheme = 'vscode' | 'aura-light' | 'aura-dark'
 
 export type AppSettings = {
@@ -186,8 +274,20 @@ export type WritcraftFs = {
     onConflict?: ConflictAction,
   ) => Promise<{ path: string; skipped?: true }>
   revealInFinder: (targetPath: string) => Promise<{ ok: true }>
+  exportMarkdownPdf: (
+    filePath: string,
+  ) => Promise<{ ok: true; path: string } | { cancelled: true }>
+  exportMarkdownDocx: (
+    filePath: string,
+  ) => Promise<{ ok: true; path: string } | { cancelled: true }>
   search: (rootPath: string, query: string) => Promise<{ hits: SearchHit[] }>
+  readBackgroundMaterials: (projectRoot: string) => Promise<BackgroundMaterialsResult>
+  initBackground: (projectRoot: string, modelId?: string) => Promise<InitBackgroundResult>
+  onBackgroundInitProgress: (
+    callback: (payload: BackgroundInitProgressPayload) => void,
+  ) => () => void
   getRecentFiles: () => Promise<{ files: string[] }>
+  getRecentProjects: () => Promise<{ projects: string[] }>
   watchStart: (rootPath: string) => Promise<{ ok: true }>
   watchStop: () => Promise<{ ok: true }>
   getSettings: () => Promise<AppSettings>

@@ -14,6 +14,8 @@ import {
   IGNORED_DIR_NAMES,
 } from './fs-utils'
 import { getSettings, setSettings } from './settings-store'
+import { readBackgroundMaterials } from './background-materials'
+import { initBackgroundMaterials } from './background-init'
 
 export type FileNode = {
   name: string
@@ -57,9 +59,27 @@ const pathExists = async (p: string) => {
 
 const lastProjectFile = () => path.join(app.getPath('userData'), 'last-project.json')
 const recentFilesPath = () => path.join(app.getPath('userData'), 'recent-files.json')
+const recentProjectsPath = () => path.join(app.getPath('userData'), 'recent-projects.json')
 
 const saveLastProject = async (rootPath: string) => {
   await fs.writeFile(lastProjectFile(), JSON.stringify({ rootPath }), 'utf-8')
+}
+
+const readRecentProjects = async (): Promise<string[]> => {
+  try {
+    const raw = await fs.readFile(recentProjectsPath(), 'utf-8')
+    const list = JSON.parse(raw) as string[]
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+const pushRecentProject = async (rootPath: string) => {
+  let list = await readRecentProjects()
+  list = [rootPath, ...list.filter((p) => p !== rootPath)].slice(0, 10)
+  await fs.writeFile(recentProjectsPath(), JSON.stringify(list), 'utf-8')
+  return list
 }
 
 const readRecentFiles = async (): Promise<string[]> => {
@@ -187,6 +207,7 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
     }
     if (!(await pathExists(folder))) return null
     await saveLastProject(folder)
+    await pushRecentProject(folder)
     const tree = await buildTree(folder)
     return { rootPath: folder, tree }
   }
@@ -314,6 +335,27 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
     return { files: valid }
   })
 
+  ipcMain.handle('fs:getRecentProjects', async () => {
+    let list = await readRecentProjects()
+    if (list.length === 0) {
+      try {
+        const raw = await fs.readFile(lastProjectFile(), 'utf-8')
+        const rootPath = JSON.parse(raw).rootPath as string
+        if (rootPath) list = [rootPath]
+      } catch {
+        // 无历史项目
+      }
+    }
+    const valid: string[] = []
+    for (const p of list) {
+      if (await pathExists(p)) valid.push(p)
+    }
+    if (valid.length !== list.length) {
+      await fs.writeFile(recentProjectsPath(), JSON.stringify(valid), 'utf-8')
+    }
+    return { projects: valid }
+  })
+
   ipcMain.handle('fs:watchStart', async (_, rootPath: string) => {
     workspaceWatcher?.close()
     workspaceWatcher = chokidar.watch(rootPath, {
@@ -341,4 +383,45 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
 
   ipcMain.handle('fs:getSettings', async () => getSettings())
   ipcMain.handle('fs:setSettings', async (_, partial) => setSettings(partial))
+
+  ipcMain.handle('fs:readBackgroundMaterials', async (_, projectRoot: string) =>
+    readBackgroundMaterials(projectRoot),
+  )
+
+  ipcMain.handle('fs:initBackground', async (event, projectRoot: string, modelId?: string) => {
+    const result = await initBackgroundMaterials(
+      projectRoot,
+      {
+        stage: (stage) => {
+          event.sender.send('background:initProgress', { type: 'stage', stage, status: 'start' })
+        },
+        file: (relativePath, current, total) => {
+          event.sender.send('background:initProgress', {
+            type: 'file',
+            relativePath,
+            current,
+            total,
+          })
+        },
+        ai: (payload) => {
+          event.sender.send('background:initProgress', { type: 'ai', ...payload })
+        },
+      },
+      typeof modelId === 'string' ? modelId : undefined,
+    )
+    if (result.ok) {
+      event.sender.send('background:initProgress', {
+        type: 'stage',
+        stage: 'done',
+        status: 'done',
+      })
+    } else {
+      event.sender.send('background:initProgress', {
+        type: 'stage',
+        stage: 'scan',
+        status: 'error',
+      })
+    }
+    return result
+  })
 }

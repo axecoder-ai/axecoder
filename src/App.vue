@@ -4,9 +4,10 @@ import TitleBar from './components/workbench/TitleBar.vue'
 import SidebarViewBar from './components/workbench/SidebarViewBar.vue'
 import FileExplorer from './components/workbench/FileExplorer.vue'
 import SearchPanel from './components/workbench/SearchPanel.vue'
-import ScmPanel from './components/workbench/ScmPanel.vue'
+import BackgroundPanel from './components/workbench/BackgroundPanel.vue'
 import ExtensionsPanel from './components/workbench/ExtensionsPanel.vue'
 import EditorPane from './components/workbench/EditorPane.vue'
+import WelcomePage from './components/workbench/WelcomePage.vue'
 import ChatPane from './components/workbench/ChatPane.vue'
 import AgentsPanel from './components/workbench/AgentsPanel.vue'
 import BottomPanel from './components/workbench/BottomPanel.vue'
@@ -43,6 +44,9 @@ const settingsVisible = ref(false)
 const settingsPanelVisible = ref(false)
 const paletteVisible = ref(false)
 const recentFiles = ref<string[]>([])
+const recentProjects = ref<string[]>([])
+const WELCOME_ON_STARTUP_KEY = 'writcraft.welcomeOnStartup'
+const welcomeOnStartup = ref(true)
 const windowLayout = ref<WindowLayout>({
   fullscreen: false,
   platform: typeof navigator !== 'undefined' ? navigator.platform.toLowerCase().includes('mac') ? 'darwin' : 'win32' : 'darwin',
@@ -156,6 +160,17 @@ const onAgentsSplitPointerUp = (e: PointerEvent) => {
 
 const outlineItems = computed(() => parseMarkdownOutline(wb.editorContent.value))
 const hasOpenEditorTabs = computed(() => wb.openFiles.value.length > 0)
+/** 已打开项目、编辑器标签或 AI 侧栏时不再占位欢迎页 */
+const hasWorkbenchContent = computed(
+  () => hasOpenEditorTabs.value || !!projectRoot.value || aiPanelVisible.value,
+)
+const showWelcomePage = computed(() => welcomeOnStartup.value && !hasWorkbenchContent.value)
+const aiPanelFillsCenter = computed(
+  () => aiPanelVisible.value && !hasOpenEditorTabs.value && !showWelcomePage.value,
+)
+const aiPanelUsesFixedWidth = computed(
+  () => aiPanelVisible.value && (hasOpenEditorTabs.value || showWelcomePage.value),
+)
 
 const onSettingsModelsChanged = async () => {
   await chatPaneRef.value?.loadModels()
@@ -163,7 +178,7 @@ const onSettingsModelsChanged = async () => {
 
 const showExplorer = () => activeActivity.value === 'explorer'
 const showSearch = () => activeActivity.value === 'search'
-const showScm = () => activeActivity.value === 'scm'
+const showBackground = () => activeActivity.value === 'background'
 const showExtensions = () => activeActivity.value === 'extensions'
 
 const paletteCommands = [
@@ -180,8 +195,34 @@ const paletteCommands = [
 ]
 
 const loadRecent = async () => {
-  const res = await window.writcraft.getRecentFiles()
-  recentFiles.value = res.files
+  const [filesRes, projectsRes] = await Promise.all([
+    window.writcraft.getRecentFiles(),
+    window.writcraft.getRecentProjects(),
+  ])
+  recentFiles.value = filesRes.files
+  recentProjects.value = projectsRes.projects
+}
+
+const onWelcomeShowOnStartupChange = (value: boolean) => {
+  welcomeOnStartup.value = value
+  localStorage.setItem(WELCOME_ON_STARTUP_KEY, value ? '1' : '0')
+}
+
+const onWelcomeOpenProjectAt = async (rootPath: string) => {
+  await fileExplorerRef.value?.openProjectAt(rootPath)
+}
+
+const onWelcomeOpenFile = async () => {
+  await wb.openFileFromDisk()
+  await loadRecent()
+}
+
+const onWelcomeNewFile = () => {
+  if (!projectRoot.value) {
+    triggerOpenProject()
+    return
+  }
+  fileExplorerRef.value?.newFile()
 }
 
 const onActivitySelect = (id: string) => {
@@ -312,6 +353,8 @@ const onChatSessionsChanged = async () => {
 }
 
 onMounted(async () => {
+  const stored = localStorage.getItem(WELCOME_ON_STARTUP_KEY)
+  welcomeOnStartup.value = stored !== '0'
   await wb.loadSettings()
   await loadRecent()
   window.addEventListener('resize', clampLayoutWidths)
@@ -383,10 +426,28 @@ onUnmounted(() => {
             @search="onSearch"
             @open="onSearchOpen"
           />
-          <ScmPanel v-show="showScm()" :visible="showScm()" :project-root="projectRoot" />
+          <BackgroundPanel
+            v-show="showBackground()"
+            :visible="showBackground()"
+            :project-root="projectRoot"
+            @open-file="onOpenFile"
+          />
           <ExtensionsPanel v-show="showExtensions()" :visible="showExtensions()" />
           </div>
         </div>
+        <WelcomePage
+          v-show="showWelcomePage"
+          :recent-projects="recentProjects"
+          :recent-files="recentFiles"
+          :has-project="!!projectRoot"
+          :show-on-startup="welcomeOnStartup"
+          @open-project="triggerOpenProject"
+          @open-project-at="onWelcomeOpenProjectAt"
+          @open-file="onWelcomeOpenFile"
+          @new-file="onWelcomeNewFile"
+          @open-recent-file="onOpenFile"
+          @update:show-on-startup="onWelcomeShowOnStartupChange"
+        />
         <EditorPane
           v-show="hasOpenEditorTabs"
           ref="editorPaneRef"
@@ -396,17 +457,14 @@ onUnmounted(() => {
           :mode="editorMode"
           :font-size="wb.settings.value.fontSize"
           :app-theme="wb.settings.value.theme"
-          :recent-files="recentFiles"
           @update:content="(v) => (wb.editorContent.value = v)"
           @update:mode="editorMode = $event"
           @select="(p) => (wb.activePath.value = p)"
           @close="(p) => wb.closeTab(p)"
           @cursor-change="(l, c) => { cursorLine = l; cursorCol = c }"
-          @open-recent="onOpenFile"
-          @open-project="triggerOpenProject"
         />
         <div
-          v-show="aiPanelVisible && hasOpenEditorTabs"
+          v-show="aiPanelUsesFixedWidth"
           class="editor-ai-split-handle"
           :class="{ dragging: aiPanelSplitDragging }"
           @pointerdown="onAiPanelSplitPointerDown"
@@ -418,8 +476,8 @@ onUnmounted(() => {
           v-show="aiPanelVisible"
           ref="aiSidePanelRef"
           class="ai-side-panel"
-          :class="{ 'ai-side-panel--fill': !hasOpenEditorTabs }"
-          :style="hasOpenEditorTabs ? { width: `${aiPanelWidth}px` } : undefined"
+          :class="{ 'ai-side-panel--fill': aiPanelFillsCenter }"
+          :style="aiPanelUsesFixedWidth ? { width: `${aiPanelWidth}px` } : undefined"
         >
           <ChatPane
             ref="chatPaneRef"

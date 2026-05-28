@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron'
 import { registerFsIpc } from './fs-ipc'
+import { registerMarkdownExportIpc } from './markdown-export-ipc'
 import { registerGitIpc } from './git-ipc'
 import { registerTerminalIpc } from './terminal-ipc'
 import { registerChatIpc } from './chat-store'
@@ -33,6 +34,8 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   : RENDERER_DIST
 
 if (os.release().startsWith('6.1')) app.disableHardwareAcceleration()
+
+app.commandLine.appendSwitch('lang', 'en-US')
 
 app.setName('WritCraft')
 
@@ -83,36 +86,36 @@ const setupAppMenu = (getWin: () => BrowserWindow | null) => {
         }]
       : []),
     {
-      label: '文件',
+      label: 'File',
       submenu: [
         {
-          label: '打开项目...',
+          label: 'Open Project...',
           accelerator: 'CmdOrCtrl+O',
           click: sendOpenProject,
         },
         {
-          label: '打开文件...',
+          label: 'Open File...',
           accelerator: 'CmdOrCtrl+Shift+O',
           click: () => sendMenu('menu:openFile'),
         },
         { type: 'separator' as const },
         {
-          label: '新建文件',
+          label: 'New File',
           accelerator: 'CmdOrCtrl+N',
           click: () => sendMenu('menu:newFile'),
         },
         {
-          label: '保存',
+          label: 'Save',
           accelerator: 'CmdOrCtrl+S',
           click: () => sendMenu('menu:save'),
         },
         {
-          label: '另存为...',
+          label: 'Save As...',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => sendMenu('menu:saveAs'),
         },
         {
-          label: '关闭标签页',
+          label: 'Close Tab',
           accelerator: 'CmdOrCtrl+W',
           click: () => sendMenu('menu:closeTab'),
         },
@@ -123,7 +126,7 @@ const setupAppMenu = (getWin: () => BrowserWindow | null) => {
       ],
     },
     {
-      label: '编辑',
+      label: 'Edit',
       submenu: [
         { role: 'undo' as const },
         { role: 'redo' as const },
@@ -134,37 +137,37 @@ const setupAppMenu = (getWin: () => BrowserWindow | null) => {
         { role: 'selectAll' as const },
         { type: 'separator' as const },
         {
-          label: '查找',
+          label: 'Find',
           accelerator: 'CmdOrCtrl+F',
           click: () => sendMenu('menu:find'),
         },
         {
-          label: '在项目中查找',
+          label: 'Find in Project',
           accelerator: 'CmdOrCtrl+Shift+F',
           click: () => sendMenu('menu:findInFiles'),
         },
       ],
     },
     {
-      label: '视图',
+      label: 'View',
       submenu: [
         {
-          label: '命令面板',
+          label: 'Command Palette',
           accelerator: 'CmdOrCtrl+Shift+P',
           click: () => sendMenu('menu:commandPalette'),
         },
         { type: 'separator' as const },
         {
-          label: '显示/隐藏 AI 面板',
+          label: 'Toggle Chat Panel',
           accelerator: 'CmdOrCtrl+Shift+C',
           click: () => sendMenu('menu:toggleChat'),
         },
         {
-          label: '显示/隐藏 AI 面板',
+          label: 'Toggle Agents Panel',
           click: () => sendMenu('menu:toggleAgents'),
         },
         {
-          label: '显示/隐藏终端',
+          label: 'Toggle Terminal',
           accelerator: 'CmdOrCtrl+`',
           click: () => sendMenu('menu:toggleTerminal'),
         },
@@ -271,6 +274,7 @@ app.whenReady().then(async () => {
     legacyChatPath: path.join(app.getPath('userData'), 'chat-sessions.json'),
   })
   registerFsIpc(() => win)
+  registerMarkdownExportIpc(() => win)
   registerGitIpc()
   registerTerminalIpc(() => win)
   registerChatIpc()
