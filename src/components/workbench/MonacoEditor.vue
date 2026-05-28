@@ -29,6 +29,8 @@ onMounted(() => {
     theme: monacoThemeFor(props.appTheme ?? 'vscode'),
     automaticLayout: true,
     fontSize: props.fontSize ?? 14,
+    fontFamily: "'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace",
+    fontLigatures: true,
     lineNumbers: 'on',
     minimap: { enabled: false },
     scrollBeyondLastLine: false,

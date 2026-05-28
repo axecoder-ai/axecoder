@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import type { ModelEntry } from '../../types/writcraft'
 
 const props = defineProps<{
@@ -15,6 +15,11 @@ const emit = defineEmits<{
 const open = ref(false)
 const search = ref('')
 const rootRef = ref<HTMLElement | null>(null)
+const triggerRef = ref<HTMLButtonElement | null>(null)
+const popoverRef = ref<HTMLElement | null>(null)
+const popoverLeft = ref(0)
+const popoverBottom = ref(0)
+const POPOVER_W = 260
 
 const activeModel = computed(
   () => props.models.find((m) => m.id === props.activeModelId) ?? null,
@@ -32,10 +37,26 @@ const filtered = computed(() => {
   )
 })
 
+const syncPopoverPos = () => {
+  const el = triggerRef.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  const maxLeft = window.innerWidth - POPOVER_W - 8
+  popoverLeft.value = Math.max(8, Math.min(r.left, maxLeft))
+  popoverBottom.value = window.innerHeight - r.top + 8
+}
+
 const toggle = () => {
   open.value = !open.value
-  if (open.value) search.value = ''
+  if (open.value) {
+    search.value = ''
+    void nextTick(syncPopoverPos)
+  }
 }
+
+watch(open, (v) => {
+  if (v) void nextTick(syncPopoverPos)
+})
 
 const pick = (id: string) => {
   emit('select', id)
@@ -49,64 +70,79 @@ const onAdd = () => {
 
 const onDocClick = (e: MouseEvent) => {
   if (!open.value) return
-  const el = rootRef.value
-  if (el && !el.contains(e.target as Node)) open.value = false
+  const t = e.target as Node
+  if (rootRef.value?.contains(t)) return
+  if (popoverRef.value?.contains(t)) return
+  open.value = false
 }
 
 const onKey = (e: KeyboardEvent) => {
   if (e.key === 'Escape' && open.value) open.value = false
 }
 
+const onResize = () => {
+  if (open.value) syncPopoverPos()
+}
+
 onMounted(() => {
   document.addEventListener('mousedown', onDocClick)
   document.addEventListener('keydown', onKey)
+  window.addEventListener('resize', onResize)
 })
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', onDocClick)
   document.removeEventListener('keydown', onKey)
+  window.removeEventListener('resize', onResize)
 })
 </script>
 
 <template>
   <div ref="rootRef" class="picker-root">
-    <div v-if="open" class="popover">
-      <div class="search-wrap">
-        <input
-          v-model="search"
-          type="search"
-          class="search-input"
-          placeholder="搜索模型"
-          @click.stop
-        />
+    <Teleport to="body">
+      <div
+        v-if="open"
+        ref="popoverRef"
+        class="popover"
+        :style="{ left: `${popoverLeft}px`, bottom: `${popoverBottom}px` }"
+      >
+        <div class="search-wrap">
+          <input
+            v-model="search"
+            type="search"
+            class="search-input"
+            placeholder="搜索模型"
+            @click.stop
+          />
+        </div>
+        <ul v-if="filtered.length" class="model-list">
+          <li v-for="m in filtered" :key="m.id">
+            <button type="button" class="model-row" @click="pick(m.id)">
+              <span class="model-name">{{ m.name }}</span>
+              <svg
+                v-if="m.id === activeModelId"
+                class="check"
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                aria-hidden="true"
+              >
+                <path
+                  fill="currentColor"
+                  d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"
+                />
+              </svg>
+            </button>
+          </li>
+        </ul>
+        <p v-else class="empty">无匹配模型</p>
+        <button type="button" class="add-row" @click="onAdd">
+          <span class="add-icon">+</span>
+          添加模型
+        </button>
       </div>
-      <ul v-if="filtered.length" class="model-list">
-        <li v-for="m in filtered" :key="m.id">
-          <button type="button" class="model-row" @click="pick(m.id)">
-            <span class="model-name">{{ m.name }}</span>
-            <svg
-              v-if="m.id === activeModelId"
-              class="check"
-              viewBox="0 0 16 16"
-              width="14"
-              height="14"
-              aria-hidden="true"
-            >
-              <path
-                fill="currentColor"
-                d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"
-              />
-            </svg>
-          </button>
-        </li>
-      </ul>
-      <p v-else class="empty">无匹配模型</p>
-      <button type="button" class="add-row" @click="onAdd">
-        <span class="add-icon">+</span>
-        添加模型
-      </button>
-    </div>
-    <button type="button" class="trigger" :class="{ open }" @click="toggle">
+    </Teleport>
+    <button ref="triggerRef" type="button" class="trigger" :class="{ open }" @click="toggle">
       <span class="trigger-label">{{ triggerLabel }}</span>
       <svg class="chevron" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
         <path
@@ -143,7 +179,7 @@ onUnmounted(() => {
 .trigger:hover,
 .trigger.open {
   color: var(--wc-text);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--wc-muted-surface);
 }
 
 .trigger-label {
@@ -162,15 +198,13 @@ onUnmounted(() => {
 }
 
 .popover {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
+  position: fixed;
   width: 260px;
-  background: #252526;
+  background: var(--wc-popover-bg);
   border: 1px solid var(--wc-border);
   border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-  z-index: 50;
+  box-shadow: var(--wc-popover-shadow);
+  z-index: 10000;
   overflow: hidden;
 }
 

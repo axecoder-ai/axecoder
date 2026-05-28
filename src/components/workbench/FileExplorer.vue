@@ -22,6 +22,49 @@ const outlineOpen = ref(true)
 const timelineOpen = ref(false)
 const treeSectionOpen = ref(true)
 
+const TREE_PANE_HEIGHT_KEY = 'writcraft.explorer.treePaneHeight'
+const TREE_PANE_MIN = 64
+const BOTTOM_PANE_MIN = 80
+const TREE_PANE_DEFAULT = 200
+
+const explorerSplitRef = ref<HTMLElement | null>(null)
+const treePaneHeight = ref(TREE_PANE_DEFAULT)
+const treeSplitDragging = ref(false)
+let treeSplitStartY = 0
+let treeSplitStartHeight = TREE_PANE_DEFAULT
+
+const clampTreePaneHeight = (height: number) => {
+  const el = explorerSplitRef.value
+  if (!el) return Math.max(TREE_PANE_MIN, height)
+  const total = el.getBoundingClientRect().height
+  const maxTree = Math.max(TREE_PANE_MIN, total - BOTTOM_PANE_MIN - 4)
+  return Math.min(maxTree, Math.max(TREE_PANE_MIN, height))
+}
+
+const onTreeSplitPointerDown = (e: PointerEvent) => {
+  treeSplitDragging.value = true
+  treeSplitStartY = e.clientY
+  treeSplitStartHeight = treePaneHeight.value
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+}
+
+const onTreeSplitPointerMove = (e: PointerEvent) => {
+  if (!treeSplitDragging.value) return
+  const delta = e.clientY - treeSplitStartY
+  treePaneHeight.value = clampTreePaneHeight(treeSplitStartHeight + delta)
+}
+
+const onTreeSplitPointerUp = (e: PointerEvent) => {
+  if (!treeSplitDragging.value) return
+  treeSplitDragging.value = false
+  try {
+    localStorage.setItem(TREE_PANE_HEIGHT_KEY, String(treePaneHeight.value))
+    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+  } catch {
+    /* already released */
+  }
+}
+
 const rootPath = ref('')
 const tree = ref<FileNode | null>(null)
 const expanded = ref<Set<string>>(new Set())
@@ -468,6 +511,14 @@ onMounted(() => {
   loadLastProject()
   document.addEventListener('click', onDocClick)
   panelRef.value?.addEventListener('keydown', onTreeKeydown)
+  const saved = localStorage.getItem(TREE_PANE_HEIGHT_KEY)
+  if (saved) {
+    const n = Number(saved)
+    if (Number.isFinite(n) && n >= TREE_PANE_MIN) treePaneHeight.value = n
+  }
+  nextTick(() => {
+    treePaneHeight.value = clampTreePaneHeight(treePaneHeight.value)
+  })
 })
 
 onUnmounted(() => {
@@ -519,6 +570,11 @@ onUnmounted(() => {
         </button>
       </div>
     </div>
+    <div ref="explorerSplitRef" class="explorer-split">
+    <div
+      class="tree-pane"
+      :style="{ height: `${treePaneHeight}px` }"
+    >
     <div
       v-show="treeSectionOpen"
       class="tree"
@@ -592,6 +648,17 @@ onUnmounted(() => {
       </div>
       <div v-else-if="!flatNodes.length" class="tree-empty">项目为空</div>
     </div>
+    </div>
+    <div
+      class="tree-outline-split-handle"
+      :class="{ dragging: treeSplitDragging }"
+      title="拖动调整文件树与大纲高度"
+      @pointerdown="onTreeSplitPointerDown"
+      @pointermove="onTreeSplitPointerMove"
+      @pointerup="onTreeSplitPointerUp"
+      @pointercancel="onTreeSplitPointerUp"
+    />
+    <div class="bottom-panels">
     <div class="panel-section">
       <button type="button" class="section-head" @click="outlineOpen = !outlineOpen">
         大纲 {{ outlineOpen ? '▾' : '▸' }}
@@ -625,6 +692,8 @@ onUnmounted(() => {
           {{ baseName(f) }}
         </li>
       </ul>
+    </div>
+    </div>
     </div>
 
     <ul
@@ -753,10 +822,60 @@ onUnmounted(() => {
   stroke-width: 1;
 }
 
+.explorer-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-pane {
+  flex-shrink: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .tree {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 0 8px 8px;
+}
+
+.tree-outline-split-handle {
+  flex-shrink: 0;
+  height: 5px;
+  margin: 0;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+  position: relative;
+  background: transparent;
+}
+
+.tree-outline-split-handle::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 1px;
+  background: var(--wc-border);
+}
+
+.tree-outline-split-handle:hover::before,
+.tree-outline-split-handle.dragging::before {
+  background: var(--wc-border-light);
+}
+
+.bottom-panels {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .tree-empty {
@@ -883,7 +1002,17 @@ onUnmounted(() => {
 }
 
 .panel-section {
+  flex-shrink: 0;
   border-top: 1px solid var(--wc-border);
+  min-height: 0;
+}
+
+.bottom-panels .panel-section:first-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: none;
 }
 
 .section-head {
@@ -902,7 +1031,8 @@ onUnmounted(() => {
 
 .outline-list {
   list-style: none;
-  max-height: 160px;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 

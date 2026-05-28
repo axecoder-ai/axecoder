@@ -324,4 +324,22 @@ defineExpose({ revealLine, focusEditor })
 .preview :deep(p) {
   margin: 0.5em 0;
 }
+
+.preview :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+.preview :deep(th),
+.preview :deep(td) {
+  border: 1px solid var(--wc-border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.preview :deep(th) {
+  background: var(--wc-hover);
+  font-weight: 600;
+}
 </style>

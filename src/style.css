@@ -5,8 +5,8 @@
   --wc-bg-dark: #181818;
   --wc-sidebar: #252526;
   --wc-panel: #1e1e1e;
-  --wc-border: #2b2b2b;
-  --wc-border-light: #3c3c3c;
+  --wc-border: #3a3a3a;
+  --wc-border-light: #484848;
   --wc-text: #cccccc;
   --wc-text-muted: #8b8b8b;
   --wc-text-dim: #6e6e6e;
@@ -18,6 +18,8 @@
   --wc-scrollbar: #424242;
   --wc-scrollbar-hover: #4f4f4f;
   --wc-titlebar-h: 35px;
+  --wc-titlebar-pad-left: 12px;
+  --wc-titlebar-pad-left-mac: 78px;
   --wc-statusbar-h: 22px;
   --wc-activity-w: 48px;
   --wc-sidebar-w: 260px;
@@ -25,6 +27,22 @@
   --wc-agents-min: 200px;
   --wc-chat-min: 320px;
   --wc-editor-min: 280px;
+  --wc-chat-box-bg: #262626;
+  --wc-chat-box-border: #424242;
+  --wc-muted-surface: rgba(255, 255, 255, 0.06);
+  --wc-muted-surface-hover: rgba(255, 255, 255, 0.08);
+  --wc-muted-surface-strong: rgba(255, 255, 255, 0.1);
+  --wc-muted-border: rgba(255, 255, 255, 0.18);
+  --wc-send-active-bg: #e8e8e8;
+  --wc-send-active-fg: #1a1a1a;
+  --wc-send-active-hover: #f0f0f0;
+  --wc-code-block-bg: rgba(0, 0, 0, 0.35);
+  --wc-tag-bg: rgba(0, 0, 0, 0.2);
+  --wc-popover-bg: #252526;
+  --wc-popover-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --wc-search-match-bg: rgba(55, 148, 255, 0.28);
+  --wc-search-badge-bg: #0078d4;
+  --wc-search-badge-fg: #ffffff;
 }
 
 /* Aura 浅色（参考 Cursor Composer） */
@@ -33,8 +51,8 @@
   --wc-bg-dark: #ebebeb;
   --wc-sidebar: #ebebeb;
   --wc-panel: #f5f5f5;
-  --wc-border: #d1d1d1;
-  --wc-border-light: #c4c4c4;
+  --wc-border: #c0c0c0;
+  --wc-border-light: #b0b0b0;
   --wc-text: #333333;
   --wc-text-muted: #888888;
   --wc-text-dim: #aaaaaa;
@@ -45,6 +63,22 @@
   --wc-status-bg: #1d4ed8;
   --wc-scrollbar: #c8c8c8;
   --wc-scrollbar-hover: #b0b0b0;
+  --wc-chat-box-bg: #ffffff;
+  --wc-chat-box-border: #b8b8b8;
+  --wc-muted-surface: rgba(0, 0, 0, 0.05);
+  --wc-muted-surface-hover: rgba(0, 0, 0, 0.08);
+  --wc-muted-surface-strong: rgba(0, 0, 0, 0.1);
+  --wc-muted-border: rgba(0, 0, 0, 0.16);
+  --wc-send-active-bg: #333333;
+  --wc-send-active-fg: #ffffff;
+  --wc-send-active-hover: #1a1a1a;
+  --wc-code-block-bg: rgba(0, 0, 0, 0.06);
+  --wc-tag-bg: rgba(0, 0, 0, 0.06);
+  --wc-popover-bg: #ffffff;
+  --wc-popover-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --wc-search-match-bg: rgba(37, 99, 235, 0.22);
+  --wc-search-badge-bg: #2563eb;
+  --wc-search-badge-fg: #ffffff;
 }
 
 /* Aura 深色 */
@@ -53,8 +87,8 @@
   --wc-bg-dark: #141414;
   --wc-sidebar: #242424;
   --wc-panel: #1c1c1c;
-  --wc-border: #333333;
-  --wc-border-light: #404040;
+  --wc-border: #424242;
+  --wc-border-light: #525252;
   --wc-text: #e4e4e4;
   --wc-text-muted: #9a9a9a;
   --wc-text-dim: #6b6b6b;
@@ -65,10 +99,29 @@
   --wc-status-bg: #1e40af;
   --wc-scrollbar: #3a3a3a;
   --wc-scrollbar-hover: #484848;
+  --wc-chat-box-bg: #262626;
+  --wc-chat-box-border: #4a4a4a;
+  --wc-muted-surface: rgba(255, 255, 255, 0.06);
+  --wc-muted-surface-hover: rgba(255, 255, 255, 0.08);
+  --wc-muted-surface-strong: rgba(255, 255, 255, 0.1);
+  --wc-muted-border: rgba(255, 255, 255, 0.18);
+  --wc-send-active-bg: #e8e8e8;
+  --wc-send-active-fg: #1a1a1a;
+  --wc-send-active-hover: #f0f0f0;
+  --wc-code-block-bg: rgba(0, 0, 0, 0.35);
+  --wc-tag-bg: rgba(0, 0, 0, 0.2);
+  --wc-popover-bg: #242424;
+  --wc-popover-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --wc-search-match-bg: rgba(59, 130, 246, 0.28);
+  --wc-search-badge-bg: #1e40af;
+  --wc-search-badge-fg: #ffffff;
 }
 
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  /* 与 Cursor 一致：SF Pro UI + JetBrains Mono 等宽 */
+  --wc-font-sans: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --wc-font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+  font-family: var(--wc-font-sans);
   font-size: 13px;
   color: var(--wc-text);
   background: var(--wc-bg);

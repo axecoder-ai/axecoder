@@ -54,6 +54,24 @@ describe('parseRipgrepJsonLine', () => {
     })
   })
 
+  it('优先使用 data.lines.text', () => {
+    const line = JSON.stringify({
+      type: 'match',
+      data: {
+        path: { text: '/p/b.md' },
+        line_number: 10,
+        lines: { text: '技术方案内容\n' },
+        submatches: [{ start: 0, match: { text: '技术' } }],
+      },
+    })
+    expect(parseRipgrepJsonLine(line)).toEqual({
+      file: '/p/b.md',
+      line: 10,
+      col: 1,
+      text: '技术方案内容',
+    })
+  })
+
   it('非 match 返回 null', () => {
     expect(parseRipgrepJsonLine(JSON.stringify({ type: 'begin' }))).toBeNull()
   })

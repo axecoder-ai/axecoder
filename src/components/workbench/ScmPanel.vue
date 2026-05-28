@@ -114,7 +114,7 @@ watch(
   flex-shrink: 0;
   width: 20px;
   color: #e8ab53;
-  font-family: monospace;
+  font-family: var(--wc-font-mono);
 }
 
 .file {

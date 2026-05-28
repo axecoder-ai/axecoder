@@ -41,8 +41,10 @@
     "vue-tsc": "^2.0.6"
   },
   "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@vscode/ripgrep": "^1.15.11",
     "chokidar": "^4.0.3",
+    "diff": "^7.0.0",
     "electron-store": "^10.0.0",
     "markdown-it": "^14.2.0",
     "monaco-editor": "^0.55.1"
@@ -55,7 +57,10 @@
       "output": "release/${version}"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.productivity"
     }
   }

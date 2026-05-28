@@ -34,6 +34,26 @@ describe('chatWithProvider', () => {
     fetchMock.mockReset()
   })
 
+  it('openai 成功解析 reasoning_content', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: '', reasoning_content: 'from reasoning' } }],
+      }),
+    })
+    const model: ModelEntry = {
+      id: '1',
+      name: 't',
+      provider: 'openai',
+      modelId: 'deepseek-reasoner',
+      baseUrl: 'https://api.deepseek.com/v1',
+      enabled: true,
+    }
+    const res = await chatWithProvider(model, 'sk-x', [{ role: 'user', content: 'hello' }])
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.text).toBe('from reasoning')
+  })
+
   it('openai 成功解析回复', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

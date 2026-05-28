@@ -28,10 +28,12 @@ export type AppConfig = {
 export type AiChatMessage = {
   role: 'user' | 'assistant' | 'system'
   content: string
+  /** DeepSeek 等思考模式：下一轮须原样回传 */
+  reasoningContent?: string
 }
 
 export type AiChatResult =
-  | { ok: true; text: string }
+  | { ok: true; text: string; content: string; reasoningContent?: string }
   | { ok: false; error: string }
 
 export type ModelSaveInput = ModelEntry & { apiKey?: string }

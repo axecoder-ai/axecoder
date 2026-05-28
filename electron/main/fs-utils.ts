@@ -51,6 +51,7 @@ export const parseRipgrepJsonLine = (line: string): SearchHit | null => {
   const lineNo = row.data.line_number ?? 1
   const sub = row.data.submatches?.[0]
   const col = (sub?.start ?? 0) + 1
-  const text = (sub?.lines?.text ?? '').replace(/\r?\n$/, '')
+  const lineText = row.data.lines?.text ?? sub?.lines?.text ?? ''
+  const text = lineText.replace(/\r?\n$/, '')
   return { file, line: lineNo, col, text }
 }

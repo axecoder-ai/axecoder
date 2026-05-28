@@ -151,7 +151,7 @@ defineExpose({ addOutput, setProblems })
   overflow: auto;
   padding: 8px 12px;
   font-size: 12px;
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--wc-font-mono);
 }
 
 .terminal {

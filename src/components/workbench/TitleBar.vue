@@ -1,9 +1,18 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+import type { WindowLayout } from '../../types/writcraft'
+
+const props = defineProps<{
   primarySidebarVisible: boolean
   aiPanelVisible: boolean
   projectName: string
+  windowLayout: WindowLayout
 }>()
+
+const titleBarClass = computed(() => {
+  if (props.windowLayout.platform !== 'darwin') return ''
+  return props.windowLayout.fullscreen ? 'mac-fullscreen' : 'mac-inset'
+})
 
 defineEmits<{
   togglePrimarySidebar: []
@@ -14,7 +23,7 @@ defineEmits<{
 </script>
 
 <template>
-  <header class="title-bar">
+  <header class="title-bar" :class="titleBarClass">
     <div class="title-bar-left">
       <button
         type="button"
@@ -89,7 +98,15 @@ defineEmits<{
   border-bottom: 1px solid var(--wc-border);
   -webkit-app-region: drag;
   flex-shrink: 0;
-  padding: 0 12px 0 72px;
+  padding: 0 12px 0 var(--wc-titlebar-pad-left);
+}
+
+.title-bar.mac-inset {
+  --wc-titlebar-pad-left: var(--wc-titlebar-pad-left-mac);
+}
+
+.title-bar.mac-fullscreen {
+  --wc-titlebar-pad-left: 12px;
 }
 
 .title-bar-left,

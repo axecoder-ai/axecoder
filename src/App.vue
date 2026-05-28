@@ -25,7 +25,7 @@ import {
   WC_CHAT_MIN,
   WC_EDITOR_MIN,
 } from './utils/agents-panel'
-import type { SearchHit } from './types/writcraft'
+import type { SearchHit, WindowLayout } from './types/writcraft'
 
 const wb = useWorkbench()
 const projectRoot = computed(() => wb.projectRoot.value)
@@ -43,6 +43,11 @@ const settingsVisible = ref(false)
 const settingsPanelVisible = ref(false)
 const paletteVisible = ref(false)
 const recentFiles = ref<string[]>([])
+const windowLayout = ref<WindowLayout>({
+  fullscreen: false,
+  platform: typeof navigator !== 'undefined' ? navigator.platform.toLowerCase().includes('mac') ? 'darwin' : 'win32' : 'darwin',
+})
+let offWindowLayout: (() => void) | undefined
 
 const fileExplorerRef = ref<InstanceType<typeof FileExplorer> | null>(null)
 const searchPanelRef = ref<InstanceType<typeof SearchPanel> | null>(null)
@@ -310,6 +315,12 @@ onMounted(async () => {
   await wb.loadSettings()
   await loadRecent()
   window.addEventListener('resize', clampLayoutWidths)
+  void window.writcraft.getWindowLayout().then((layout) => {
+    windowLayout.value = layout
+  })
+  offWindowLayout = window.writcraft.onWindowLayout((layout) => {
+    windowLayout.value = layout
+  })
   await nextTick()
   clampLayoutWidths()
   offOpenProject = window.writcraft.onOpenProject(triggerOpenProject)
@@ -328,6 +339,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', clampLayoutWidths)
+  offWindowLayout?.()
   offOpenProject?.()
   wb.unbindMenu()
 })
@@ -339,6 +351,7 @@ onUnmounted(() => {
       :primary-sidebar-visible="primarySidebarVisible"
       :ai-panel-visible="aiPanelVisible"
       :project-name="wb.projectName.value"
+      :window-layout="windowLayout"
       @toggle-primary-sidebar="togglePrimarySidebar"
       @toggle-ai-panel="toggleAiPanel"
       @open-project="triggerOpenProject"
@@ -418,6 +431,7 @@ onUnmounted(() => {
             @open-models-settings="settingsPanelVisible = true"
             @active-change="onChatActiveChange"
             @sessions-changed="onChatSessionsChanged"
+            @files-changed="fileExplorerRef?.refresh?.()"
           />
           <div
             v-show="agentsSidebarVisible"
@@ -525,27 +539,40 @@ onUnmounted(() => {
 .editor-ai-split-handle,
 .agents-split-handle {
   flex-shrink: 0;
-  width: 4px;
-  margin: 0 -1px;
+  width: 5px;
+  margin: 0 -2px;
   cursor: col-resize;
   touch-action: none;
   user-select: none;
-  background: transparent;
   position: relative;
   z-index: 1;
+  background: transparent;
 }
 
-.editor-ai-split-handle:hover,
-.editor-ai-split-handle.dragging,
-.agents-split-handle:hover,
-.agents-split-handle.dragging {
+.editor-ai-split-handle::before,
+.agents-split-handle::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--wc-border);
+}
+
+.editor-ai-split-handle:hover::before,
+.editor-ai-split-handle.dragging::before,
+.agents-split-handle:hover::before,
+.agents-split-handle.dragging::before {
   background: var(--wc-border-light);
 }
 
 .ai-side-panel {
   display: flex;
   flex-shrink: 0;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .ai-side-panel--fill {

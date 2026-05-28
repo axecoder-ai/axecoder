@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import MarkdownIt from 'markdown-it'
 import type {
+  AgentContinueResult,
+  AgentSendResult,
+  AgentToolLogEntry,
   AiChatMessage,
   ChatMessage,
   ChatSession,
@@ -9,12 +12,13 @@ import type {
   ModelsFile,
 } from '../../types/writcraft'
 import ModelPickerDropdown from './ModelPickerDropdown.vue'
+import ChatDiffCard from './ChatDiffCard.vue'
+import { isUnderProject, relativeToProject, type ChatFileRef } from '../../utils/chat-file-context'
 import {
-  buildUserMessageWithFiles,
-  isUnderProject,
-  relativeToProject,
-  type ChatFileRef,
-} from '../../utils/chat-file-context'
+  applyProgressPayload,
+  CHAT_IDLE_HINTS,
+  type AgentProgressStep,
+} from '../../utils/agent-progress'
 
 const md = new MarkdownIt()
 
@@ -31,6 +35,7 @@ const emit = defineEmits<{
   openModelsSettings: []
   activeChange: [id: string]
   sessionsChanged: []
+  filesChanged: []
 }>()
 
 const sessionMetas = ref<ChatSessionMeta[]>([])
@@ -42,8 +47,19 @@ const messagesEl = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const modelsFile = ref<ModelsFile>({ schemaVersion: 1, activeModelId: '', models: [] })
 const attachedFiles = ref<ChatFileRef[]>([])
-const includeContextFile = ref(true)
+const includeContextFile = ref(false)
 const dropActive = ref(false)
+const pendingBusy = ref(false)
+const progressSteps = ref<AgentProgressStep[]>([])
+const idleHintIdx = ref(0)
+let idleHintTimer: ReturnType<typeof setInterval> | null = null
+let progressUnsub: (() => void) | null = null
+const agentProgressActive = ref(false)
+
+const agentMode = computed(() => {
+  const m = activeModel.value
+  return !!m && m.provider !== 'ollama'
+})
 
 const messages = computed(() => activeSession.value?.messages ?? [])
 const hasProject = computed(() => !!props.projectRoot.trim())
@@ -78,7 +94,10 @@ const persist = async () => {
     messages: s.messages.map((m) => ({
       role: m.role,
       text: m.text,
-      ...(m.filePaths?.length ? { filePaths: m.filePaths } : {}),
+      ...(m.filePaths?.length ? { filePaths: [...m.filePaths] } : {}),
+      ...(m.apiContent ? { apiContent: m.apiContent } : {}),
+      ...(m.assistantContent !== undefined ? { assistantContent: m.assistantContent } : {}),
+      ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
     })),
   })
   if (!res.ok) return
@@ -247,24 +266,140 @@ const sendFilePaths = computed(() => {
   return paths
 })
 
-const toApiMessages = async (msgs: ChatMessage[]): Promise<AiChatMessage[]> => {
+const toApiMessages = (msgs: ChatMessage[]): AiChatMessage[] => {
   const api: AiChatMessage[] = []
   for (const m of msgs) {
     if (m.role === 'user') {
-      const content = m.filePaths?.length
-        ? await buildUserMessageWithFiles(
-            m.text,
-            m.filePaths,
-            props.projectRoot,
-            (p) => window.writcraft.readFile(p),
-          )
-        : m.text
-      api.push({ role: 'user', content })
+      api.push({ role: 'user', content: m.apiContent ?? m.text })
     } else {
-      api.push({ role: 'assistant', content: m.text })
+      api.push({
+        role: 'assistant',
+        content: m.assistantContent ?? m.text,
+        ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
+      })
     }
   }
   return api
+}
+
+const stopIdleHintTimer = () => {
+  if (idleHintTimer) clearInterval(idleHintTimer)
+  idleHintTimer = null
+}
+
+const startIdleHintTimer = () => {
+  stopIdleHintTimer()
+  idleHintIdx.value = 0
+  idleHintTimer = setInterval(() => {
+    idleHintIdx.value = (idleHintIdx.value + 1) % CHAT_IDLE_HINTS.length
+  }, 2200)
+}
+
+const unbindAgentProgress = () => {
+  agentProgressActive.value = false
+  progressUnsub?.()
+  progressUnsub = null
+}
+
+const bindAgentProgress = () => {
+  unbindAgentProgress()
+  progressSteps.value = []
+  agentProgressActive.value = true
+  progressUnsub = window.writcraft.onAgentProgress((payload) => {
+    if (!agentProgressActive.value) return
+    progressSteps.value = applyProgressPayload(progressSteps.value, payload)
+    void scrollMessages()
+  })
+}
+
+const clearProgressUi = () => {
+  stopIdleHintTimer()
+  unbindAgentProgress()
+  progressSteps.value = []
+}
+
+const formatToolLog = (log: AgentToolLogEntry[]) => {
+  if (!log.length) return ''
+  const lines = log.map((t) => `- ${t.ok ? '✓' : '✗'} ${t.name}: ${t.summary}`)
+  return `\n\n---\n工具：\n${lines.join('\n')}`
+}
+
+const pushAssistantFromAgent = (res: AgentSendResult | AgentContinueResult) => {
+  if (!activeSession.value) return
+  if (!res.ok) {
+    activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${res.error}` })
+    return
+  }
+  const suffix = formatToolLog(res.toolLog)
+  if (res.status === 'done') {
+    activeSession.value.messages.push({
+      role: 'assistant',
+      text: (res.assistantText + suffix).trim() || '（完成）',
+      toolLog: res.toolLog,
+      ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
+      ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
+    })
+    emit('filesChanged')
+    return
+  }
+  activeSession.value.messages.push({
+    role: 'assistant',
+    text: (res.assistantText + suffix).trim() || '请确认以下变更：',
+    toolLog: res.toolLog,
+    pendingWrites: res.pending,
+    agentSessionId: res.sessionId,
+    ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
+    ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
+  })
+}
+
+const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
+  if (!res.ok) {
+    msg.text += `\n\n确认失败：${res.error}`
+    msg.pendingWrites = undefined
+    return
+  }
+  const suffix = formatToolLog(res.toolLog)
+  if (res.status === 'pending') {
+    msg.pendingWrites = res.pending
+    msg.agentSessionId = res.sessionId
+    if (res.assistantText.trim()) msg.text = res.assistantText + suffix
+    else msg.text += suffix
+  } else {
+    msg.pendingWrites = undefined
+    msg.text = (res.assistantText + suffix).trim() || msg.text
+    emit('filesChanged')
+  }
+}
+
+const onConfirmPending = async (msg: ChatMessage, pendingId: string) => {
+  if (!msg.agentSessionId || pendingBusy.value) return
+  pendingBusy.value = true
+  bindAgentProgress()
+  try {
+    const res = await window.writcraft.agentConfirmWrite(msg.agentSessionId, pendingId)
+    applyContinueToMessage(msg, res)
+    activeSession.value!.updatedAt = Date.now()
+    await persist()
+  } finally {
+    pendingBusy.value = false
+    clearProgressUi()
+  }
+}
+
+const onRejectPending = async (msg: ChatMessage, pendingId: string) => {
+  if (!msg.agentSessionId || pendingBusy.value) return
+  pendingBusy.value = true
+  bindAgentProgress()
+  try {
+    const res = await window.writcraft.agentRejectWrite(msg.agentSessionId, pendingId)
+    applyContinueToMessage(msg, res)
+    activeSession.value!.updatedAt = Date.now()
+    await persist()
+  } finally {
+    pendingBusy.value = false
+    clearProgressUi()
+  }
 }
 
 const send = async () => {
@@ -287,20 +422,43 @@ const send = async () => {
   const userMsg: ChatMessage = { role: 'user', text, ...(filePaths ? { filePaths } : {}) }
   activeSession.value.messages.push(userMsg)
   attachedFiles.value = []
-  includeContextFile.value = true
+  includeContextFile.value = false
   if (activeSession.value.title === '新对话') {
     activeSession.value.title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
   }
   activeSession.value.updatedAt = Date.now()
-  await persist()
 
   loading.value = true
+  if (agentMode.value) bindAgentProgress()
+  else startIdleHintTimer()
   try {
+    if (filePaths?.length) {
+      userMsg.apiContent = await window.writcraft.expandChatUserWithFiles(
+        props.projectRoot,
+        text,
+        filePaths,
+      )
+    }
+    await persist()
     const historyMsgs = activeSession.value.messages.slice(0, -1)
-    const apiMessages = await toApiMessages([...historyMsgs, userMsg])
-    const res = await window.writcraft.aiChat(modelId, apiMessages)
-    const replyText = res.ok ? res.text : `请求失败：${res.error}`
-    activeSession.value.messages.push({ role: 'assistant', text: replyText })
+    const apiMessages = toApiMessages([...historyMsgs, userMsg])
+    if (agentMode.value) {
+      const res = await window.writcraft.agentSend(props.projectRoot, modelId, apiMessages)
+      pushAssistantFromAgent(res)
+    } else {
+      const res = await window.writcraft.aiChat(modelId, apiMessages)
+      if (res.ok) {
+        const replyText = res.text.trim() || '（模型未返回内容，请检查模型 ID 或 API 配置）'
+        activeSession.value.messages.push({
+          role: 'assistant',
+          text: replyText,
+          assistantContent: res.content,
+          ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
+        })
+      } else {
+        activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${res.error}` })
+      }
+    }
     activeSession.value.updatedAt = Date.now()
   } catch (e) {
     const msg = e instanceof Error ? e.message : '请求异常'
@@ -308,6 +466,7 @@ const send = async () => {
     activeSession.value.updatedAt = Date.now()
   } finally {
     loading.value = false
+    clearProgressUi()
     await persist()
   }
 }
@@ -319,6 +478,77 @@ const canSend = computed(
     !loading.value &&
     enabledModels.value.length > 0,
 )
+
+const lastAssistantText = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i]
+    if (m.role === 'assistant' && m.text.trim()) return m.text
+  }
+  return ''
+})
+
+const copyLastReply = async () => {
+  const text = lastAssistantText.value
+  if (!text) return
+  await navigator.clipboard.writeText(text)
+}
+
+const regenerateLastReply = async () => {
+  if (!hasProject.value || !activeSession.value || loading.value) return
+  const modelId = modelsFile.value.activeModelId
+  const model = activeModel.value
+  if (!modelId || !model) return
+  const msgs = activeSession.value.messages
+  let assistIdx = -1
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === 'assistant') {
+      assistIdx = i
+      break
+    }
+  }
+  if (assistIdx < 0) return
+  let userIdx = -1
+  for (let i = assistIdx - 1; i >= 0; i--) {
+    if (msgs[i].role === 'user') {
+      userIdx = i
+      break
+    }
+  }
+  if (userIdx < 0) return
+  msgs.splice(assistIdx, 1)
+  loading.value = true
+  if (agentMode.value) bindAgentProgress()
+  else startIdleHintTimer()
+  try {
+    const apiMessages = toApiMessages(msgs.slice(0, userIdx + 1))
+    if (agentMode.value) {
+      const res = await window.writcraft.agentSend(props.projectRoot, modelId, apiMessages)
+      pushAssistantFromAgent(res)
+    } else {
+      const res = await window.writcraft.aiChat(modelId, apiMessages)
+      if (res.ok) {
+        const replyText = res.text.trim() || '（模型未返回内容，请检查模型 ID 或 API 配置）'
+        activeSession.value.messages.push({
+          role: 'assistant',
+          text: replyText,
+          assistantContent: res.content,
+          ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
+        })
+      } else {
+        activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${res.error}` })
+      }
+    }
+    activeSession.value.updatedAt = Date.now()
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '请求异常'
+    activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${msg}` })
+    activeSession.value.updatedAt = Date.now()
+  } finally {
+    loading.value = false
+    clearProgressUi()
+    await persist()
+  }
+}
 
 watch(activeId, (id) => {
   emit('activeChange', id)
@@ -335,16 +565,24 @@ watch(
   },
 )
 
-watch(
-  () => props.contextFilePath,
-  () => {
-    includeContextFile.value = true
-  },
-)
-
 onMounted(() => {
   void loadModels()
   void load()
+})
+
+onUnmounted(() => {
+  clearProgressUi()
+})
+
+const showProgressBubble = computed(() => loading.value || pendingBusy.value)
+
+const progressHeadline = computed(() => {
+  if (agentMode.value && progressSteps.value.length) {
+    const active = [...progressSteps.value].reverse().find((s) => s.status === 'active')
+    return active?.label ?? 'Agent 执行中…'
+  }
+  if (agentMode.value) return '正在启动 Agent…'
+  return CHAT_IDLE_HINTS[idleHintIdx.value] ?? CHAT_IDLE_HINTS[0]
 })
 
 defineExpose({
@@ -394,9 +632,81 @@ defineExpose({
           </div>
           {{ msg.text }}
         </div>
-        <div v-else class="assistant-text" v-html="renderMarkdown(msg.text)" />
+        <template v-else>
+          <div
+            v-if="msg.text.trim()"
+            class="assistant-text"
+            v-html="renderMarkdown(msg.text)"
+          />
+          <ChatDiffCard
+            v-for="pw in msg.pendingWrites ?? []"
+            :key="pw.id"
+            :pending="pw"
+            :busy="pendingBusy"
+            @confirm="onConfirmPending(msg, pw.id)"
+            @reject="onRejectPending(msg, pw.id)"
+          />
+        </template>
       </div>
-      <div v-if="loading" class="loading">思考中…</div>
+      <div v-if="showProgressBubble" class="message assistant">
+        <div class="assistant-text loading-bubble agent-progress-bubble">
+          <div class="progress-headline">
+            <span class="progress-pulse" aria-hidden="true" />
+            {{ progressHeadline }}
+          </div>
+          <ul v-if="agentMode && progressSteps.length" class="progress-steps">
+            <li
+              v-for="step in progressSteps"
+              :key="step.id"
+              class="progress-step"
+              :class="step.status"
+            >
+              <span class="progress-dot" />
+              <span class="progress-label">{{ step.label }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div v-if="lastAssistantText && !loading" class="reply-actions">
+      <button type="button" class="icon-btn" title="复制回复" @click="copyLastReply">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <rect
+            x="5.5"
+            y="5.5"
+            width="7"
+            height="7"
+            rx="1"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+          />
+          <path
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linecap="round"
+            d="M5.5 10.5H4.5a1.5 1.5 0 0 1-1.5-1.5V4.5A1.5 1.5 0 0 1 4.5 3h4.5a1.5 1.5 0 0 1 1.5 1.5V5.5"
+          />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="icon-btn"
+        title="重新生成"
+        :disabled="!enabledModels.length"
+        @click="regenerateLastReply"
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linecap="round"
+            d="M8 3a5 5 0 1 0 4.2 7.6M8 1.5v3M8 4.5H5.5"
+          />
+        </svg>
+      </button>
     </div>
     <div class="chat-input-area">
       <div
@@ -515,11 +825,12 @@ defineExpose({
 <style scoped>
 .chat-pane {
   flex: 1;
-  min-width: var(--wc-chat-min);
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--wc-panel);
   min-height: 0;
+  overflow: hidden;
 }
 
 .chat-tabs {
@@ -531,6 +842,8 @@ defineExpose({
   padding: 0 8px;
   gap: 4px;
   flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .tabs-spacer {
@@ -557,11 +870,14 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: min(220px, 100%);
   padding: 6px 8px 6px 12px;
   font-size: 12px;
   background: var(--wc-panel);
   border-radius: 4px 4px 0 0;
-  max-width: 220px;
+  overflow: hidden;
 }
 
 .tab-close {
@@ -580,9 +896,11 @@ defineExpose({
 }
 
 .tab-label {
-  display: block;
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .new-tab {
@@ -628,25 +946,136 @@ defineExpose({
 .assistant-text {
   font-size: 13px;
   line-height: 1.6;
-  white-space: pre-wrap;
+  color: var(--wc-text);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.loading-bubble {
+  display: inline-block;
+  padding: 10px 14px;
+  background: var(--wc-input-bg);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--wc-text-dim);
+}
+
+.agent-progress-bubble {
+  min-width: 200px;
+  max-width: 100%;
+}
+
+.progress-headline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
   color: var(--wc-text);
 }
 
-.loading {
-  font-size: 12px;
+.progress-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--wc-accent, #4a9eff);
+  flex-shrink: 0;
+  animation: progress-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+.progress-steps {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.progress-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
   color: var(--wc-text-dim);
+  line-height: 1.4;
+}
+
+.progress-step.active {
+  color: var(--wc-text);
+}
+
+.progress-step.active .progress-dot {
+  animation: progress-dot-blink 0.9s ease-in-out infinite;
+}
+
+.progress-step.done .progress-dot {
+  background: #3d9a5f;
+}
+
+.progress-step.error .progress-dot {
+  background: #c45c5c;
+}
+
+.progress-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+  background: var(--wc-text-dim);
+}
+
+@keyframes progress-dot-blink {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.progress-label {
+  word-break: break-word;
+}
+
+.reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 0 12px 4px;
+  flex-shrink: 0;
+}
+
+.reply-actions .icon-btn {
+  width: 26px;
+  height: 26px;
 }
 
 .chat-input-area {
   padding: 10px 12px 12px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .input-box {
-  background: #262626;
-  border: 1px solid #333333;
+  background: var(--wc-chat-box-bg);
+  border: 1px solid var(--wc-chat-box-border);
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .input-box.drop-active {
@@ -670,7 +1099,7 @@ defineExpose({
   border-radius: 6px;
   font-size: 11px;
   color: var(--wc-text);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wc-muted-surface);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -678,7 +1107,7 @@ defineExpose({
 
 .file-ref-chip.context {
   color: var(--wc-text-muted);
-  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border: 1px dashed var(--wc-muted-border);
   background: transparent;
 }
 
@@ -693,7 +1122,7 @@ defineExpose({
 }
 
 .chip-remove:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--wc-muted-surface-strong);
   color: var(--wc-text);
 }
 
@@ -708,7 +1137,7 @@ defineExpose({
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--wc-tag-bg);
   color: var(--wc-text-muted);
 }
 
@@ -755,7 +1184,7 @@ defineExpose({
   border-radius: 6px;
   font-size: 12px;
   color: var(--wc-text-muted);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--wc-muted-surface);
   flex-shrink: 0;
   user-select: none;
 }
@@ -773,7 +1202,7 @@ defineExpose({
 
 .add-models-link:hover {
   color: var(--wc-text);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--wc-muted-surface);
 }
 
 .icon-btn {
@@ -787,7 +1216,7 @@ defineExpose({
 }
 
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wc-muted-surface-hover);
   color: var(--wc-text);
 }
 
@@ -798,15 +1227,15 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wc-muted-surface);
   color: var(--wc-text-dim);
   flex-shrink: 0;
   transition: background 0.15s, color 0.15s;
 }
 
 .send-btn.active {
-  background: #e8e8e8;
-  color: #1a1a1a;
+  background: var(--wc-send-active-bg);
+  color: var(--wc-send-active-fg);
 }
 
 .send-btn:disabled {
@@ -815,7 +1244,7 @@ defineExpose({
 }
 
 .send-btn.active:hover:not(:disabled) {
-  background: #f0f0f0;
+  background: var(--wc-send-active-hover);
 }
 
 .assistant-text :deep(p) {
@@ -829,13 +1258,15 @@ defineExpose({
 .assistant-text :deep(pre) {
   margin: 8px 0;
   padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--wc-code-block-bg);
   border-radius: 8px;
   overflow-x: auto;
+  font-family: var(--wc-font-mono);
   font-size: 12px;
 }
 
 .assistant-text :deep(code) {
+  font-family: var(--wc-font-mono);
   font-size: 12px;
 }
 
@@ -843,5 +1274,79 @@ defineExpose({
 .assistant-text :deep(ol) {
   margin: 0.4em 0;
   padding-left: 1.4em;
+}
+
+.assistant-text :deep(h1),
+.assistant-text :deep(h2),
+.assistant-text :deep(h3),
+.assistant-text :deep(h4) {
+  margin: 1em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.assistant-text :deep(h1) {
+  font-size: 1.35em;
+}
+
+.assistant-text :deep(h2) {
+  font-size: 1.2em;
+}
+
+.assistant-text :deep(h3) {
+  font-size: 1.1em;
+}
+
+.assistant-text :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.8em 0;
+  font-size: 12px;
+}
+
+.assistant-text :deep(th),
+.assistant-text :deep(td) {
+  border: 1px solid var(--wc-border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.assistant-text :deep(th) {
+  background: var(--wc-muted-surface);
+  font-weight: 600;
+}
+
+.assistant-text :deep(blockquote) {
+  margin: 0.6em 0;
+  padding: 0.2em 0 0.2em 12px;
+  border-left: 3px solid var(--wc-border);
+  color: var(--wc-text-muted);
+}
+
+.assistant-text :deep(hr) {
+  margin: 1em 0;
+  border: none;
+  border-top: 1px solid var(--wc-border);
+}
+
+.assistant-text :deep(a) {
+  color: var(--wc-accent, #4a9eff);
+  text-decoration: none;
+}
+
+.assistant-text :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.assistant-text :deep(:not(pre) > code) {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--wc-code-block-bg);
+}
+
+.assistant-text :deep(pre code) {
+  padding: 0;
+  background: transparent;
 }
 </style>

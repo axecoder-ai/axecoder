@@ -19,7 +19,10 @@ export const chatAnthropic = async (
   modelId: string,
   apiKey: string,
   messages: AiChatMessage[],
-): Promise<{ ok: true; text: string } | { ok: false; error: string }> => {
+): Promise<
+  | { ok: true; text: string; content: string; reasoningContent?: string }
+  | { ok: false; error: string }
+> => {
   if (!apiKey.trim()) return { ok: false, error: 'Anthropic 需要 API Key' }
   const url = buildAnthropicMessagesUrl(baseUrl)
   const res = await fetch(url, {
@@ -41,5 +44,6 @@ export const chatAnthropic = async (
   }
   const data = (await res.json()) as { content?: { type: string; text?: string }[] }
   const block = data.content?.find((c) => c.type === 'text')
-  return { ok: true, text: block?.text ?? '' }
+  const text = block?.text ?? ''
+  return { ok: true, text, content: text }
 }

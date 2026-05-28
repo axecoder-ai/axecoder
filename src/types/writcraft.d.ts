@@ -50,11 +50,59 @@ export type ModelsMutationResult =
 export type AiChatMessage = {
   role: 'user' | 'assistant' | 'system'
   content: string
+  reasoningContent?: string
 }
 
 export type AiChatResult =
-  | { ok: true; text: string }
+  | { ok: true; text: string; content: string; reasoningContent?: string }
   | { ok: false; error: string }
+
+export type AgentPendingWrite = {
+  id: string
+  tool: 'Edit' | 'Write' | 'Delete' | 'Move'
+  filePath: string
+  summary: string
+  patchText: string
+}
+
+export type AgentToolLogEntry = {
+  name: string
+  summary: string
+  ok: boolean
+}
+
+export type AgentProgressPayload = {
+  sessionId: string
+  turn: number
+  kind: 'model' | 'tool'
+  status: 'start' | 'done'
+  toolName?: string
+  summary?: string
+  ok?: boolean
+}
+
+export type AgentSendResult =
+  | {
+      ok: true
+      status: 'done'
+      assistantText: string
+      toolLog: AgentToolLogEntry[]
+      assistantContent?: string
+      reasoningContent?: string
+    }
+  | {
+      ok: true
+      status: 'pending'
+      sessionId: string
+      pending: AgentPendingWrite[]
+      assistantText: string
+      toolLog: AgentToolLogEntry[]
+      assistantContent?: string
+      reasoningContent?: string
+    }
+  | { ok: false; error: string }
+
+export type AgentContinueResult = AgentSendResult
 
 export type ChatMessage = {
   role: 'user' | 'assistant'
@@ -62,6 +110,17 @@ export type ChatMessage = {
   thought?: string
   /** 发送时引用的项目文件（相对路径展示用绝对 path 存） */
   filePaths?: string[]
+  /** 已展开文件内容后的 API 文本，避免每轮重复读盘 */
+  apiContent?: string
+  /** API 原始 assistant content（可与 reasoning 分离） */
+  assistantContent?: string
+  /** DeepSeek 思考模式：下一轮须回传 */
+  reasoningContent?: string
+  /** Agent 工具执行摘要 */
+  toolLog?: AgentToolLogEntry[]
+  /** 待用户确认的写盘操作 */
+  pendingWrites?: AgentPendingWrite[]
+  agentSessionId?: string
 }
 
 export type ChatSessionMeta = {
@@ -91,7 +150,14 @@ export type MenuChannel =
   | 'menu:toggleTerminal'
   | 'menu:commandPalette'
 
+export type WindowLayout = {
+  fullscreen: boolean
+  platform: string
+}
+
 export type WritcraftFs = {
+  getWindowLayout: () => Promise<WindowLayout>
+  onWindowLayout: (callback: (layout: WindowLayout) => void) => () => void
   getLastProject: () => Promise<string | null>
   openProject: (rootPath?: string) => Promise<{ rootPath: string; tree: FileNode } | null>
   openFolder: () => Promise<{ rootPath: string; tree: FileNode } | null>
@@ -131,7 +197,24 @@ export type WritcraftFs = {
   deleteModel: (id: string) => Promise<ModelsMutationResult>
   toggleModel: (id: string, enabled: boolean) => Promise<ModelsMutationResult>
   setActiveModel: (id: string) => Promise<ModelsMutationResult>
+  expandChatUserWithFiles: (
+    projectRoot: string,
+    text: string,
+    filePaths: string[],
+  ) => Promise<string>
   aiChat: (modelId: string, messages: AiChatMessage[]) => Promise<AiChatResult>
+  agentSend: (
+    projectRoot: string,
+    modelId: string,
+    messages: AiChatMessage[],
+  ) => Promise<AgentSendResult>
+  agentConfirmWrite: (sessionId: string, pendingId: string) => Promise<AgentContinueResult>
+  agentRejectWrite: (
+    sessionId: string,
+    pendingId: string,
+    reason?: string,
+  ) => Promise<AgentContinueResult>
+  onAgentProgress: (callback: (payload: AgentProgressPayload) => void) => () => void
   gitStatus: (cwd: string) => Promise<GitStatusResult>
   terminalStart: (cwd: string) => Promise<{ ok: true }>
   terminalWrite: (data: string) => Promise<{ ok: boolean }>

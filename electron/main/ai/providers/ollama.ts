@@ -10,7 +10,10 @@ export const chatOllama = async (
   modelId: string,
   apiKey: string,
   messages: AiChatMessage[],
-): Promise<{ ok: true; text: string } | { ok: false; error: string }> => {
+): Promise<
+  | { ok: true; text: string; content: string; reasoningContent?: string }
+  | { ok: false; error: string }
+> => {
   const url = buildOllamaChatUrl(baseUrl)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
@@ -24,5 +27,6 @@ export const chatOllama = async (
     return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
   }
   const data = (await res.json()) as { message?: { content?: string } }
-  return { ok: true, text: data.message?.content ?? '' }
+  const text = data.message?.content ?? ''
+  return { ok: true, text, content: text }
 }

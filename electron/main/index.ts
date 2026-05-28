@@ -4,6 +4,7 @@ import { registerGitIpc } from './git-ipc'
 import { registerTerminalIpc } from './terminal-ipc'
 import { registerChatIpc } from './chat-store'
 import { registerAiIpc } from './ai-ipc'
+import { registerAgentIpc } from './agent-ipc'
 import { registerModelsIpc } from './models-ipc'
 import { runMigrate } from './migrate-writcraft'
 import Store from 'electron-store'
@@ -16,6 +17,12 @@ const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 process.env.APP_ROOT = path.join(__dirname, '../..')
+
+const pkg = require(path.join(process.env.APP_ROOT, 'package.json')) as {
+  version: string
+  description?: string
+  author?: string
+}
 
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
@@ -40,6 +47,15 @@ let win: BrowserWindow | null = null
 let allowQuit = false
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
+
+const getWindowLayout = () => ({
+  fullscreen: win?.isFullScreen() ?? false,
+  platform: process.platform,
+})
+
+const sendWindowLayout = () => {
+  win?.webContents.send('window:layout', getWindowLayout())
+}
 
 const sendMenu = (channel: string) => {
   win?.webContents.send(channel)
@@ -191,7 +207,11 @@ async function createWindow() {
 
   win.webContents.on('did-finish-load', () => {
     win?.webContents.send('main-process-message', new Date().toLocaleString())
+    sendWindowLayout()
   })
+
+  win.on('enter-full-screen', sendWindowLayout)
+  win.on('leave-full-screen', sendWindowLayout)
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https:')) shell.openExternal(url)
@@ -213,6 +233,20 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) {
     const dockIcon = nativeImage.createFromPath(path.join(process.env.APP_ROOT!, 'build', 'icon.png'))
     if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon)
+  }
+  if (process.platform === 'darwin' || process.platform === 'linux') {
+    const author =
+      typeof pkg.author === 'string'
+        ? pkg.author.replace(/\s*<[^>]+>\s*$/, '').trim()
+        : 'WritCraft'
+    app.setAboutPanelOptions({
+      applicationName: 'WritCraft',
+      applicationVersion: pkg.version,
+      version: pkg.version,
+      copyright: `Copyright © ${new Date().getFullYear()} ${author}`,
+      credits: pkg.description ?? '',
+      iconPath: path.join(process.env.APP_ROOT!, 'build', 'icon.png'),
+    })
   }
   const legacyStore = new Store<{
     autoSave?: boolean
@@ -242,6 +276,8 @@ app.whenReady().then(async () => {
   registerChatIpc()
   registerModelsIpc()
   registerAiIpc()
+  registerAgentIpc(() => win)
+  ipcMain.handle('window:getLayout', () => getWindowLayout())
   setupAppMenu(() => win)
   createWindow()
 })

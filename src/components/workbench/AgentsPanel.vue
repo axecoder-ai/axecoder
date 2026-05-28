@@ -145,9 +145,10 @@ defineExpose({ load })
                   <path
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.4"
+                    stroke-width="1.2"
                     stroke-linecap="round"
-                    d="M4 8h8"
+                    stroke-linejoin="round"
+                    d="M3.5 5.5h9M5.5 5.5V4.2a.8.8 0 0 1 .8-.8h3.4a.8.8 0 0 1 .8.8V5.5M6.2 7.6v3.2M8 7.6v3.2M9.8 7.6v3.2M4.8 5.5l.6 6.2a.9.9 0 0 0 .9.8h3.4a.9.9 0 0 0 .9-.8l.6-6.2"
                   />
                 </svg>
               </button>

@@ -1,0 +1,40 @@
+---
+description: 前端改动须兼容 vscode / aura-light / aura-dark 三套主题
+globs: src/**/*.{vue,css}
+alwaysApply: false
+---
+
+# 前端多主题兼容
+
+WritCraft 有三套主题，定义在 `src/style.css`：
+
+- `[data-theme='vscode']`（默认深色）
+- `[data-theme='aura-light']`
+- `[data-theme='aura-dark']`
+
+## 必须遵守
+
+1. **颜色用 CSS 变量**，禁止在组件里写死 `#fff`、`#333` 等（文件类型图标等极少数例外需注明原因）。
+2. **优先复用已有 token**：`--wc-text`、`--wc-bg`、`--wc-border`、`--wc-hover`、`--wc-accent` 等。
+3. **新增语义色要三主题都配齐**：在 `style.css` 的三个主题块里各写一份，命名 `--wc-*`，组件只引用变量。
+4. **边框/分隔线**：用 `1px solid var(--wc-border)`；可拖拽分隔条用细线 + 透明热区，勿用 4px 纯色块。
+5. **对比度**：浅色主题用偏深边框/文字，深色主题用偏亮边框/文字；高亮背景用半透明 `rgba`，三主题分别调 `--wc-*-match-bg` 类变量。
+
+## 示例
+
+```css
+/* ❌ 只适配深色 */
+.card { background: #252526; border: 1px solid #454545; }
+
+/* ✅ 三主题通用 */
+.card {
+  background: var(--wc-sidebar);
+  border: 1px solid var(--wc-border);
+  color: var(--wc-text);
+}
+```
+
+## 改完自查
+
+- 在设置里切换三种主题，看新增/修改的 UI 是否可读、边框是否清晰、hover/active 是否正常。
+- 未改 `style.css` 却引入新颜色 → 多半遗漏主题变量。

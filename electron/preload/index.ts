@@ -1,6 +1,9 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import type { MenuChannel } from '../../src/types/writcraft'
 
+/** Electron IPC 只能传可 structured clone 的值；Vue 响应式对象会报 could not be cloned */
+const cloneForIpc = <T>(value: T): T => JSON.parse(JSON.stringify(value))
+
 const menuChannels: MenuChannel[] = [
   'menu:save',
   'menu:saveAs',
@@ -16,6 +19,13 @@ const menuChannels: MenuChannel[] = [
 ]
 
 contextBridge.exposeInMainWorld('writcraft', {
+  getWindowLayout: () =>
+    ipcRenderer.invoke('window:getLayout') as Promise<{ fullscreen: boolean; platform: string }>,
+  onWindowLayout: (callback: (layout: { fullscreen: boolean; platform: string }) => void) => {
+    const listener = (_: unknown, layout: { fullscreen: boolean; platform: string }) => callback(layout)
+    ipcRenderer.on('window:layout', listener)
+    return () => ipcRenderer.off('window:layout', listener)
+  },
   getLastProject: () => ipcRenderer.invoke('fs:getLastProject') as Promise<string | null>,
   openProject: (rootPath?: string) =>
     ipcRenderer.invoke('fs:openProject', rootPath) as Promise<{ rootPath: string; tree: import('../main/fs-ipc').FileNode } | null>,
@@ -90,8 +100,44 @@ contextBridge.exposeInMainWorld('writcraft', {
     >,
   setActiveModel: (id: string) =>
     ipcRenderer.invoke('models:setActive', id) as Promise<import('../../src/types/writcraft').ModelsMutationResult>,
+  expandChatUserWithFiles: (projectRoot: string, text: string, filePaths: string[]) =>
+    ipcRenderer.invoke(
+      'chat:expandUserWithFiles',
+      cloneForIpc(projectRoot),
+      cloneForIpc(text),
+      cloneForIpc(filePaths),
+    ) as Promise<string>,
   aiChat: (modelId: string, messages: import('../../src/types/writcraft').AiChatMessage[]) =>
-    ipcRenderer.invoke('ai:chat', modelId, messages) as Promise<import('../../src/types/writcraft').AiChatResult>,
+    ipcRenderer.invoke(
+      'ai:chat',
+      modelId,
+      JSON.parse(JSON.stringify(messages)),
+    ) as Promise<import('../../src/types/writcraft').AiChatResult>,
+  agentSend: (
+    projectRoot: string,
+    modelId: string,
+    messages: import('../../src/types/writcraft').AiChatMessage[],
+  ) =>
+    ipcRenderer.invoke(
+      'agent:send',
+      cloneForIpc(projectRoot),
+      modelId,
+      JSON.parse(JSON.stringify(messages)),
+    ) as Promise<import('../../src/types/writcraft').AgentSendResult>,
+  agentConfirmWrite: (sessionId: string, pendingId: string) =>
+    ipcRenderer.invoke('agent:confirmWrite', sessionId, pendingId) as Promise<
+      import('../../src/types/writcraft').AgentContinueResult
+    >,
+  agentRejectWrite: (sessionId: string, pendingId: string, reason?: string) =>
+    ipcRenderer.invoke('agent:rejectWrite', sessionId, pendingId, reason) as Promise<
+      import('../../src/types/writcraft').AgentContinueResult
+    >,
+  onAgentProgress: (callback: (payload: import('../../src/types/writcraft').AgentProgressPayload) => void) => {
+    const listener = (_: unknown, payload: import('../../src/types/writcraft').AgentProgressPayload) =>
+      callback(payload)
+    ipcRenderer.on('agent:progress', listener)
+    return () => ipcRenderer.off('agent:progress', listener)
+  },
   gitStatus: (cwd: string) =>
     ipcRenderer.invoke('git:status', cwd) as Promise<import('../../src/types/writcraft').GitStatusResult>,
   terminalStart: (cwd: string) => ipcRenderer.invoke('terminal:start', cwd) as Promise<{ ok: true }>,
@@ -111,7 +157,7 @@ contextBridge.exposeInMainWorld('writcraft', {
       session: import('../../src/types/writcraft').ChatSession | null
     }>,
   saveChatSession: (projectRoot: string, session: import('../../src/types/writcraft').ChatSession) =>
-    ipcRenderer.invoke('chat:saveSession', projectRoot, session) as Promise<
+    ipcRenderer.invoke('chat:saveSession', cloneForIpc(projectRoot), cloneForIpc(session)) as Promise<
       { ok: true } | { ok: false; error: string }
     >,
   deleteChatSession: (projectRoot: string, sessionId: string) =>
