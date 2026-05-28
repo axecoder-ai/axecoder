@@ -1,0 +1,62 @@
+{
+  "name": "writcraft",
+  "version": "0.1.0",
+  "main": "dist-electron/main/index.js",
+  "description": "标书撰写桌面工具 — Electron + Vue 3 + Monaco",
+  "author": "草鞋没号 <308487730@qq.com>",
+  "license": "MIT",
+  "private": true,
+  "keywords": [
+    "electron",
+    "rollup",
+    "vite",
+    "vue3",
+    "vue"
+  ],
+  "debug": {
+    "env": {
+      "VITE_DEV_SERVER_URL": "http://127.0.0.1:3344/"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/patch-electron-plist.mjs && vite",
+    "icon:gen": "node scripts/gen-icon.mjs",
+    "build": "vue-tsc --noEmit && vite build && electron-builder",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "electron": "^29.1.1",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.4.2",
+    "vite": "^5.1.5",
+    "vite-plugin-electron": "^0.28.4",
+    "vite-plugin-electron-renderer": "^0.14.5",
+    "vitest": "^3.0.5",
+    "vue": "^3.4.21",
+    "vue-tsc": "^2.0.6"
+  },
+  "dependencies": {
+    "@vscode/ripgrep": "^1.15.11",
+    "chokidar": "^4.0.3",
+    "electron-store": "^10.0.0",
+    "markdown-it": "^14.2.0",
+    "monaco-editor": "^0.55.1"
+  },
+  "build": {
+    "appId": "com.writcraft.app",
+    "productName": "WritCraft",
+    "icon": "build/icon.png",
+    "directories": {
+      "output": "release/${version}"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.productivity"
+    }
+  }
+}
