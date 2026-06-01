@@ -42,9 +42,9 @@ describe('Agents 历史侧栏折叠图标', () => {
     expect(block.includes(LEGACY_AGENTS_PANEL_ICON_MARKERS.inner)).toBe(false)
   })
 
-  it('ChatPane 输入区历史按钮未误用侧栏布局图标', () => {
+  it('ChatPane 输入区 footer 未误用侧栏布局图标', () => {
     const cp = readComponent('ChatPane.vue')
-    const footer = sliceBetween(cp, 'title="历史会话"', '</button>')
+    const footer = sliceBetween(cp, 'class="chat-input-footer"', 'class="send-btn"')
     expect(includesRightPanelLayoutIcon(footer)).toBe(false)
   })
 })

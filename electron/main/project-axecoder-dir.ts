@@ -65,3 +65,29 @@ export const projectSessionFilePath = (
 export const ensureProjectSessionsDir = async (projectRoot: string) => {
   await fs.mkdir(projectSessionsDir(projectRoot), { recursive: true })
 }
+
+export const projectWorkshopsDir = (projectRoot: string) =>
+  path.join(path.resolve(projectRoot), '.axecoder', 'workshops')
+
+export const projectWorkshopsIndexPath = (projectRoot: string, workshopsDir?: string) =>
+  path.join(workshopsDir ?? projectWorkshopsDir(projectRoot), 'index.json')
+
+export const projectWorkshopFilePath = (
+  projectRoot: string,
+  workshopId: string,
+  workshopsDir?: string,
+) => {
+  if (!SAFE_SESSION_ID.test(workshopId)) {
+    throw new Error('invalid workshop id')
+  }
+  const dir = workshopsDir ?? projectWorkshopsDir(projectRoot)
+  const file = path.resolve(dir, `${workshopId}.json`)
+  if (!isPathInsideRoot(dir, file)) {
+    throw new Error('invalid workshop path')
+  }
+  return file
+}
+
+export const ensureProjectWorkshopsDir = async (projectRoot: string) => {
+  await fs.mkdir(projectWorkshopsDir(projectRoot), { recursive: true })
+}

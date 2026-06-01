@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { axecoderPath } from '../axecoder-dir'
 import {
   callMcpToolLive,
   describeMcpServerForPrompt,
@@ -20,6 +21,7 @@ export type McpServerConfig = {
 
 const mcpConfigPaths = () => [
   path.join(os.homedir(), '.cursor', 'mcp.json'),
+  axecoderPath('mcp.json'),
   path.join(os.homedir(), '.config', 'axecoder', 'mcp.json'),
 ]
 

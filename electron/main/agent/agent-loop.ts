@@ -47,8 +47,6 @@ export { compactAgentMessages } from './agent-context-compact'
 export { runUserShellCommand } from './agent-user-shell'
 export { formatHooksHelp } from './agent-hooks'
 
-const MAX_TURNS = 12
-
 const strArg = (args: Record<string, unknown>, key: string) => {
   const v = args[key]
   return typeof v === 'string' && v.trim() ? v.trim() : ''
@@ -201,7 +199,7 @@ export const runAgentLoopUntilDoneOrPending = async (
   sessionId: string,
   session: StoredAgentSession,
 ): Promise<AgentSendResult | AgentContinueResult> => {
-  while (session.turn < MAX_TURNS) {
+  while (true) {
     pushAgentCheckpoint(sessionId, session)
     session.turn += 1
     await prepareSessionBeforeModel(session)
@@ -315,7 +313,7 @@ export const runAgentLoopUntilDoneOrPending = async (
         }
 
         if (
-          (perm === 'allow' || cfg.agentAutoApplyWrites) &&
+          (perm === 'allow' || cfg.agentAutoApplyWrites || session.ctx.workshopAutoApply) &&
           (run.kind === 'pending' || run.kind === 'bash_pending')
         ) {
           const applied = await applyPendingToolRun(session, run)
@@ -399,7 +397,10 @@ export const runAgentLoopUntilDoneOrPending = async (
 
       if (pendingPublic.length || pendingBashPublic.length || pendingAskPublic.length) {
         const cfg = await getConfig()
-        if (cfg.agentAutoApplyWrites && !pendingAskPublic.length) {
+        if (
+          (cfg.agentAutoApplyWrites || session.ctx.workshopAutoApply) &&
+          !pendingAskPublic.length
+        ) {
           const applied = await applyAllPendingInSession(session)
           if (!applied.ok) return { ok: false, error: applied.error }
           continue
@@ -426,7 +427,6 @@ export const runAgentLoopUntilDoneOrPending = async (
       res.reasoningContent,
     )
   }
-  return { ok: false, error: `Agent 超过最大轮数 ${MAX_TURNS}` }
 }
 
 export const startAgentTurn = async (
@@ -724,6 +724,121 @@ export const answerAgentQuestions = async (
 }
 
 export const modelSupportsAgentTools = (model: ModelEntry | null | undefined) => !!model
+
+export type WorkshopAgentTurnResult =
+  | { ok: true; report: string }
+  | { ok: true; report: string; needsUser: true; userQuestion: string }
+  | { ok: false; error: string }
+
+/** Workshop 单角色：与 Chat Agent 同源循环（Read/Write/Grep…），sessionId 建议 `workshop-{id}-{role}` */
+export const runWorkshopRoleAgentTurn = async (
+  projectRoot: string,
+  modelId: string,
+  sessionId: string,
+  taskPrompt: string,
+  roleName: string,
+): Promise<WorkshopAgentTurnResult> => {
+  const root = projectRoot.trim()
+  if (!root) return { ok: false, error: '请先打开项目' }
+  const prompt = taskPrompt.trim()
+  if (!prompt) return { ok: false, error: '任务内容为空' }
+  const sid = sessionId.trim()
+  if (!sid) return { ok: false, error: 'sessionId 无效' }
+
+  const model = await getModelById(modelId)
+  if (!model) return { ok: false, error: '模型不存在' }
+  if (!modelSupportsAgentTools(model)) {
+    return { ok: false, error: '当前模型不支持 Agent 工具，请使用 OpenAI 兼容模型' }
+  }
+
+  const cfg = await getConfig()
+  const revealedToolNames = new Set<AgentToolName>()
+  const activeTools = getSessionActiveTools(buildFullAgentTools(), revealedToolNames)
+  const scratchpadDir = await ensureScratchpadDir(sid)
+
+  const ctx: AgentContext = {
+    projectRoot: root,
+    readCache: new Set<string>(),
+    modelId,
+    sessionId: sid,
+    planMode: false,
+    scratchpadDir,
+    workshopAutoApply: true,
+  }
+
+  await refreshCustomOutputStylesCache(root)
+
+  const roleLead = [
+    `【Collab Workshop · ${roleName}】`,
+    '你在多角色协作群聊中发言。必须使用 Read、Grep、Glob、Write、Edit 等工具查看真实代码后再给结论。',
+    '禁止声称无法访问本地文件系统。',
+    '完成后用简洁中文给出结论与相关文件路径。',
+    '',
+  ].join('\n')
+
+  const messages: AgentLoopMessage[] = [
+    {
+      role: 'system',
+      content: await buildAgentSystemPrompt(root, {
+        modelId: model.modelId,
+        enabledToolNames: AGENT_TOOLS.map((t) => t.name),
+        outputStyleId: cfg.agentOutputStyle,
+      }),
+    },
+    { role: 'user', content: `${roleLead}${prompt}` },
+  ]
+
+  const session: StoredAgentSession = {
+    projectRoot: root,
+    modelId,
+    messages,
+    ctx,
+    toolLog: [],
+    pendingById: new Map(),
+    pendingBashById: new Map(),
+    pendingAskById: new Map(),
+    turn: 0,
+    planMode: false,
+    revealedToolNames,
+    activeTools,
+    proactiveEnabled: false,
+    proactiveTick: 0,
+    scratchpadDir,
+    compactedOnce: false,
+  }
+
+  putSession(sid, session)
+  const result = await runAgentLoopUntilDoneOrPending(sid, session)
+  if (!result.ok) return { ok: false, error: result.error }
+
+  const report = (result.assistantText || '').trim() || '（无结论）'
+
+  if (result.status === 'done') {
+    return { ok: true, report }
+  }
+
+  const asks = result.pendingAsks ?? []
+  if (asks.length) {
+    deleteSession(sid)
+    const q =
+      asks
+        .flatMap((a) => a.questions.map((qq) => qq.prompt))
+        .filter(Boolean)
+        .join('；') || '请补充需求细节？'
+    return { ok: true, report, needsUser: true, userQuestion: q.slice(0, 300) }
+  }
+
+  const live = getSession(sid)
+  if (live && (live.pendingById.size || live.pendingBashById.size)) {
+    const applied = await applyAllPendingInSession(live)
+    deleteSession(sid)
+    if (!applied.ok) return { ok: false, error: applied.error }
+    return { ok: true, report: `${report}\n\n（已自动应用文件/命令变更）`.trim() }
+  }
+
+  deleteSession(sid)
+  return { ok: true, report }
+}
 
 export { listAgentSessions, rewindAgentCheckpoint }
 export {

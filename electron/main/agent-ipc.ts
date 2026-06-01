@@ -172,7 +172,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
       ok: true as const,
       activeId: cfg.agentOutputStyle,
       styles: [{ id: 'default', name: 'default', description: '标准软件工程助手', source: 'builtin' as const }, ...builtin, ...custom],
-      dirs: ['~/.axecoder/output-styles', '~/.claude/output-styles', '<project>/.axecoder/output-styles'],
+      dirs: ['~/.aex-coder/output-styles', '~/.claude/output-styles', '<project>/.axecoder/output-styles'],
     }
   })
 
@@ -200,7 +200,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
         '- 计划模式下 Edit / Write / Delete / Move / Bash 会被阻断，便于先规划再实施。',
         '- 斜杠命令 /plan 仅显示本说明；实际切换由 Agent 工具完成。',
         '',
-        `Hooks：${hooks}（配置见 ~/.axecoder/hooks.json，/hooks 查看详情）`,
+        `Hooks：${hooks}（配置见 ~/.aex-coder/hooks.json，/hooks 查看详情）`,
       ].join('\n'),
     }
   })

@@ -1,6 +1,7 @@
 import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 import { chatWithToolsForModel } from '../ai/chat-with-tools'
+import type { OpenAiStreamDelta } from '../ai/providers/openai'
 import type { AgentToolDef } from './agent-types'
 import { buildDefaultSubAgentSystemPrompt } from './agent-tool-defs'
 import { buildSubAgentToolList } from './agent-tool-registry'
@@ -13,7 +14,18 @@ import {
   type PendingWriteInternal,
 } from './tool-executor'
 
-const MAX_SUB_TURNS = 6
+const DEFAULT_MAX_SUB_TURNS = 6
+const MAX_SUB_TURNS_CAP = 24
+
+const lastAssistantReport = (messages: AgentLoopMessage[]): string => {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role !== 'assistant') continue
+    const text = (m.content ?? '').trim()
+    if (text) return text
+  }
+  return ''
+}
 
 const strArg = (args: Record<string, unknown>, key: string) => {
   const v = args[key]
@@ -56,6 +68,11 @@ const applySubAgentPending = async (
 export type RunSubAgentOptions = {
   subagentType?: string
   tools?: AgentToolDef[]
+  onDelta?: (delta: OpenAiStreamDelta) => void
+  /** 默认 6；Workshop 等探索型任务可加大 */
+  maxTurns?: number
+  /** 用尽轮次时若有 assistant 文本则返回阶段性报告，而非硬失败 */
+  partialReportOnMaxTurns?: boolean
 }
 
 export const runSubAgentTask = async (
@@ -95,10 +112,15 @@ export const runSubAgentTask = async (
   const pendingBashById = new Map<string, PendingBashInternal>()
   const pendingAskById = new Map<string, PendingAskUserInternal>()
 
+  const maxTurns = Math.min(
+    Math.max(options?.maxTurns ?? DEFAULT_MAX_SUB_TURNS, 1),
+    MAX_SUB_TURNS_CAP,
+  )
+
   let turn = 0
-  while (turn < MAX_SUB_TURNS) {
+  while (turn < maxTurns) {
     turn += 1
-    const res = await chatWithToolsForModel(model, apiKey, messages, undefined, tools)
+    const res = await chatWithToolsForModel(model, apiKey, messages, options?.onDelta, tools)
     if (!res.ok) return { ok: false, error: res.error }
 
     if (res.toolCalls.length) {
@@ -168,7 +190,16 @@ export const runSubAgentTask = async (
     return { ok: true, report }
   }
 
-  return { ok: false, error: `Sub-agent exceeded max turns (${MAX_SUB_TURNS})` }
+  if (options?.partialReportOnMaxTurns) {
+    const partial = lastAssistantReport(messages)
+    if (partial) {
+      return {
+        ok: true,
+        report: `${partial}\n\n（已达最大工具轮次 ${maxTurns}，以上为阶段性结论，可继续追问或拆分任务。）`,
+      }
+    }
+  }
+  return { ok: false, error: `子代理超过最大工具轮次（${maxTurns}）` }
 }
 
 export const formatAgentToolSummary = (args: Record<string, unknown>) =>

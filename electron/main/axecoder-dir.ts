@@ -4,13 +4,16 @@ import os from 'node:os'
 
 let dirOverride: string | null = null
 
-const legacyHomeDir = () => path.join(os.homedir(), '.writcraft')
+const legacyHomeDirs = () => [
+  path.join(os.homedir(), '.axecoder'),
+  path.join(os.homedir(), '.writcraft'),
+]
 
 export const setAxecoderDirForTests = (dir: string | null) => {
   dirOverride = dir
 }
 
-export const getAxecoderDir = () => dirOverride ?? path.join(os.homedir(), '.axecoder')
+export const getAxecoderDir = () => dirOverride ?? path.join(os.homedir(), '.aex-coder')
 
 const migrateLegacyHomeDir = async () => {
   if (dirOverride) return
@@ -21,11 +24,15 @@ const migrateLegacyHomeDir = async () => {
   } catch {
     /* 目录不存在，继续尝试从旧目录复制 */
   }
-  try {
-    await fs.access(legacyHomeDir())
-    await fs.cp(legacyHomeDir(), dir, { recursive: true })
-  } catch {
-    /* 无旧配置 */
+  for (const legacy of legacyHomeDirs()) {
+    if (legacy === dir) continue
+    try {
+      await fs.access(legacy)
+      await fs.cp(legacy, dir, { recursive: true })
+      return
+    } catch {
+      /* 尝试下一个旧目录 */
+    }
   }
 }
 

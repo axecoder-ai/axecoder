@@ -7,6 +7,7 @@ import {
   toggleModel,
   setActiveModel,
 } from './models-store'
+import { pingModel } from './models-ping'
 
 export const registerModelsIpc = () => {
   ipcMain.handle('models:list', async () => listModels())
@@ -42,4 +43,6 @@ export const registerModelsIpc = () => {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
     }
   })
+
+  ipcMain.handle('models:ping', async (_, id: string) => pingModel(id))
 }

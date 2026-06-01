@@ -5,6 +5,7 @@ import type { WindowLayout } from '../../types/axecoder'
 const props = defineProps<{
   primarySidebarVisible: boolean
   aiPanelVisible: boolean
+  workshopVisible: boolean
   projectName: string
   windowLayout: WindowLayout
 }>()
@@ -17,6 +18,7 @@ const titleBarClass = computed(() => {
 defineEmits<{
   togglePrimarySidebar: []
   toggleAiPanel: []
+  toggleWorkshop: []
   openProject: []
   openModelSettings: []
 }>()
@@ -54,6 +56,29 @@ defineEmits<{
     </button>
     <div class="title-bar-spacer" />
     <div class="title-actions">
+      <button
+        type="button"
+        class="icon-btn"
+        :class="{ active: workshopVisible }"
+        title="Collab Workshop"
+        @click="$emit('toggleWorkshop')"
+      >
+        <svg
+          class="title-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="9" cy="8" r="2.5" />
+          <circle cx="15" cy="8" r="2.5" />
+          <circle cx="12" cy="15" r="2.5" />
+          <path d="M9 10.5 12 12.5 15 10.5" />
+        </svg>
+      </button>
       <button
         type="button"
         class="icon-btn"

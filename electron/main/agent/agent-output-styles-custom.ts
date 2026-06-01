@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { axecoderPath } from '../axecoder-dir'
 import type { AgentOutputStyleConfig } from './agent-output-styles'
 
 export type CustomOutputStyleMeta = {
@@ -12,7 +13,7 @@ export type CustomOutputStyleMeta = {
 
 const STYLE_DIRS = (projectRoot?: string) => {
   const dirs: { dir: string; source: CustomOutputStyleMeta['source'] }[] = [
-    { dir: path.join(os.homedir(), '.axecoder', 'output-styles'), source: 'user' },
+    { dir: axecoderPath('output-styles'), source: 'user' },
     { dir: path.join(os.homedir(), '.claude', 'output-styles'), source: 'claude' },
   ]
   if (projectRoot) {

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import type { AppSettings } from '../../types/axecoder'
 import GeneralTab from './GeneralTab.vue'
 import ModelsTab from './ModelsTab.vue'
+import UsersTab from './UsersTab.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -15,8 +16,15 @@ const emit = defineEmits<{
   save: [partial: Partial<AppSettings>]
 }>()
 
-const activeTab = ref<'general' | 'models'>('general')
+export type SettingsTabId = 'general' | 'models' | 'users'
+
+const activeTab = ref<SettingsTabId>('general')
 const modelsTabRef = ref<InstanceType<typeof ModelsTab> | null>(null)
+const usersTabRef = ref<InstanceType<typeof UsersTab> | null>(null)
+
+const openTab = (tab: SettingsTabId) => {
+  activeTab.value = tab
+}
 
 const onChanged = () => {
   emit('changed')
@@ -27,7 +35,9 @@ const onGeneralSave = (partial: Partial<AppSettings>) => {
 }
 
 defineExpose({
+  openTab,
   reloadModels: () => modelsTabRef.value?.reload(),
+  reloadUsers: () => usersTabRef.value?.reload(),
 })
 </script>
 
@@ -45,7 +55,7 @@ defineExpose({
           :class="{ active: activeTab === 'general' }"
           @click="activeTab = 'general'"
         >
-          General
+          通用
         </button>
         <button
           type="button"
@@ -53,7 +63,15 @@ defineExpose({
           :class="{ active: activeTab === 'models' }"
           @click="activeTab = 'models'"
         >
-          Models
+          模型
+        </button>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ active: activeTab === 'users' }"
+          @click="activeTab = 'users'"
+        >
+          用户
         </button>
       </nav>
       <main class="settings-content">
@@ -63,6 +81,7 @@ defineExpose({
           @save="onGeneralSave"
         />
         <ModelsTab v-show="activeTab === 'models'" ref="modelsTabRef" @changed="onChanged" />
+        <UsersTab v-show="activeTab === 'users'" ref="usersTabRef" @changed="onChanged" />
       </main>
     </div>
   </div>

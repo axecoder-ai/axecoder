@@ -12,6 +12,8 @@ const activeModelId = ref('')
 const search = ref('')
 const formVisible = ref(false)
 const editing = ref<ModelEntry | null>(null)
+const pingingId = ref('')
+const pingMessage = ref<{ id: string; ok: boolean; text: string } | null>(null)
 
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -77,12 +79,28 @@ const onDelete = async (m: ModelEntry) => {
   emit('changed')
 }
 
+const onPing = async (m: ModelEntry) => {
+  pingingId.value = m.id
+  pingMessage.value = null
+  try {
+    const res = await window.axecoder.pingModel(m.id)
+    if (res.ok) {
+      pingMessage.value = { id: m.id, ok: true, text: `连接成功：${res.preview}` }
+    } else {
+      pingMessage.value = { id: m.id, ok: false, text: res.error }
+    }
+  } finally {
+    pingingId.value = ''
+  }
+}
+
 defineExpose({ reload })
 </script>
 
 <template>
   <div class="models-tab">
-    <h2>Models</h2>
+    <h2>模型</h2>
+    <p class="tab-desc">配置 API 与启用状态；「当前」为聊天与协作工坊默认使用的模型。</p>
     <div class="toolbar">
       <input v-model="search" type="search" class="search" placeholder="搜索模型…" />
       <button type="button" class="add-btn" @click="openAdd">添加模型</button>
@@ -90,10 +108,29 @@ defineExpose({ reload })
     <ul v-if="filtered.length" class="model-list">
       <li v-for="m in filtered" :key="m.id" class="model-row">
         <div class="model-info">
-          <span class="model-name">{{ m.name }}</span>
+          <span class="model-name">
+            {{ m.name }}
+            <span v-if="m.id === activeModelId" class="active-badge">当前</span>
+            <span v-if="!m.enabled" class="disabled-badge">已禁用</span>
+          </span>
           <span class="model-meta">{{ m.provider }} · {{ m.modelId }}</span>
+          <span
+            v-if="pingMessage?.id === m.id"
+            class="ping-result"
+            :class="pingMessage.ok ? 'ping-ok' : 'ping-fail'"
+          >
+            {{ pingMessage.text }}
+          </span>
         </div>
         <div class="model-actions">
+          <button
+            type="button"
+            class="link"
+            :disabled="pingingId === m.id"
+            @click="onPing(m)"
+          >
+            {{ pingingId === m.id ? '测试中…' : '测试连接' }}
+          </button>
           <button type="button" class="link" @click="openEdit(m)">编辑</button>
           <button type="button" class="link danger" @click="onDelete(m)">删除</button>
           <label class="switch">
@@ -115,9 +152,42 @@ defineExpose({ reload })
 }
 
 h2 {
-  margin: 0 0 20px;
+  margin: 0 0 8px;
   font-size: 22px;
   font-weight: 600;
+}
+
+.tab-desc {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--wc-text-dim);
+}
+
+.active-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--wc-accent);
+}
+
+.disabled-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--wc-text-dim);
+}
+
+.ping-result {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.ping-ok {
+  color: #3fb950;
+}
+
+.ping-fail {
+  color: #f48771;
 }
 
 .toolbar {

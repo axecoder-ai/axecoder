@@ -93,7 +93,7 @@ const onOutputStyle = (e: Event) => {
       <div class="pref-item">
         <div class="pref-info">
           <span class="pref-label">输出风格</span>
-          <p class="pref-hint">影响新发起的 Agent 会话系统提示。自定义风格可放入 ~/.axecoder/output-styles、~/.claude/output-styles 或项目 .axecoder/output-styles（*.md）；聊天中可用 /style 切换。</p>
+          <p class="pref-hint">影响新发起的 Agent 会话系统提示。自定义风格可放入 ~/.aex-coder/output-styles、~/.claude/output-styles 或项目 .axecoder/output-styles（*.md）；聊天中可用 /style 切换。</p>
         </div>
         <div class="pref-control pref-control--wide">
           <select

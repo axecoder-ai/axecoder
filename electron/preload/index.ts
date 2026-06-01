@@ -110,6 +110,22 @@ contextBridge.exposeInMainWorld('axecoder', {
     >,
   setActiveModel: (id: string) =>
     ipcRenderer.invoke('models:setActive', id) as Promise<import('../../src/types/axecoder').ModelsMutationResult>,
+  pingModel: (id: string) =>
+    ipcRenderer.invoke('models:ping', id) as Promise<import('../../src/types/axecoder').ModelPingResult>,
+  listUsers: () =>
+    ipcRenderer.invoke('users:list') as Promise<import('../../src/types/axecoder').UsersFile>,
+  saveUser: (input: import('../../src/types/axecoder').UserSaveInput) =>
+    ipcRenderer.invoke('users:save', input) as Promise<import('../../src/types/axecoder').UsersMutationResult>,
+  deleteUser: (id: string) =>
+    ipcRenderer.invoke('users:delete', id) as Promise<import('../../src/types/axecoder').UsersMutationResult>,
+  getUserAvatarDataUrl: (avatarPath: string) =>
+    ipcRenderer.invoke('users:getAvatarDataUrl', avatarPath) as Promise<
+      import('../../src/types/axecoder').UsersAvatarDataUrlResult
+    >,
+  pickUserAvatar: (userId: string) =>
+    ipcRenderer.invoke('users:pickAvatar', userId) as Promise<
+      import('../../src/types/axecoder').UsersPickAvatarResult
+    >,
   expandChatUserWithFiles: (projectRoot: string, text: string, filePaths: string[]) =>
     ipcRenderer.invoke(
       'chat:expandUserWithFiles',
@@ -318,6 +334,53 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('chat:deleteSession', projectRoot, sessionId) as Promise<
       { ok: true } | { ok: false; error: string }
     >,
+  getWorkshopSessions: (projectRoot: string) =>
+    ipcRenderer.invoke('workshop:getSessions', projectRoot) as Promise<{
+      sessions: import('../../src/types/axecoder').WorkshopSessionMeta[]
+    }>,
+  getWorkshopSession: (projectRoot: string, workshopId: string) =>
+    ipcRenderer.invoke('workshop:getSession', projectRoot, workshopId) as Promise<{
+      session: import('../../src/types/axecoder').WorkshopSession | null
+    }>,
+  saveWorkshopSession: (
+    projectRoot: string,
+    session: import('../../src/types/axecoder').WorkshopSession,
+  ) =>
+    ipcRenderer.invoke('workshop:saveSession', cloneForIpc(projectRoot), cloneForIpc(session)) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
+  deleteWorkshopSession: (projectRoot: string, workshopId: string) =>
+    ipcRenderer.invoke('workshop:deleteSession', projectRoot, workshopId) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
+  workshopStartRun: (
+    projectRoot: string,
+    workshopId: string,
+    userBrief: string,
+    modelId: string,
+  ) =>
+    ipcRenderer.invoke(
+      'workshop:startRun',
+      cloneForIpc(projectRoot),
+      cloneForIpc(workshopId),
+      cloneForIpc(userBrief),
+      cloneForIpc(modelId),
+    ) as Promise<import('../../src/types/axecoder').WorkshopRunResult>,
+  workshopSendUserAnswer: (projectRoot: string, workshopId: string, answer: string) =>
+    ipcRenderer.invoke(
+      'workshop:sendUserAnswer',
+      cloneForIpc(projectRoot),
+      cloneForIpc(workshopId),
+      cloneForIpc(answer),
+    ) as Promise<import('../../src/types/axecoder').WorkshopRunResult>,
+  onWorkshopProgress: (callback: (payload: import('../../src/types/axecoder').WorkshopProgressPayload) => void) => {
+    const listener = (
+      _: unknown,
+      payload: import('../../src/types/axecoder').WorkshopProgressPayload,
+    ) => callback(payload)
+    ipcRenderer.on('workshop:progress', listener)
+    return () => ipcRenderer.off('workshop:progress', listener)
+  },
 })
 
 contextBridge.exposeInMainWorld('ipcRenderer', {

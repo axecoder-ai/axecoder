@@ -51,6 +51,46 @@ export type ModelsMutationResult =
   | { ok: true; data: ModelsFile }
   | { ok: false; error: string }
 
+export type ModelPingResult =
+  | { ok: true; preview: string }
+  | { ok: false; error: string }
+
+export type UserEntry = {
+  id: string
+  displayName: string
+  role: string
+  expertise: string
+  avatarPath: string
+  isBuiltin?: boolean
+  builtinRole?: 'manager'
+}
+
+export type UsersFile = {
+  schemaVersion: 1
+  users: UserEntry[]
+}
+
+export type UserSaveInput = {
+  id: string
+  displayName: string
+  role: string
+  expertise: string
+  avatarPath?: string
+}
+
+export type UsersMutationResult =
+  | { ok: true; data: UsersFile }
+  | { ok: false; error: string }
+
+export type UsersPickAvatarResult =
+  | { ok: true; cancelled: true }
+  | { ok: true; cancelled: false; avatarPath: string; dataUrl: string }
+  | { ok: false; error: string }
+
+export type UsersAvatarDataUrlResult =
+  | { ok: true; dataUrl: string }
+  | { ok: false; error: string }
+
 export type AiChatMessage = {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -147,6 +187,50 @@ export type AgentSendResult =
   | { ok: false; error: string }
 
 export type AgentContinueResult = AgentSendResult
+
+export type WorkshopRoleId = 'manager' | 'backend' | 'frontend' | 'tester' | 'system' | 'user'
+
+export type WorkshopPhase =
+  | 'idle'
+  | 'manager'
+  | 'backend'
+  | 'frontend'
+  | 'tester'
+  | 'waiting_user'
+  | 'done'
+
+export type WorkshopMessage = {
+  id: string
+  roleId: WorkshopRoleId
+  text: string
+  relatedFiles?: string[]
+  createdAt: number
+}
+
+export type WorkshopSessionMeta = {
+  id: string
+  title: string
+  updatedAt: number
+}
+
+export type WorkshopSession = WorkshopSessionMeta & {
+  userBrief: string
+  modelId: string
+  messages: WorkshopMessage[]
+  phase: WorkshopPhase
+  pendingQuestion?: string
+  mountedFiles: string[]
+}
+
+export type WorkshopProgressPayload = {
+  workshopId: string
+  roleId: WorkshopRoleId
+  status: 'thinking' | 'speaking' | 'done'
+}
+
+export type WorkshopRunResult =
+  | { ok: true; session: WorkshopSession }
+  | { ok: false; error: string }
 
 export type ChatMessage = {
   role: 'user' | 'assistant'
@@ -252,6 +336,12 @@ export type AxeCoderFs = {
   deleteModel: (id: string) => Promise<ModelsMutationResult>
   toggleModel: (id: string, enabled: boolean) => Promise<ModelsMutationResult>
   setActiveModel: (id: string) => Promise<ModelsMutationResult>
+  pingModel: (id: string) => Promise<ModelPingResult>
+  listUsers: () => Promise<UsersFile>
+  saveUser: (input: UserSaveInput) => Promise<UsersMutationResult>
+  deleteUser: (id: string) => Promise<UsersMutationResult>
+  getUserAvatarDataUrl: (avatarPath: string) => Promise<UsersAvatarDataUrlResult>
+  pickUserAvatar: (userId: string) => Promise<UsersPickAvatarResult>
   expandChatUserWithFiles: (
     projectRoot: string,
     text: string,
@@ -391,6 +481,31 @@ export type AxeCoderFs = {
     projectRoot: string,
     sessionId: string,
   ) => Promise<{ ok: true } | { ok: false; error: string }>
+  getWorkshopSessions: (projectRoot: string) => Promise<{ sessions: WorkshopSessionMeta[] }>
+  getWorkshopSession: (
+    projectRoot: string,
+    workshopId: string,
+  ) => Promise<{ session: WorkshopSession | null }>
+  saveWorkshopSession: (
+    projectRoot: string,
+    session: WorkshopSession,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
+  deleteWorkshopSession: (
+    projectRoot: string,
+    workshopId: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
+  workshopStartRun: (
+    projectRoot: string,
+    workshopId: string,
+    userBrief: string,
+    modelId: string,
+  ) => Promise<WorkshopRunResult>
+  workshopSendUserAnswer: (
+    projectRoot: string,
+    workshopId: string,
+    answer: string,
+  ) => Promise<WorkshopRunResult>
+  onWorkshopProgress: (callback: (payload: WorkshopProgressPayload) => void) => () => void
 }
 
 declare global {

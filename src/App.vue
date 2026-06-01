@@ -7,6 +7,7 @@ import SearchPanel from './components/workbench/SearchPanel.vue'
 import EditorPane from './components/workbench/EditorPane.vue'
 import WelcomePage from './components/workbench/WelcomePage.vue'
 import ChatPane from './components/workbench/ChatPane.vue'
+import WorkshopPane from './components/workbench/WorkshopPane.vue'
 import AgentsPanel from './components/workbench/AgentsPanel.vue'
 import BottomPanel from './components/workbench/BottomPanel.vue'
 import StatusBar from './components/workbench/StatusBar.vue'
@@ -40,6 +41,7 @@ const statusLanguage = computed(() => languageLabelForPath(activePath.value))
 
 const activeActivity = ref('explorer')
 const aiPanelVisible = ref(false)
+const workshopVisible = ref(false)
 const agentsSidebarVisible = ref(true)
 const activeChatSessionId = ref('')
 const primarySidebarVisible = ref(true)
@@ -64,6 +66,8 @@ const fileExplorerRef = ref<InstanceType<typeof FileExplorer> | null>(null)
 const searchPanelRef = ref<InstanceType<typeof SearchPanel> | null>(null)
 const editorPaneRef = ref<InstanceType<typeof EditorPane> | null>(null)
 const chatPaneRef = ref<InstanceType<typeof ChatPane> | null>(null)
+const workshopPaneRef = ref<InstanceType<typeof WorkshopPane> | null>(null)
+const settingsPanelRef = ref<InstanceType<typeof SettingsPanel> | null>(null)
 const agentsPanelRef = ref<InstanceType<typeof AgentsPanel> | null>(null)
 const bottomPanelRef = ref<InstanceType<typeof BottomPanel> | null>(null)
 const workbenchBodyRef = ref<HTMLElement | null>(null)
@@ -168,9 +172,13 @@ const onAgentsSplitPointerUp = (e: PointerEvent) => {
 const hasOpenEditorTabs = computed(() => openFiles.value.length > 0)
 /** 仅在有打开的文件标签时显示编辑区；无文件时 AI 面板可占满中间区域 */
 const showEditorArea = computed(() => hasOpenEditorTabs.value)
+/** Collab Workshop 占满中央工作区 */
+const showWorkshopCenter = computed(
+  () => workshopVisible.value && !showEditorArea.value,
+)
 /** 有打开的文件时不显示右侧 AI 面板 */
 const showAiSidePanel = computed(
-  () => aiPanelVisible.value && !showEditorArea.value,
+  () => aiPanelVisible.value && !showEditorArea.value && !workshopVisible.value,
 )
 /** 欢迎页仅在没有打开项目时显示 */
 const showWelcomePage = computed(
@@ -178,7 +186,8 @@ const showWelcomePage = computed(
     !projectRoot.value &&
     welcomeOnStartup.value &&
     !showEditorArea.value &&
-    !aiPanelVisible.value,
+    !aiPanelVisible.value &&
+    !workshopVisible.value,
 )
 const aiPanelFillsCenter = computed(
   () => showAiSidePanel.value && !showWelcomePage.value,
@@ -188,11 +197,37 @@ const aiPanelUsesFixedWidth = computed(
 )
 
 watch(hasOpenEditorTabs, (has) => {
-  if (has) aiPanelVisible.value = false
+  if (has) {
+    aiPanelVisible.value = false
+    workshopVisible.value = false
+  }
 })
+
+const toggleWorkshop = () => {
+  if (showEditorArea.value) {
+    workshopVisible.value = false
+    return
+  }
+  if (workshopVisible.value) {
+    workshopVisible.value = false
+    return
+  }
+  workshopVisible.value = true
+  aiPanelVisible.value = false
+}
+
+const openModelsSettings = () => {
+  settingsPanelVisible.value = true
+  void nextTick(() => {
+    settingsPanelRef.value?.openTab('models')
+    void settingsPanelRef.value?.reloadModels()
+  })
+}
 
 const onSettingsModelsChanged = async () => {
   await chatPaneRef.value?.loadModels()
+  await workshopPaneRef.value?.loadModels()
+  await workshopPaneRef.value?.loadWorkshopUsers()
 }
 
 const showExplorer = () => activeActivity.value === 'explorer'
@@ -440,12 +475,14 @@ onUnmounted(() => {
     <TitleBar
       :primary-sidebar-visible="primarySidebarVisible"
       :ai-panel-visible="showAiSidePanel"
+      :workshop-visible="showWorkshopCenter"
       :project-name="projectName"
       :window-layout="windowLayout"
       @toggle-primary-sidebar="togglePrimarySidebar"
       @toggle-ai-panel="toggleAiPanel"
+      @toggle-workshop="toggleWorkshop"
       @open-project="triggerOpenProject"
-      @open-model-settings="settingsPanelVisible = true"
+      @open-model-settings="openModelsSettings"
     />
     <div class="workbench-main">
       <div ref="workbenchBodyRef" class="workbench-body">
@@ -472,6 +509,14 @@ onUnmounted(() => {
             />
           </div>
         </div>
+        <WorkshopPane
+          ref="workshopPaneRef"
+          v-show="showWorkshopCenter"
+          :project-root="projectRoot"
+          @close="workshopVisible = false"
+          @open-file="onOpenFile"
+          @open-models-settings="openModelsSettings"
+        />
         <WelcomePage
           v-show="showWelcomePage"
           :recent-projects="recentProjects"
@@ -527,7 +572,7 @@ onUnmounted(() => {
             "
             @close="aiPanelVisible = false"
             @show-agents-sidebar="agentsSidebarVisible = true"
-            @open-models-settings="settingsPanelVisible = true"
+            @open-models-settings="openModelsSettings"
             @active-change="onChatActiveChange"
             @sessions-changed="onChatSessionsChanged"
             @files-changed="fileExplorerRef?.refresh?.()"
@@ -574,6 +619,7 @@ onUnmounted(() => {
       @save="onSettingsSave"
     />
     <SettingsPanel
+      ref="settingsPanelRef"
       :visible="settingsPanelVisible"
       :settings="settings"
       @close="settingsPanelVisible = false"

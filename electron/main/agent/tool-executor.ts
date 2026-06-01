@@ -39,6 +39,8 @@ export type AgentContext = {
   scratchpadDir?: string
   /** 本轮将写入 checkpoint 的文件快照（相对路径 → 修改前内容） */
   checkpointFiles?: Record<string, string>
+  /** Workshop 角色回合：Write/Bash 自动 apply，与 Chat 开 Auto Run 等价 */
+  workshopAutoApply?: boolean
 }
 
 export type PendingAskUserInternal = PendingAskUserPublic & {
