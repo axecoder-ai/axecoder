@@ -9,10 +9,13 @@ import type {
   ChatMessage,
   ChatSession,
   ChatSessionMeta,
+  ModelEntry,
   ModelsFile,
-} from '../../types/writcraft'
+} from '../../types/axecoder'
 import ModelPickerDropdown from './ModelPickerDropdown.vue'
 import ChatDiffCard from './ChatDiffCard.vue'
+import ChatAskUserCard from './ChatAskUserCard.vue'
+import ChatBashCard from './ChatBashCard.vue'
 import { isUnderProject, relativeToProject, type ChatFileRef } from '../../utils/chat-file-context'
 import {
   applyProgressPayload,
@@ -21,10 +24,6 @@ import {
 } from '../../utils/agent-progress'
 import { runSlashCommand } from '../../slash-commands/run'
 import type { SlashContext } from '../../slash-commands/types'
-import {
-  formatInitProgressLogLine,
-  normalizeInitProgressPayload,
-} from '../../utils/background-init-progress'
 
 const md = new MarkdownIt()
 
@@ -57,9 +56,11 @@ const includeContextFile = ref(false)
 const dropActive = ref(false)
 const pendingBusy = ref(false)
 const progressSteps = ref<AgentProgressStep[]>([])
+const streamText = ref('')
 const idleHintIdx = ref(0)
 let idleHintTimer: ReturnType<typeof setInterval> | null = null
 let progressUnsub: (() => void) | null = null
+let aiStreamUnsub: (() => void) | null = null
 const agentProgressActive = ref(false)
 
 const agentMode = computed(() => {
@@ -93,7 +94,7 @@ const syncMetaFromActive = () => {
 const persist = async () => {
   if (!hasProject.value || !activeSession.value) return
   const s = activeSession.value
-  const res = await window.writcraft.saveChatSession(props.projectRoot, {
+  const res = await window.axecoder.saveChatSession(props.projectRoot, {
     id: s.id,
     title: s.title,
     updatedAt: s.updatedAt,
@@ -138,7 +139,7 @@ const selectSession = async (id: string): Promise<boolean> => {
   if (activeSession.value && activeId.value && activeId.value !== id) {
     await persist()
   }
-  const { session } = await window.writcraft.getChatSession(props.projectRoot, id)
+  const { session } = await window.axecoder.getChatSession(props.projectRoot, id)
   if (!session) return false
   activeSession.value = session
   activeId.value = id
@@ -153,7 +154,7 @@ const selectSession = async (id: string): Promise<boolean> => {
 }
 
 const loadModels = async () => {
-  modelsFile.value = await window.writcraft.listModels()
+  modelsFile.value = await window.axecoder.listModels()
 }
 
 const load = async () => {
@@ -161,7 +162,7 @@ const load = async () => {
     reset()
     return
   }
-  const res = await window.writcraft.getChatSessions(props.projectRoot)
+  const res = await window.axecoder.getChatSessions(props.projectRoot)
   sessionMetas.value = res.sessions
   if (!sessionMetas.value.length) {
     reset()
@@ -182,7 +183,7 @@ const newChat = async () => {
     updatedAt: Date.now(),
     messages: [],
   }
-  const res = await window.writcraft.saveChatSession(props.projectRoot, s)
+  const res = await window.axecoder.saveChatSession(props.projectRoot, s)
   if (!res.ok) return
   sessionMetas.value = [
     { id: s.id, title: s.title, updatedAt: s.updatedAt },
@@ -200,7 +201,7 @@ const deleteSession = async (id: string) => {
     activeSession.value = null
     activeId.value = ''
   }
-  await window.writcraft.deleteChatSession(props.projectRoot, id)
+  await window.axecoder.deleteChatSession(props.projectRoot, id)
   sessionMetas.value = sessionMetas.value.filter((s) => s.id !== id)
   if (!sessionMetas.value.length) {
     reset()
@@ -226,7 +227,7 @@ const closeChat = async () => {
 }
 
 const onModelPick = async (id: string) => {
-  const res = await window.writcraft.setActiveModel(id)
+  const res = await window.axecoder.setActiveModel(id)
   if (res.ok) modelsFile.value = res.data
 }
 
@@ -246,7 +247,7 @@ const removeAttached = (filePath: string) => {
 
 const onChatDragOver = (e: DragEvent) => {
   const types = e.dataTransfer?.types ?? []
-  if (!types.includes('application/x-writcraft-file') && !types.includes('text/plain')) return
+  if (!types.includes('application/x-axecoder-file') && !types.includes('text/plain')) return
   e.preventDefault()
   e.dataTransfer!.dropEffect = 'copy'
   dropActive.value = true
@@ -260,7 +261,7 @@ const onChatDrop = (e: DragEvent) => {
   e.preventDefault()
   dropActive.value = false
   const path =
-    e.dataTransfer?.getData('application/x-writcraft-file') ||
+    e.dataTransfer?.getData('application/x-axecoder-file') ||
     e.dataTransfer?.getData('text/plain')
   if (!path?.trim()) return
   addAttachedPath(path.trim())
@@ -322,18 +323,30 @@ const unbindAgentProgress = () => {
 const bindAgentProgress = () => {
   unbindAgentProgress()
   progressSteps.value = []
+  streamText.value = ''
   agentProgressActive.value = true
-  progressUnsub = window.writcraft.onAgentProgress((payload) => {
+  progressUnsub = window.axecoder.onAgentProgress((payload) => {
     if (!agentProgressActive.value) return
-    progressSteps.value = applyProgressPayload(progressSteps.value, payload)
+    if (payload.kind === 'delta') {
+      streamText.value += payload.delta
+    } else {
+      progressSteps.value = applyProgressPayload(progressSteps.value, payload)
+    }
     void scrollMessages()
   })
+}
+
+const unbindAiStream = () => {
+  aiStreamUnsub?.()
+  aiStreamUnsub = null
 }
 
 const clearProgressUi = () => {
   stopIdleHintTimer()
   unbindAgentProgress()
+  unbindAiStream()
   progressSteps.value = []
+  streamText.value = ''
 }
 
 const formatToolLog = (log: AgentToolLogEntry[]) => {
@@ -362,9 +375,11 @@ const pushAssistantFromAgent = (res: AgentSendResult | AgentContinueResult) => {
   }
   activeSession.value.messages.push({
     role: 'assistant',
-    text: (res.assistantText + suffix).trim() || '请确认以下变更：',
+    text: (res.assistantText + suffix).trim() || 'Please confirm the following changes:',
     toolLog: res.toolLog,
     pendingWrites: res.pending,
+    pendingBashes: res.pendingBashes,
+    pendingAsks: res.pendingAsks,
     agentSessionId: res.sessionId,
     ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
     ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
@@ -373,18 +388,24 @@ const pushAssistantFromAgent = (res: AgentSendResult | AgentContinueResult) => {
 
 const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
   if (!res.ok) {
-    msg.text += `\n\n确认失败：${res.error}`
+    msg.text += `\n\nConfirm failed: ${res.error}`
     msg.pendingWrites = undefined
+    msg.pendingBashes = undefined
+    msg.pendingAsks = undefined
     return
   }
   const suffix = formatToolLog(res.toolLog)
   if (res.status === 'pending') {
     msg.pendingWrites = res.pending
+    msg.pendingBashes = res.pendingBashes
+    msg.pendingAsks = res.pendingAsks
     msg.agentSessionId = res.sessionId
     if (res.assistantText.trim()) msg.text = res.assistantText + suffix
     else msg.text += suffix
   } else {
     msg.pendingWrites = undefined
+    msg.pendingBashes = undefined
+    msg.pendingAsks = undefined
     msg.text = (res.assistantText + suffix).trim() || msg.text
     emit('filesChanged')
   }
@@ -395,7 +416,7 @@ const onConfirmPending = async (msg: ChatMessage, pendingId: string) => {
   pendingBusy.value = true
   bindAgentProgress()
   try {
-    const res = await window.writcraft.agentConfirmWrite(msg.agentSessionId, pendingId)
+    const res = await window.axecoder.agentConfirmWrite(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
     activeSession.value!.updatedAt = Date.now()
     await persist()
@@ -410,7 +431,7 @@ const onRejectPending = async (msg: ChatMessage, pendingId: string) => {
   pendingBusy.value = true
   bindAgentProgress()
   try {
-    const res = await window.writcraft.agentRejectWrite(msg.agentSessionId, pendingId)
+    const res = await window.axecoder.agentRejectWrite(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
     activeSession.value!.updatedAt = Date.now()
     await persist()
@@ -420,12 +441,183 @@ const onRejectPending = async (msg: ChatMessage, pendingId: string) => {
   }
 }
 
-const hasPendingWritesInSession = () => {
-  const msgs = activeSession.value?.messages ?? []
-  for (const m of msgs) {
-    if (m.pendingWrites?.length) return true
+const onConfirmBashPending = async (msg: ChatMessage, pendingId: string) => {
+  if (!msg.agentSessionId || pendingBusy.value) return
+  pendingBusy.value = true
+  bindAgentProgress()
+  try {
+    const res = await window.axecoder.agentConfirmBash(msg.agentSessionId, pendingId)
+    applyContinueToMessage(msg, res)
+    activeSession.value!.updatedAt = Date.now()
+    await persist()
+  } finally {
+    pendingBusy.value = false
+    clearProgressUi()
   }
-  return false
+}
+
+const onRejectBashPending = async (msg: ChatMessage, pendingId: string) => {
+  if (!msg.agentSessionId || pendingBusy.value) return
+  pendingBusy.value = true
+  bindAgentProgress()
+  try {
+    const res = await window.axecoder.agentRejectBash(msg.agentSessionId, pendingId)
+    applyContinueToMessage(msg, res)
+    activeSession.value!.updatedAt = Date.now()
+    await persist()
+  } finally {
+    pendingBusy.value = false
+    clearProgressUi()
+  }
+}
+
+const onAnswerPending = async (
+  msg: ChatMessage,
+  pendingId: string,
+  answers: Record<string, string | string[]>,
+) => {
+  if (!msg.agentSessionId || pendingBusy.value) return
+  pendingBusy.value = true
+  bindAgentProgress()
+  try {
+    const res = await window.axecoder.agentAnswerQuestions(
+      msg.agentSessionId,
+      pendingId,
+      answers,
+    )
+    applyContinueToMessage(msg, res)
+    activeSession.value!.updatedAt = Date.now()
+    await persist()
+  } finally {
+    pendingBusy.value = false
+    clearProgressUi()
+  }
+}
+
+const hasPendingWritesInSession = () => sessionPendingState.value.count > 0
+
+const hasPendingAsksInSession = () =>
+  (activeSession.value?.messages ?? []).some((m) => (m.pendingAsks?.length ?? 0) > 0)
+
+const hasPendingBashesInSession = () =>
+  (activeSession.value?.messages ?? []).some((m) => (m.pendingBashes?.length ?? 0) > 0)
+
+const hasPendingAgentInteraction = () =>
+  hasPendingWritesInSession() || hasPendingBashesInSession() || hasPendingAsksInSession()
+
+const sessionPendingState = computed(() => {
+  const msgs = activeSession.value?.messages ?? []
+  let count = 0
+  const sessionIds: string[] = []
+  const msgBySession = new Map<string, ChatMessage>()
+  for (const m of msgs) {
+    const n = (m.pendingWrites?.length ?? 0) + (m.pendingBashes?.length ?? 0)
+    if (n > 0 && m.agentSessionId) {
+      count += n
+      if (!msgBySession.has(m.agentSessionId)) {
+        sessionIds.push(m.agentSessionId)
+      }
+      msgBySession.set(m.agentSessionId, m)
+    }
+  }
+  return { count, sessionIds, msgBySession }
+})
+
+const clearPendingForSession = (sessionId: string) => {
+  for (const m of activeSession.value?.messages ?? []) {
+    if (m.agentSessionId === sessionId) {
+      m.pendingWrites = undefined
+      m.pendingBashes = undefined
+      m.pendingAsks = undefined
+    }
+  }
+}
+
+const applyContinueAcrossSession = (sessionId: string, anchor: ChatMessage, res: AgentContinueResult) => {
+  applyContinueToMessage(anchor, res)
+  if (!res.ok) {
+    clearPendingForSession(sessionId)
+    return
+  }
+  if (res.status === 'done') {
+    clearPendingForSession(sessionId)
+    return
+  }
+  for (const m of activeSession.value?.messages ?? []) {
+    if (m !== anchor && m.agentSessionId === sessionId) {
+      m.pendingWrites = undefined
+      m.pendingBashes = undefined
+      m.pendingAsks = undefined
+    }
+  }
+}
+
+const onConfirmAllPending = async () => {
+  const { sessionIds, msgBySession } = sessionPendingState.value
+  if (!sessionIds.length || pendingBusy.value) return
+  pendingBusy.value = true
+  bindAgentProgress()
+  try {
+    for (const sessionId of sessionIds) {
+      const msg = msgBySession.get(sessionId)
+      if (!msg) continue
+      const res = await window.axecoder.agentConfirmAllWrites(sessionId)
+      applyContinueAcrossSession(sessionId, msg, res)
+      if (!res.ok) break
+    }
+    activeSession.value!.updatedAt = Date.now()
+    await persist()
+  } finally {
+    pendingBusy.value = false
+    clearProgressUi()
+  }
+}
+
+const onRejectAllPending = async () => {
+  const { sessionIds, msgBySession } = sessionPendingState.value
+  if (!sessionIds.length || pendingBusy.value) return
+  pendingBusy.value = true
+  bindAgentProgress()
+  try {
+    for (const sessionId of sessionIds) {
+      const msg = msgBySession.get(sessionId)
+      if (!msg) continue
+      const res = await window.axecoder.agentRejectAllWrites(sessionId)
+      applyContinueAcrossSession(sessionId, msg, res)
+      if (!res.ok) break
+    }
+    activeSession.value!.updatedAt = Date.now()
+    await persist()
+  } finally {
+    pendingBusy.value = false
+    clearProgressUi()
+  }
+}
+
+const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiChatMessage[]) => {
+  const useSse = model.provider === 'openai'
+  let streamId = ''
+  if (useSse) {
+    streamText.value = ''
+    streamId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    aiStreamUnsub = window.axecoder.onAiStream((p) => {
+      if (p.streamId !== streamId) return
+      streamText.value += p.delta
+      void scrollMessages()
+    })
+  }
+  const res = await window.axecoder.aiChat(modelId, apiMessages, useSse ? streamId : undefined)
+  if (res.ok) {
+    const replyText = res.text.trim() || '（模型未返回内容，请检查模型 ID 或 API 配置）'
+    activeSession.value!.messages.push({
+      role: 'assistant',
+      text: replyText,
+      assistantContent: res.content,
+      ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
+    })
+  } else {
+    activeSession.value!.messages.push({ role: 'assistant', text: `请求失败：${res.error}` })
+  }
 }
 
 const buildSlashContext = (): SlashContext => ({
@@ -441,12 +633,10 @@ const buildSlashContext = (): SlashContext => ({
     modelsFile.value = m
   },
   setActiveModel: async (id) => {
-    const res = await window.writcraft.setActiveModel(id)
+    const res = await window.axecoder.setActiveModel(id)
     return { ok: res.ok, data: res.ok ? res.data : undefined }
   },
   openModelsSettings: () => emit('openModelsSettings'),
-  initBackground: (modelId?: string) =>
-    window.writcraft.initBackground(props.projectRoot, modelId),
 })
 
 const send = async () => {
@@ -454,10 +644,10 @@ const send = async () => {
   if (!hasProject.value || !text || !activeSession.value) return
 
   if (text.startsWith('/')) {
-    if (loading.value || pendingBusy.value || hasPendingWritesInSession()) {
+    if (loading.value || pendingBusy.value || hasPendingAgentInteraction()) {
       activeSession.value.messages.push({
         role: 'assistant',
-        text: '请等待当前回复或完成 Agent 写盘确认后再使用斜杠命令。',
+        text: '请等待当前回复或完成 Agent 确认/问答后再使用斜杠命令。',
       })
       activeSession.value.updatedAt = Date.now()
       await persist()
@@ -467,33 +657,9 @@ const send = async () => {
     await nextTick()
     resizeInput()
 
-    const isInitCmd = /^\/init\b/i.test(text.trim())
-    let initProgressUnsub: (() => void) | null = null
-    let initProgressMsg: ChatMessage | null = null
-    if (isInitCmd) {
-      initProgressMsg = { role: 'assistant', text: '**/init** 进行中…\n\n' }
-      activeSession.value.messages.push(initProgressMsg)
-      activeSession.value.updatedAt = Date.now()
-      await persist()
-      initProgressUnsub = window.writcraft.onBackgroundInitProgress((raw) => {
-        if (!initProgressMsg) return
-        const line = formatInitProgressLogLine(normalizeInitProgressPayload(raw))
-        if (line) initProgressMsg.text += `${line}\n`
-        void scrollMessages()
-      })
-    }
-
-    let slashResult
-    try {
-      slashResult = await runSlashCommand(text, buildSlashContext())
-    } finally {
-      initProgressUnsub?.()
-    }
+    const slashResult = await runSlashCommand(text, buildSlashContext())
 
     if (slashResult === null) {
-      if (initProgressMsg) {
-        activeSession.value.messages = activeSession.value.messages.filter((m) => m !== initProgressMsg)
-      }
       activeSession.value.messages.push({
         role: 'assistant',
         text: '暂无已注册的斜杠命令。',
@@ -503,21 +669,13 @@ const send = async () => {
       return
     }
     if (!slashResult.ok) {
-      if (initProgressMsg) {
-        initProgressMsg.text += `\n**失败：** ${slashResult.message}`
-      } else {
-        activeSession.value.messages.push({ role: 'assistant', text: slashResult.message })
-      }
+      activeSession.value.messages.push({ role: 'assistant', text: slashResult.message })
       activeSession.value.updatedAt = Date.now()
       await persist()
       return
     }
     if (!slashResult.silent && slashResult.message) {
-      if (initProgressMsg) {
-        initProgressMsg.text += `\n---\n\n${slashResult.message}`
-      } else {
-        activeSession.value.messages.push({ role: 'assistant', text: slashResult.message })
-      }
+      activeSession.value.messages.push({ role: 'assistant', text: slashResult.message })
       activeSession.value.updatedAt = Date.now()
       await persist()
     }
@@ -553,7 +711,7 @@ const send = async () => {
   else startIdleHintTimer()
   try {
     if (filePaths?.length) {
-      userMsg.apiContent = await window.writcraft.expandChatUserWithFiles(
+      userMsg.apiContent = await window.axecoder.expandChatUserWithFiles(
         props.projectRoot,
         text,
         filePaths,
@@ -563,21 +721,10 @@ const send = async () => {
     const historyMsgs = activeSession.value.messages.slice(0, -1)
     const apiMessages = toApiMessages([...historyMsgs, userMsg])
     if (agentMode.value) {
-      const res = await window.writcraft.agentSend(props.projectRoot, modelId, apiMessages)
+      const res = await window.axecoder.agentSend(props.projectRoot, modelId, apiMessages)
       pushAssistantFromAgent(res)
     } else {
-      const res = await window.writcraft.aiChat(modelId, apiMessages)
-      if (res.ok) {
-        const replyText = res.text.trim() || '（模型未返回内容，请检查模型 ID 或 API 配置）'
-        activeSession.value.messages.push({
-          role: 'assistant',
-          text: replyText,
-          assistantContent: res.content,
-          ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
-        })
-      } else {
-        activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${res.error}` })
-      }
+      await runPlainChat(model, modelId, apiMessages)
     }
     activeSession.value.updatedAt = Date.now()
   } catch (e) {
@@ -645,21 +792,10 @@ const regenerateLastReply = async () => {
   try {
     const apiMessages = toApiMessages(msgs.slice(0, userIdx + 1))
     if (agentMode.value) {
-      const res = await window.writcraft.agentSend(props.projectRoot, modelId, apiMessages)
+      const res = await window.axecoder.agentSend(props.projectRoot, modelId, apiMessages)
       pushAssistantFromAgent(res)
     } else {
-      const res = await window.writcraft.aiChat(modelId, apiMessages)
-      if (res.ok) {
-        const replyText = res.text.trim() || '（模型未返回内容，请检查模型 ID 或 API 配置）'
-        activeSession.value.messages.push({
-          role: 'assistant',
-          text: replyText,
-          assistantContent: res.content,
-          ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
-        })
-      } else {
-        activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${res.error}` })
-      }
+      await runPlainChat(model, modelId, apiMessages)
     }
     activeSession.value.updatedAt = Date.now()
   } catch (e) {
@@ -761,6 +897,21 @@ defineExpose({
             class="assistant-text"
             v-html="renderMarkdown(msg.text)"
           />
+          <ChatAskUserCard
+            v-for="pa in msg.pendingAsks ?? []"
+            :key="pa.id"
+            :pending="pa"
+            :busy="pendingBusy"
+            @submit="(answers) => onAnswerPending(msg, pa.id, answers)"
+          />
+          <ChatBashCard
+            v-for="pb in msg.pendingBashes ?? []"
+            :key="pb.id"
+            :pending="pb"
+            :busy="pendingBusy"
+            @confirm="onConfirmBashPending(msg, pb.id)"
+            @reject="onRejectBashPending(msg, pb.id)"
+          />
           <ChatDiffCard
             v-for="pw in msg.pendingWrites ?? []"
             :key="pw.id"
@@ -788,6 +939,7 @@ defineExpose({
               <span class="progress-label">{{ step.label }}</span>
             </li>
           </ul>
+          <pre v-if="streamText.trim()" class="stream-live-text">{{ streamText }}</pre>
         </div>
       </div>
     </div>
@@ -830,6 +982,29 @@ defineExpose({
           />
         </svg>
       </button>
+    </div>
+    <div v-if="sessionPendingState.count > 0" class="pending-bulk-bar">
+      <span class="pending-bulk-label">
+        {{ sessionPendingState.count }} 项待确认（文件变更 / 命令）
+      </span>
+      <div class="pending-bulk-actions">
+        <button
+          type="button"
+          class="btn-apply-all"
+          :disabled="pendingBusy"
+          @click="onConfirmAllPending"
+        >
+          全部确认 ({{ sessionPendingState.count }})
+        </button>
+        <button
+          type="button"
+          class="btn-reject-all"
+          :disabled="pendingBusy"
+          @click="onRejectAllPending"
+        >
+          全部拒绝
+        </button>
+      </div>
     </div>
     <div class="chat-input-area">
       <div
@@ -1093,6 +1268,21 @@ defineExpose({
   max-width: 100%;
 }
 
+.stream-live-text {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--wc-text);
+  background: var(--wc-input-bg);
+  border: 1px solid var(--wc-border);
+  border-radius: 6px;
+}
+
 .progress-headline {
   display: flex;
   align-items: center;
@@ -1190,6 +1380,53 @@ defineExpose({
 .reply-actions .icon-btn {
   width: 26px;
   height: 26px;
+}
+
+.pending-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--wc-border);
+  background: var(--wc-chat-box-bg);
+  flex-shrink: 0;
+}
+
+.pending-bulk-label {
+  font-size: 12px;
+  color: var(--wc-text-muted);
+  min-width: 0;
+}
+
+.pending-bulk-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-apply-all,
+.btn-reject-all {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.btn-apply-all {
+  background: var(--wc-accent, #7aa2f7);
+  color: #fff;
+}
+
+.btn-apply-all:disabled,
+.btn-reject-all:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn-reject-all {
+  background: transparent;
+  border: 1px solid var(--wc-border);
+  color: var(--wc-text-muted);
 }
 
 .chat-input-area {

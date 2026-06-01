@@ -10,7 +10,7 @@ import {
   WC_CHAT_MIN,
   WC_EDITOR_MIN,
 } from '../../../src/utils/agents-panel'
-import type { ChatSessionMeta } from '../../../src/types/writcraft'
+import type { ChatSessionMeta } from '../../../src/types/axecoder'
 
 const meta = (id: string, updatedAt: number): ChatSessionMeta => ({
   id,

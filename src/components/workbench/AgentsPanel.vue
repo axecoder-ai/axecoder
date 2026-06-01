@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import type { ChatSessionMeta } from '../../types/writcraft'
+import type { ChatSessionMeta } from '../../types/axecoder'
 import {
   groupSessionsByDay,
   sliceGroupItems,
@@ -60,7 +60,7 @@ const load = async () => {
     sessions.value = []
     return
   }
-  const res = await window.writcraft.getChatSessions(props.projectRoot)
+  const res = await window.axecoder.getChatSessions(props.projectRoot)
   sessions.value = res.sessions
 }
 

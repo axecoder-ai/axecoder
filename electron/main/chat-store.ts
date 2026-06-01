@@ -5,7 +5,8 @@ import {
   normalizeProjectRoot,
   projectSessionFilePath,
   projectSessionsIndexPath,
-} from './project-writcraft-dir'
+  resolveProjectSessionsDir,
+} from './project-axecoder-dir'
 
 export type ChatMessage = {
   role: 'user' | 'assistant'
@@ -33,7 +34,8 @@ const writeFileAtomic = async (filePath: string, content: string) => {
 
 const readIndex = async (projectRoot: string): Promise<ChatSessionMeta[]> => {
   try {
-    const raw = await fs.readFile(projectSessionsIndexPath(projectRoot), 'utf-8')
+    const sessionsDir = await resolveProjectSessionsDir(projectRoot)
+    const raw = await fs.readFile(projectSessionsIndexPath(projectRoot, sessionsDir), 'utf-8')
     const list = JSON.parse(raw) as ChatSessionMeta[]
     return Array.isArray(list) ? list : []
   } catch {
@@ -62,7 +64,8 @@ export const getChatSession = async (projectRoot: string, sessionId: string) => 
   const root = await normalizeProjectRoot(projectRoot)
   if (!root) return { session: null as ChatSession | null }
   try {
-    const raw = await fs.readFile(projectSessionFilePath(root, sessionId), 'utf-8')
+    const sessionsDir = await resolveProjectSessionsDir(root)
+    const raw = await fs.readFile(projectSessionFilePath(root, sessionId, sessionsDir), 'utf-8')
     const session = JSON.parse(raw) as ChatSession
     if (!session?.id || !Array.isArray(session.messages)) return { session: null }
     return { session }

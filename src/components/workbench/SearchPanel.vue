@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { SearchHit } from '../../types/writcraft'
+import type { SearchHit } from '../../types/axecoder'
 
 defineProps<{
   visible: boolean

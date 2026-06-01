@@ -50,8 +50,8 @@ const fileName = (p: string) => {
 <template>
   <section class="welcome-page">
     <div class="welcome-hero">
-      <h1 class="welcome-brand">WritCraft</h1>
-      <p class="welcome-tagline">标书与 Markdown 写作工作台</p>
+      <h1 class="welcome-brand">AxeCoder</h1>
+      <p class="welcome-tagline">代码编写与 AI 协作 IDE</p>
     </div>
     <div class="welcome-columns">
       <div class="welcome-col">
@@ -104,11 +104,11 @@ const fileName = (p: string) => {
         <ul class="walkthrough-list">
           <li class="walkthrough-card">
             <p class="walkthrough-title">从文件夹开始</p>
-            <p class="walkthrough-desc">使用 ⌘O 打开标书或文档项目目录，在左侧浏览 Markdown 文件。</p>
+            <p class="walkthrough-desc">使用 ⌘O 打开代码项目目录，在左侧浏览与编辑源文件。</p>
           </li>
           <li class="walkthrough-card">
-            <p class="walkthrough-title">AI 辅助写作</p>
-            <p class="walkthrough-desc">打开项目后，在右侧 AI 面板与 Agent 协作编辑与检索文件。</p>
+            <p class="walkthrough-title">AI 辅助编程</p>
+            <p class="walkthrough-desc">打开项目后，在右侧 AI 面板与 Agent 协作读写、检索与修改代码。</p>
           </li>
         </ul>
         <template v-if="recentFiles.length">

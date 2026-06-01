@@ -20,7 +20,7 @@ const refresh = async () => {
   }
   loading.value = true
   error.value = ''
-  const res = await window.writcraft.gitStatus(props.projectRoot)
+  const res = await window.axecoder.gitStatus(props.projectRoot)
   loading.value = false
   if (!res.ok) {
     error.value = res.error

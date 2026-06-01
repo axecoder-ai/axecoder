@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { allCommands, findCommand } from '../../../src/slash-commands/registry'
 
 describe('findCommand', () => {
-  it('findCommand 可找到 init', () => {
-    expect(findCommand('init')?.name).toBe('init')
-    expect(allCommands().some((c) => c.name === 'init')).toBe(true)
+  it('registry 当前无注册命令', () => {
+    expect(allCommands()).toHaveLength(0)
+    expect(findCommand('init')).toBeUndefined()
   })
 
   it('未知命令返回 undefined', () => {

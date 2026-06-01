@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AgentPendingWrite } from '../../types/writcraft'
+import type { AgentPendingWrite } from '../../types/axecoder'
 
 defineProps<{
   pending: AgentPendingWrite
@@ -21,10 +21,10 @@ const emit = defineEmits<{
     <pre class="diff-body">{{ pending.patchText }}</pre>
     <div class="diff-actions">
       <button type="button" class="btn-apply" :disabled="busy" @click="emit('confirm')">
-        应用
+        Apply
       </button>
       <button type="button" class="btn-reject" :disabled="busy" @click="emit('reject')">
-        拒绝
+        Reject
       </button>
     </div>
   </div>

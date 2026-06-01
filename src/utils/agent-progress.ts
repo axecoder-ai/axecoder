@@ -8,17 +8,25 @@ export type AgentProgressStep = {
   status: 'active' | 'done' | 'error'
 }
 
-export type AgentProgressPayload = {
-  sessionId: string
-  turn: number
-  kind: 'model' | 'tool'
-  status: 'start' | 'done'
-  toolName?: string
-  summary?: string
-  ok?: boolean
-}
+export type AgentProgressPayload =
+  | {
+      sessionId: string
+      turn: number
+      kind: 'model' | 'tool'
+      status: 'start' | 'done'
+      toolName?: string
+      summary?: string
+      ok?: boolean
+    }
+  | {
+      sessionId: string
+      kind: 'delta'
+      delta: string
+    }
 
 export const labelForModelTurn = (turn: number) => `第 ${turn} 轮：正在调用模型…`
+
+export const labelForModelDone = (turn: number) => `第 ${turn} 轮：模型回复完成`
 
 export const labelForToolStart = (toolName: string, summary: string) =>
   `正在执行 ${toolName}：${summary}`
@@ -57,6 +65,22 @@ export const applyProgressPayload = (
       label: labelForModelTurn(payload.turn),
       status: 'active',
     })
+    return next
+  }
+
+  if (payload.kind === 'model' && payload.status === 'done') {
+    for (let i = next.length - 1; i >= 0; i--) {
+      const s = next[i]
+      if (s.phase === 'model' && s.status === 'active' && s.turn === payload.turn) {
+        s.status = 'done'
+        s.label = labelForModelDone(payload.turn)
+        return next
+      }
+    }
+    return next
+  }
+
+  if (payload.kind === 'delta') {
     return next
   }
 

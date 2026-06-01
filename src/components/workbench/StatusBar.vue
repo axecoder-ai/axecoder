@@ -22,7 +22,7 @@ const saveLabel = (s?: string) => {
       <span v-if="saveLabel(saveStatus)" class="save">{{ saveLabel(saveStatus) }}</span>
     </div>
     <div class="status-right">
-      <span>WritCraft</span>
+      <span>AxeCoder</span>
       <span class="sep">|</span>
       <span>Ln {{ line }}, Col {{ col }}</span>
       <span class="sep">|</span>

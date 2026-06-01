@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import type { ModelEntry } from '../../types/writcraft'
+import type { ModelEntry } from '../../types/axecoder'
 
 const props = defineProps<{
   models: ModelEntry[]

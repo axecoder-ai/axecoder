@@ -1,4 +1,4 @@
-import type { ChatSessionMeta } from '../types/writcraft'
+import type { ChatSessionMeta } from '../types/axecoder'
 
 export const WC_CHAT_MIN = 320
 export const WC_AGENTS_MIN = 200

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { AppSettings } from '../../types/writcraft'
+import type { AppSettings } from '../../types/axecoder'
 import GeneralTab from './GeneralTab.vue'
 import ModelsTab from './ModelsTab.vue'
 

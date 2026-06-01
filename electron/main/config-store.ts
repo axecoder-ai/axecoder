@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import type { AppConfig } from './models-types'
-import { ensureWritcraftDir, writcraftPath } from './writcraft-dir'
+import { ensureAxecoderDir, axecoderPath } from './axecoder-dir'
 
 const defaults: AppConfig = {
   schemaVersion: 1,
@@ -8,9 +8,11 @@ const defaults: AppConfig = {
   autoSaveDelay: 400,
   fontSize: 14,
   theme: 'vscode',
+  agentAutoApplyWrites: false,
+  agentOutputStyle: 'default',
 }
 
-const configPath = () => writcraftPath('config.json')
+const configPath = () => axecoderPath('config.json')
 
 const readRaw = async (): Promise<AppConfig | null> => {
   try {
@@ -30,11 +32,13 @@ export const getConfig = async (): Promise<AppConfig> => {
     autoSaveDelay: raw.autoSaveDelay ?? defaults.autoSaveDelay,
     fontSize: raw.fontSize ?? defaults.fontSize,
     theme: raw.theme ?? defaults.theme,
+    agentAutoApplyWrites: raw.agentAutoApplyWrites ?? defaults.agentAutoApplyWrites,
+    agentOutputStyle: raw.agentOutputStyle ?? defaults.agentOutputStyle,
   }
 }
 
 export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig> => {
-  await ensureWritcraftDir()
+  await ensureAxecoderDir()
   const cur = await getConfig()
   const next: AppConfig = {
     schemaVersion: 1,
@@ -42,6 +46,8 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
     autoSaveDelay: partial.autoSaveDelay ?? cur.autoSaveDelay,
     fontSize: partial.fontSize ?? cur.fontSize,
     theme: partial.theme ?? cur.theme,
+    agentAutoApplyWrites: partial.agentAutoApplyWrites ?? cur.agentAutoApplyWrites,
+    agentOutputStyle: partial.agentOutputStyle ?? cur.agentOutputStyle,
   }
   await fs.writeFile(configPath(), JSON.stringify(next, null, 2), 'utf-8')
   return next
@@ -50,6 +56,6 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
 export const writeConfigIfMissing = async (config: AppConfig) => {
   const raw = await readRaw()
   if (raw) return
-  await ensureWritcraftDir()
+  await ensureAxecoderDir()
   await fs.writeFile(configPath(), JSON.stringify(config, null, 2), 'utf-8')
 }

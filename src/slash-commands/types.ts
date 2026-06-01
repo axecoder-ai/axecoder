@@ -1,4 +1,4 @@
-import type { ChatSession, InitBackgroundResult, ModelsFile } from '../types/writcraft'
+import type { ChatSession, ModelsFile } from '../types/axecoder'
 
 export type SlashCommandDef = {
   name: string
@@ -17,7 +17,6 @@ export type SlashContext = {
   setModelsFile: (m: ModelsFile) => void
   setActiveModel: (id: string) => Promise<{ ok: boolean; data?: ModelsFile }>
   openModelsSettings: () => void
-  initBackground: (modelId?: string) => Promise<InitBackgroundResult>
 }
 
 export type SlashRunResult =

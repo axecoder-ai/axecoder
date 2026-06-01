@@ -1,6 +1,16 @@
-import type { AgentLoopMessage, AgentToolLogEntry, PendingWritePublic } from './agent-types'
-import type { AgentContext } from './tool-executor'
-import type { PendingWriteInternal } from './tool-executor'
+import type {
+  AgentLoopMessage,
+  AgentToolLogEntry,
+  PendingAskUserPublic,
+  PendingBashPublic,
+  PendingWritePublic,
+} from './agent-types'
+import type {
+  AgentContext,
+  PendingAskUserInternal,
+  PendingBashInternal,
+  PendingWriteInternal,
+} from './tool-executor'
 
 export type StoredAgentSession = {
   projectRoot: string
@@ -9,6 +19,8 @@ export type StoredAgentSession = {
   ctx: AgentContext
   toolLog: AgentToolLogEntry[]
   pendingById: Map<string, PendingWriteInternal>
+  pendingBashById: Map<string, PendingBashInternal>
+  pendingAskById: Map<string, PendingAskUserInternal>
   turn: number
 }
 
@@ -33,4 +45,15 @@ export const pendingToPublic = (p: PendingWriteInternal): PendingWritePublic => 
   filePath: p.filePath,
   summary: p.summary,
   patchText: p.patchText,
+})
+
+export const pendingAskToPublic = (p: PendingAskUserInternal): PendingAskUserPublic => ({
+  id: p.id,
+  questions: p.questions,
+})
+
+export const pendingBashToPublic = (p: PendingBashInternal): PendingBashPublic => ({
+  id: p.id,
+  command: p.command,
+  ...(p.timeoutMs !== undefined ? { timeoutMs: p.timeoutMs } : {}),
 })

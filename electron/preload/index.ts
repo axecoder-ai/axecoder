@@ -1,5 +1,5 @@
 import { ipcRenderer, contextBridge } from 'electron'
-import type { MenuChannel } from '../../src/types/writcraft'
+import type { MenuChannel } from '../../src/types/axecoder'
 
 /** Electron IPC 只能传可 structured clone 的值；Vue 响应式对象会报 could not be cloned */
 const cloneForIpc = <T>(value: T): T => JSON.parse(JSON.stringify(value))
@@ -18,7 +18,7 @@ const menuChannels: MenuChannel[] = [
   'menu:commandPalette',
 ]
 
-contextBridge.exposeInMainWorld('writcraft', {
+contextBridge.exposeInMainWorld('axecoder', {
   getWindowLayout: () =>
     ipcRenderer.invoke('window:getLayout') as Promise<{ fullscreen: boolean; platform: string }>,
   onWindowLayout: (callback: (layout: { fullscreen: boolean; platform: string }) => void) => {
@@ -74,9 +74,9 @@ contextBridge.exposeInMainWorld('writcraft', {
   delete: (targetPath: string) => ipcRenderer.invoke('fs:delete', targetPath) as Promise<{ ok: true }>,
   rename: (oldPath: string, newPath: string) =>
     ipcRenderer.invoke('fs:rename', oldPath, newPath) as Promise<{ path: string }>,
-  copy: (srcPath: string, destPath: string, onConflict?: import('../../src/types/writcraft').ConflictAction) =>
+  copy: (srcPath: string, destPath: string, onConflict?: import('../../src/types/axecoder').ConflictAction) =>
     ipcRenderer.invoke('fs:copy', srcPath, destPath, onConflict) as Promise<{ path: string; skipped?: true }>,
-  move: (srcPath: string, destPath: string, onConflict?: import('../../src/types/writcraft').ConflictAction) =>
+  move: (srcPath: string, destPath: string, onConflict?: import('../../src/types/axecoder').ConflictAction) =>
     ipcRenderer.invoke('fs:move', srcPath, destPath, onConflict) as Promise<{ path: string; skipped?: true }>,
   revealInFinder: (targetPath: string) =>
     ipcRenderer.invoke('fs:revealInFinder', targetPath) as Promise<{ ok: true }>,
@@ -89,45 +89,27 @@ contextBridge.exposeInMainWorld('writcraft', {
       { ok: true; path: string } | { cancelled: true }
     >,
   search: (rootPath: string, query: string) =>
-    ipcRenderer.invoke('fs:search', rootPath, query) as Promise<{ hits: import('../../src/types/writcraft').SearchHit[] }>,
-  readBackgroundMaterials: (projectRoot: string) =>
-    ipcRenderer.invoke('fs:readBackgroundMaterials', cloneForIpc(projectRoot)) as Promise<
-      import('../../src/types/writcraft').BackgroundMaterialsResult
-    >,
-  initBackground: (projectRoot: string, modelId?: string) =>
-    ipcRenderer.invoke('fs:initBackground', cloneForIpc(projectRoot), modelId) as Promise<
-      import('../../src/types/writcraft').InitBackgroundResult
-    >,
-  onBackgroundInitProgress: (
-    callback: (payload: import('../../src/types/writcraft').BackgroundInitProgressPayload) => void,
-  ) => {
-    const listener = (
-      _: unknown,
-      payload: import('../../src/types/writcraft').BackgroundInitProgressPayload,
-    ) => callback(payload)
-    ipcRenderer.on('background:initProgress', listener)
-    return () => ipcRenderer.off('background:initProgress', listener)
-  },
+    ipcRenderer.invoke('fs:search', rootPath, query) as Promise<{ hits: import('../../src/types/axecoder').SearchHit[] }>,
   getRecentFiles: () => ipcRenderer.invoke('fs:getRecentFiles') as Promise<{ files: string[] }>,
   getRecentProjects: () =>
     ipcRenderer.invoke('fs:getRecentProjects') as Promise<{ projects: string[] }>,
   watchStart: (rootPath: string) => ipcRenderer.invoke('fs:watchStart', rootPath) as Promise<{ ok: true }>,
   watchStop: () => ipcRenderer.invoke('fs:watchStop') as Promise<{ ok: true }>,
-  getSettings: () => ipcRenderer.invoke('fs:getSettings') as Promise<import('../../src/types/writcraft').AppSettings>,
-  setSettings: (partial: Partial<import('../../src/types/writcraft').AppSettings>) =>
-    ipcRenderer.invoke('fs:setSettings', partial) as Promise<import('../../src/types/writcraft').AppSettings>,
+  getSettings: () => ipcRenderer.invoke('fs:getSettings') as Promise<import('../../src/types/axecoder').AppSettings>,
+  setSettings: (partial: Partial<import('../../src/types/axecoder').AppSettings>) =>
+    ipcRenderer.invoke('fs:setSettings', partial) as Promise<import('../../src/types/axecoder').AppSettings>,
   listModels: () =>
-    ipcRenderer.invoke('models:list') as Promise<import('../../src/types/writcraft').ModelsFile>,
-  saveModel: (input: import('../../src/types/writcraft').ModelSaveInput) =>
-    ipcRenderer.invoke('models:save', input) as Promise<import('../../src/types/writcraft').ModelsMutationResult>,
+    ipcRenderer.invoke('models:list') as Promise<import('../../src/types/axecoder').ModelsFile>,
+  saveModel: (input: import('../../src/types/axecoder').ModelSaveInput) =>
+    ipcRenderer.invoke('models:save', input) as Promise<import('../../src/types/axecoder').ModelsMutationResult>,
   deleteModel: (id: string) =>
-    ipcRenderer.invoke('models:delete', id) as Promise<import('../../src/types/writcraft').ModelsMutationResult>,
+    ipcRenderer.invoke('models:delete', id) as Promise<import('../../src/types/axecoder').ModelsMutationResult>,
   toggleModel: (id: string, enabled: boolean) =>
     ipcRenderer.invoke('models:toggle', id, enabled) as Promise<
-      import('../../src/types/writcraft').ModelsMutationResult
+      import('../../src/types/axecoder').ModelsMutationResult
     >,
   setActiveModel: (id: string) =>
-    ipcRenderer.invoke('models:setActive', id) as Promise<import('../../src/types/writcraft').ModelsMutationResult>,
+    ipcRenderer.invoke('models:setActive', id) as Promise<import('../../src/types/axecoder').ModelsMutationResult>,
   expandChatUserWithFiles: (projectRoot: string, text: string, filePaths: string[]) =>
     ipcRenderer.invoke(
       'chat:expandUserWithFiles',
@@ -135,41 +117,80 @@ contextBridge.exposeInMainWorld('writcraft', {
       cloneForIpc(text),
       cloneForIpc(filePaths),
     ) as Promise<string>,
-  aiChat: (modelId: string, messages: import('../../src/types/writcraft').AiChatMessage[]) =>
+  aiChat: (
+    modelId: string,
+    messages: import('../../src/types/axecoder').AiChatMessage[],
+    streamId?: string,
+  ) =>
     ipcRenderer.invoke(
       'ai:chat',
       modelId,
       JSON.parse(JSON.stringify(messages)),
-    ) as Promise<import('../../src/types/writcraft').AiChatResult>,
+      streamId,
+    ) as Promise<import('../../src/types/axecoder').AiChatResult>,
+  onAiStream: (callback: (payload: import('../../src/types/axecoder').AiStreamPayload) => void) => {
+    const listener = (_: unknown, payload: import('../../src/types/axecoder').AiStreamPayload) =>
+      callback(payload)
+    ipcRenderer.on('ai:stream', listener)
+    return () => ipcRenderer.off('ai:stream', listener)
+  },
   agentSend: (
     projectRoot: string,
     modelId: string,
-    messages: import('../../src/types/writcraft').AiChatMessage[],
+    messages: import('../../src/types/axecoder').AiChatMessage[],
   ) =>
     ipcRenderer.invoke(
       'agent:send',
       cloneForIpc(projectRoot),
       modelId,
       JSON.parse(JSON.stringify(messages)),
-    ) as Promise<import('../../src/types/writcraft').AgentSendResult>,
+    ) as Promise<import('../../src/types/axecoder').AgentSendResult>,
   agentConfirmWrite: (sessionId: string, pendingId: string) =>
     ipcRenderer.invoke('agent:confirmWrite', sessionId, pendingId) as Promise<
-      import('../../src/types/writcraft').AgentContinueResult
+      import('../../src/types/axecoder').AgentContinueResult
+    >,
+  agentConfirmAllWrites: (sessionId: string) =>
+    ipcRenderer.invoke('agent:confirmAllWrites', sessionId) as Promise<
+      import('../../src/types/axecoder').AgentContinueResult
     >,
   agentRejectWrite: (sessionId: string, pendingId: string, reason?: string) =>
     ipcRenderer.invoke('agent:rejectWrite', sessionId, pendingId, reason) as Promise<
-      import('../../src/types/writcraft').AgentContinueResult
+      import('../../src/types/axecoder').AgentContinueResult
     >,
-  onAgentProgress: (callback: (payload: import('../../src/types/writcraft').AgentProgressPayload) => void) => {
-    const listener = (_: unknown, payload: import('../../src/types/writcraft').AgentProgressPayload) =>
+  agentRejectAllWrites: (sessionId: string, reason?: string) =>
+    ipcRenderer.invoke('agent:rejectAllWrites', sessionId, reason) as Promise<
+      import('../../src/types/axecoder').AgentContinueResult
+    >,
+  agentConfirmBash: (sessionId: string, pendingId: string) =>
+    ipcRenderer.invoke('agent:confirmBash', sessionId, pendingId) as Promise<
+      import('../../src/types/axecoder').AgentContinueResult
+    >,
+  agentRejectBash: (sessionId: string, pendingId: string, reason?: string) =>
+    ipcRenderer.invoke('agent:rejectBash', sessionId, pendingId, reason) as Promise<
+      import('../../src/types/axecoder').AgentContinueResult
+    >,
+  agentAnswerQuestions: (
+    sessionId: string,
+    pendingId: string,
+    answers: Record<string, string | string[]>,
+  ) =>
+    ipcRenderer.invoke(
+      'agent:answerQuestions',
+      sessionId,
+      pendingId,
+      JSON.parse(JSON.stringify(answers)),
+    ) as Promise<import('../../src/types/axecoder').AgentContinueResult>,
+  onAgentProgress: (callback: (payload: import('../../src/types/axecoder').AgentProgressPayload) => void) => {
+    const listener = (_: unknown, payload: import('../../src/types/axecoder').AgentProgressPayload) =>
       callback(payload)
     ipcRenderer.on('agent:progress', listener)
     return () => ipcRenderer.off('agent:progress', listener)
   },
   gitStatus: (cwd: string) =>
-    ipcRenderer.invoke('git:status', cwd) as Promise<import('../../src/types/writcraft').GitStatusResult>,
+    ipcRenderer.invoke('git:status', cwd) as Promise<import('../../src/types/axecoder').GitStatusResult>,
   terminalStart: (cwd: string) => ipcRenderer.invoke('terminal:start', cwd) as Promise<{ ok: true }>,
   terminalWrite: (data: string) => ipcRenderer.invoke('terminal:write', data) as Promise<{ ok: boolean }>,
+  terminalInterrupt: () => ipcRenderer.invoke('terminal:interrupt') as Promise<{ ok: boolean }>,
   terminalStop: () => ipcRenderer.invoke('terminal:stop') as Promise<{ ok: true }>,
   onTerminalData: (callback: (text: string) => void) => {
     const listener = (_: unknown, text: string) => callback(text)
@@ -178,13 +199,13 @@ contextBridge.exposeInMainWorld('writcraft', {
   },
   getChatSessions: (projectRoot: string) =>
     ipcRenderer.invoke('chat:getSessions', projectRoot) as Promise<{
-      sessions: import('../../src/types/writcraft').ChatSessionMeta[]
+      sessions: import('../../src/types/axecoder').ChatSessionMeta[]
     }>,
   getChatSession: (projectRoot: string, sessionId: string) =>
     ipcRenderer.invoke('chat:getSession', projectRoot, sessionId) as Promise<{
-      session: import('../../src/types/writcraft').ChatSession | null
+      session: import('../../src/types/axecoder').ChatSession | null
     }>,
-  saveChatSession: (projectRoot: string, session: import('../../src/types/writcraft').ChatSession) =>
+  saveChatSession: (projectRoot: string, session: import('../../src/types/axecoder').ChatSession) =>
     ipcRenderer.invoke('chat:saveSession', cloneForIpc(projectRoot), cloneForIpc(session)) as Promise<
       { ok: true } | { ok: false; error: string }
     >,

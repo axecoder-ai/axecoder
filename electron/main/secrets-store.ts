@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
-import { ensureWritcraftDir, writcraftPath } from './writcraft-dir'
+import { ensureAxecoderDir, axecoderPath } from './axecoder-dir'
 
-const secretsPath = () => writcraftPath('secrets.json')
+const secretsPath = () => axecoderPath('secrets.json')
 
 export const readSecrets = async (): Promise<Record<string, string>> => {
   try {
@@ -14,7 +14,7 @@ export const readSecrets = async (): Promise<Record<string, string>> => {
 }
 
 export const writeSecrets = async (secrets: Record<string, string>) => {
-  await ensureWritcraftDir()
+  await ensureAxecoderDir()
   await fs.writeFile(secretsPath(), JSON.stringify(secrets, null, 2), 'utf-8')
   await fs.chmod(secretsPath(), 0o600)
 }

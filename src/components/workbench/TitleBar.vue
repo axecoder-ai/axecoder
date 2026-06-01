@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { WindowLayout } from '../../types/writcraft'
+import type { WindowLayout } from '../../types/axecoder'
 
 const props = defineProps<{
   primarySidebarVisible: boolean

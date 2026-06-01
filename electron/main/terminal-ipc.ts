@@ -19,6 +19,8 @@ export const registerTerminalIpc = (getWin: () => BrowserWindow | null) => {
       cwd: cwd || process.env.HOME,
       env: process.env,
       stdio: 'pipe',
+      // 独立进程组，便于 Ctrl+C 向整组发 SIGINT（如 go run 子进程）
+      detached: process.platform !== 'win32',
     }) as ChildProcessWithoutNullStreams
 
     shellProc.stdout.on('data', (d) => sendData(getWin, d.toString()))
@@ -28,13 +30,27 @@ export const registerTerminalIpc = (getWin: () => BrowserWindow | null) => {
       shellProc = null
     })
 
-    sendData(getWin, `[WritCraft 终端] ${cwd || process.env.HOME}\r\n`)
+    sendData(getWin, `[AxeCoder 终端] ${cwd || process.env.HOME}\r\n`)
     return { ok: true as const }
   })
 
   ipcMain.handle('terminal:write', async (_, data: string) => {
     if (!shellProc?.stdin.writable) return { ok: false as const }
     shellProc.stdin.write(data)
+    return { ok: true as const }
+  })
+
+  ipcMain.handle('terminal:interrupt', async () => {
+    if (!shellProc?.pid) return { ok: false as const }
+    if (process.platform === 'win32') {
+      if (shellProc.stdin?.writable) shellProc.stdin.write('\x03')
+      return { ok: true as const }
+    }
+    try {
+      process.kill(-shellProc.pid, 'SIGINT')
+    } catch {
+      if (shellProc.stdin?.writable) shellProc.stdin.write('\x03')
+    }
     return { ok: true as const }
   })
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import type { ModelEntry, ModelProvider } from '../../types/writcraft'
+import type { ModelEntry, ModelProvider } from '../../types/axecoder'
 
 const props = defineProps<{
   visible: boolean

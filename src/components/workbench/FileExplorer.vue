@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import type { ConflictAction, FileNode } from '../../types/writcraft'
-import type { OutlineItem } from '../../utils/markdown-outline'
-
+import type { ConflictAction, FileNode } from '../../types/axecoder'
 const props = defineProps<{
   visible: boolean
   activeFilePath: string | null
-  outlineItems?: OutlineItem[]
-  recentFiles?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -15,55 +11,9 @@ const emit = defineEmits<{
   'project-opened': [rootPath: string]
   'file-renamed': [oldPath: string, newPath: string]
   'file-deleted': [path: string]
-  'outline-jump': [line: number]
 }>()
 
-const outlineOpen = ref(true)
-const timelineOpen = ref(false)
 const treeSectionOpen = ref(true)
-
-const TREE_PANE_HEIGHT_KEY = 'writcraft.explorer.treePaneHeight'
-const TREE_PANE_MIN = 64
-const BOTTOM_PANE_MIN = 80
-const TREE_PANE_DEFAULT = 200
-
-const explorerSplitRef = ref<HTMLElement | null>(null)
-const treePaneHeight = ref(TREE_PANE_DEFAULT)
-const treeSplitDragging = ref(false)
-let treeSplitStartY = 0
-let treeSplitStartHeight = TREE_PANE_DEFAULT
-
-const clampTreePaneHeight = (height: number) => {
-  const el = explorerSplitRef.value
-  if (!el) return Math.max(TREE_PANE_MIN, height)
-  const total = el.getBoundingClientRect().height
-  const maxTree = Math.max(TREE_PANE_MIN, total - BOTTOM_PANE_MIN - 4)
-  return Math.min(maxTree, Math.max(TREE_PANE_MIN, height))
-}
-
-const onTreeSplitPointerDown = (e: PointerEvent) => {
-  treeSplitDragging.value = true
-  treeSplitStartY = e.clientY
-  treeSplitStartHeight = treePaneHeight.value
-  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-}
-
-const onTreeSplitPointerMove = (e: PointerEvent) => {
-  if (!treeSplitDragging.value) return
-  const delta = e.clientY - treeSplitStartY
-  treePaneHeight.value = clampTreePaneHeight(treeSplitStartHeight + delta)
-}
-
-const onTreeSplitPointerUp = (e: PointerEvent) => {
-  if (!treeSplitDragging.value) return
-  treeSplitDragging.value = false
-  try {
-    localStorage.setItem(TREE_PANE_HEIGHT_KEY, String(treePaneHeight.value))
-    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
-  } catch {
-    /* already released */
-  }
-}
 
 const rootPath = ref('')
 const tree = ref<FileNode | null>(null)
@@ -91,7 +41,7 @@ const newFolderInput = ref<HTMLInputElement | null>(null)
 const dragPath = ref<string | null>(null)
 const dropHighlightPath = ref<string | null>(null)
 
-const fs = window.writcraft
+const fs = window.axecoder
 
 const parentDir = (p: string) => {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
@@ -295,7 +245,7 @@ const onDragStart = (e: DragEvent, node: FileNode) => {
   e.dataTransfer!.effectAllowed = 'copyMove'
   e.dataTransfer!.setData('text/plain', node.path)
   if (node.type === 'file') {
-    e.dataTransfer!.setData('application/x-writcraft-file', node.path)
+    e.dataTransfer!.setData('application/x-axecoder-file', node.path)
   }
 }
 
@@ -560,14 +510,6 @@ onMounted(() => {
   loadLastProject()
   document.addEventListener('click', onDocClick)
   panelRef.value?.addEventListener('keydown', onTreeKeydown)
-  const saved = localStorage.getItem(TREE_PANE_HEIGHT_KEY)
-  if (saved) {
-    const n = Number(saved)
-    if (Number.isFinite(n) && n >= TREE_PANE_MIN) treePaneHeight.value = n
-  }
-  nextTick(() => {
-    treePaneHeight.value = clampTreePaneHeight(treePaneHeight.value)
-  })
 })
 
 onUnmounted(() => {
@@ -619,11 +561,7 @@ onUnmounted(() => {
         </button>
       </div>
     </div>
-    <div ref="explorerSplitRef" class="explorer-split">
-    <div
-      class="tree-pane"
-      :style="{ height: `${treePaneHeight}px` }"
-    >
+    <div class="explorer-split">
     <div
       v-show="treeSectionOpen"
       class="tree"
@@ -696,52 +634,6 @@ onUnmounted(() => {
         <button type="button" class="open-project-btn" @click="openProject">打开项目</button>
       </div>
       <div v-else-if="!flatNodes.length" class="tree-empty">项目为空</div>
-    </div>
-    </div>
-    <div
-      class="tree-outline-split-handle"
-      :class="{ dragging: treeSplitDragging }"
-      title="拖动调整文件树与大纲高度"
-      @pointerdown="onTreeSplitPointerDown"
-      @pointermove="onTreeSplitPointerMove"
-      @pointerup="onTreeSplitPointerUp"
-      @pointercancel="onTreeSplitPointerUp"
-    />
-    <div class="bottom-panels">
-    <div class="panel-section">
-      <button type="button" class="section-head" @click="outlineOpen = !outlineOpen">
-        大纲 {{ outlineOpen ? '▾' : '▸' }}
-      </button>
-      <ul v-if="outlineOpen" class="outline-list">
-        <li v-if="!outlineItems?.length" class="section-empty">当前文件无标题</li>
-        <li
-          v-for="(item, i) in outlineItems"
-          :key="i"
-          class="outline-item"
-          :style="{ paddingLeft: `${12 + (item.level - 1) * 12}px` }"
-          @click="emit('outline-jump', item.line)"
-        >
-          {{ item.text }}
-        </li>
-      </ul>
-    </div>
-    <div class="panel-section">
-      <button type="button" class="section-head" @click="timelineOpen = !timelineOpen">
-        时间线 {{ timelineOpen ? '▾' : '▸' }}
-      </button>
-      <ul v-if="timelineOpen" class="outline-list">
-        <li v-if="!recentFiles?.length" class="section-empty">暂无最近文件</li>
-        <li
-          v-for="f in recentFiles"
-          :key="f"
-          class="outline-item recent"
-          :title="f"
-          @click="emit('open-file', f)"
-        >
-          {{ baseName(f) }}
-        </li>
-      </ul>
-    </div>
     </div>
     </div>
 
@@ -881,53 +773,11 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.tree-pane {
-  flex-shrink: 0;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
 .tree {
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 0 8px 8px;
-}
-
-.tree-outline-split-handle {
-  flex-shrink: 0;
-  height: 5px;
-  margin: 0;
-  cursor: row-resize;
-  touch-action: none;
-  user-select: none;
-  position: relative;
-  background: transparent;
-}
-
-.tree-outline-split-handle::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 2px;
-  height: 1px;
-  background: var(--wc-border);
-}
-
-.tree-outline-split-handle:hover::before,
-.tree-outline-split-handle.dragging::before {
-  background: var(--wc-border-light);
-}
-
-.bottom-panels {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
 }
 
 .tree-empty {
@@ -1051,64 +901,6 @@ onUnmounted(() => {
   border: 1px solid var(--wc-accent);
   border-radius: 2px;
   color: var(--wc-text);
-}
-
-.panel-section {
-  flex-shrink: 0;
-  border-top: 1px solid var(--wc-border);
-  min-height: 0;
-}
-
-.bottom-panels .panel-section:first-child {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-top: none;
-}
-
-.section-head {
-  width: 100%;
-  text-align: left;
-  padding: 6px 16px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--wc-text-muted);
-}
-
-.section-head:hover {
-  color: var(--wc-text);
-}
-
-.outline-list {
-  list-style: none;
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-.outline-item {
-  padding: 4px 16px;
-  font-size: 12px;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.outline-item:hover {
-  background: var(--wc-hover);
-}
-
-.outline-item.recent {
-  color: var(--wc-text-muted);
-}
-
-.section-empty {
-  padding: 6px 16px;
-  font-size: 11px;
-  color: var(--wc-text-dim);
 }
 
 .context-menu {

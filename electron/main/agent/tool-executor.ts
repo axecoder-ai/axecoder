@@ -1,7 +1,16 @@
 import fs from 'node:fs/promises'
-import type { AgentToolCall, AgentToolLogEntry, AgentToolName, PendingWritePublic } from './agent-types'
+import type {
+  AgentToolCall,
+  AgentToolLogEntry,
+  AgentToolName,
+  AskUserQuestionItem,
+  PendingAskUserPublic,
+  PendingBashPublic,
+  PendingWritePublic,
+} from './agent-types'
 import { PATH_OUTSIDE_PROJECT_ERROR, relativeInProject, resolvePathInProject } from './agent-path'
 import { applyStringReplace, patchToUnifiedDiff } from './edit-utils'
+import { formatBashToolContent, runAgentBash } from './agent-bash'
 import {
   deleteProjectPath,
   globProject,
@@ -10,16 +19,31 @@ import {
   readProjectFile,
   writeProjectFile,
 } from './agent-fs'
-import { executeComplexAgentTool } from './tools-complex/executor'
-
 export type AgentContext = {
   projectRoot: string
   readCache: Set<string>
+  /** 主会话 modelId，供 Agent 工具启动子代理 */
+  modelId?: string
+  /** ≥1 表示已在子代理内，禁止再调 Agent */
+  subAgentDepth?: number
+}
+
+export type PendingAskUserInternal = PendingAskUserPublic & {
+  toolCallId: string
+}
+
+export type PendingBashInternal = PendingBashPublic & {
+  toolCallId: string
+  apply: () => Promise<
+    { ok: true; content: string; logOk: boolean } | { ok: false; error: string }
+  >
 }
 
 export type ToolRunResult =
   | { kind: 'immediate'; content: string; log: AgentToolLogEntry }
   | { kind: 'pending'; pending: PendingWriteInternal; log: AgentToolLogEntry }
+  | { kind: 'bash_pending'; pendingBash: PendingBashInternal; log: AgentToolLogEntry }
+  | { kind: 'ask_pending'; pendingAsk: PendingAskUserInternal; log: AgentToolLogEntry }
 
 export type PendingWriteInternal = PendingWritePublic & {
   toolCallId: string
@@ -29,6 +53,49 @@ export type PendingWriteInternal = PendingWritePublic & {
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
 const bool = (v: unknown) => v === true
+
+export const parseAskUserQuestions = (
+  raw: unknown,
+): { ok: true; questions: AskUserQuestionItem[] } | { ok: false; error: string } => {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { ok: false, error: 'questions must be a non-empty array' }
+  }
+  const questions: AskUserQuestionItem[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') {
+      return { ok: false, error: 'each question must be an object' }
+    }
+    const rec = item as Record<string, unknown>
+    const id = str(rec.id).trim()
+    const prompt = str(rec.prompt).trim()
+    if (!id || !prompt) {
+      return { ok: false, error: 'each question needs id and prompt' }
+    }
+    if (!Array.isArray(rec.options) || rec.options.length < 2) {
+      return { ok: false, error: `question "${id}" needs at least 2 options` }
+    }
+    const options: AskUserQuestionItem['options'] = []
+    for (const opt of rec.options) {
+      if (!opt || typeof opt !== 'object') {
+        return { ok: false, error: `question "${id}" has invalid option` }
+      }
+      const o = opt as Record<string, unknown>
+      const oid = str(o.id).trim()
+      const label = str(o.label).trim()
+      if (!oid || !label) {
+        return { ok: false, error: `question "${id}" options need id and label` }
+      }
+      options.push({ id: oid, label })
+    }
+    questions.push({
+      id,
+      prompt,
+      options,
+      ...(rec.allow_multiple === true ? { allow_multiple: true } : {}),
+    })
+  }
+  return { ok: true, questions }
+}
 
 let pendingSeq = 0
 const nextPendingId = () => `pw-${Date.now()}-${pendingSeq++}`
@@ -245,8 +312,103 @@ export const executeAgentTool = async (
     }
   }
 
-  const complex = await executeComplexAgentTool(ctx, call)
-  if (complex) return complex
+  if (name === 'Bash') {
+    const command = str(args.command)
+    if (!command) {
+      return {
+        kind: 'immediate',
+        content: 'Error: command is required',
+        log: { name, summary: 'Bash', ok: false },
+      }
+    }
+    const timeoutRaw = args.timeout_ms
+    const timeoutMs =
+      typeof timeoutRaw === 'number' && timeoutRaw > 0 ? Math.min(timeoutRaw, 600_000) : undefined
+    const id = nextPendingId()
+    return {
+      kind: 'bash_pending',
+      log: { name, summary: command.slice(0, 80) || 'Bash', ok: true },
+      pendingBash: {
+        id,
+        toolCallId: call.id,
+        command,
+        ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+        apply: async () => {
+          const res = await runAgentBash(ctx.projectRoot, command, timeoutMs)
+          if (!res.ok) return { ok: false as const, error: res.error }
+          return {
+            ok: true as const,
+            content: formatBashToolContent(res),
+            logOk: res.exitCode === 0,
+          }
+        },
+      },
+    }
+  }
+
+  if (name === 'Agent') {
+    if ((ctx.subAgentDepth ?? 0) >= 1) {
+      return {
+        kind: 'immediate',
+        content: 'Error: Sub-agents cannot spawn further sub-agents.',
+        log: { name, summary: 'Agent (denied)', ok: false },
+      }
+    }
+    const taskPrompt = str(args.prompt)
+    if (!taskPrompt) {
+      return {
+        kind: 'immediate',
+        content: 'Error: prompt is required',
+        log: { name, summary: 'Agent', ok: false },
+      }
+    }
+    if (!ctx.modelId?.trim()) {
+      return {
+        kind: 'immediate',
+        content: 'Error: Agent tool requires an active model session',
+        log: { name, summary: 'Agent', ok: false },
+      }
+    }
+    const { runSubAgentTask, formatAgentToolSummary } = await import('./agent-subagent')
+    const sub = await runSubAgentTask(ctx.projectRoot, ctx.modelId, taskPrompt)
+    if (!sub.ok) {
+      return {
+        kind: 'immediate',
+        content: `Error: ${sub.error}`,
+        log: { name, summary: formatAgentToolSummary(args), ok: false },
+      }
+    }
+    return {
+      kind: 'immediate',
+      content: sub.report,
+      log: { name, summary: formatAgentToolSummary(args), ok: true },
+    }
+  }
+
+  if (name === 'AskUserQuestion') {
+    const parsed = parseAskUserQuestions(args.questions)
+    if (!parsed.ok) {
+      return {
+        kind: 'immediate',
+        content: `Error: ${parsed.error}`,
+        log: { name, summary: 'AskUserQuestion', ok: false },
+      }
+    }
+    const id = nextPendingId()
+    return {
+      kind: 'ask_pending',
+      log: {
+        name,
+        summary: `Ask ${parsed.questions.length} question(s)`,
+        ok: true,
+      },
+      pendingAsk: {
+        id,
+        toolCallId: call.id,
+        questions: parsed.questions,
+      },
+    }
+  }
 
   return {
     kind: 'immediate',

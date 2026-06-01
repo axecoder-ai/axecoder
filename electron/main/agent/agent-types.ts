@@ -1,9 +1,28 @@
-export type AgentBasicToolName = 'Read' | 'Edit' | 'Write' | 'Glob' | 'Grep' | 'Delete' | 'Move'
+export type AgentToolName =
+  | 'Read'
+  | 'Edit'
+  | 'Write'
+  | 'Glob'
+  | 'Grep'
+  | 'Delete'
+  | 'Move'
+  | 'AskUserQuestion'
+  | 'Bash'
+  | 'Agent'
 
-/** 新增复杂 tool 时在此追加名称 */
-export type AgentComplexToolName = 'ExpandChapter' | 'SummarizeChapter'
+export type AskUserOption = { id: string; label: string }
 
-export type AgentToolName = AgentBasicToolName | AgentComplexToolName
+export type AskUserQuestionItem = {
+  id: string
+  prompt: string
+  options: AskUserOption[]
+  allow_multiple?: boolean
+}
+
+export type PendingAskUserPublic = {
+  id: string
+  questions: AskUserQuestionItem[]
+}
 
 export type AgentToolDef = {
   name: AgentToolName
@@ -31,6 +50,12 @@ export type PendingWritePublic = {
   patchText: string
 }
 
+export type PendingBashPublic = {
+  id: string
+  command: string
+  timeoutMs?: number
+}
+
 export type AgentToolLogEntry = {
   name: AgentToolName
   summary: string
@@ -54,6 +79,8 @@ export type AgentSendResult =
       status: 'pending'
       sessionId: string
       pending: PendingWritePublic[]
+      pendingBashes?: PendingBashPublic[]
+      pendingAsks?: PendingAskUserPublic[]
       assistantText: string
       toolLog: AgentToolLogEntry[]
     } & AgentReplyMeta)
@@ -71,6 +98,8 @@ export type AgentContinueResult =
       status: 'pending'
       sessionId: string
       pending: PendingWritePublic[]
+      pendingBashes?: PendingBashPublic[]
+      pendingAsks?: PendingAskUserPublic[]
       assistantText: string
       toolLog: AgentToolLogEntry[]
     } & AgentReplyMeta)

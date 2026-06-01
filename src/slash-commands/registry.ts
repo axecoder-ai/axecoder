@@ -1,7 +1,6 @@
 import type { SlashCommandDef } from './types'
-import initCmd from './init/index'
 
-const COMMANDS: SlashCommandDef[] = [initCmd]
+const COMMANDS: SlashCommandDef[] = []
 
 export function allCommands(): SlashCommandDef[] {
   return COMMANDS

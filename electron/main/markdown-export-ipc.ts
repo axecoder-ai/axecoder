@@ -52,7 +52,7 @@ export const registerMarkdownExportIpc = (getMainWindow: () => BrowserWindow | n
     })
     if (save.canceled || !save.filePath) return { cancelled: true as const }
 
-    const tmpHtml = path.join(os.tmpdir(), `writcraft-export-${Date.now()}.html`)
+    const tmpHtml = path.join(os.tmpdir(), `axecoder-export-${Date.now()}.html`)
     await fs.writeFile(tmpHtml, fullHtml, 'utf-8')
 
     if (!pdfWin || pdfWin.isDestroyed()) {
@@ -93,7 +93,7 @@ export const registerMarkdownExportIpc = (getMainWindow: () => BrowserWindow | n
 
     const docxBuf = await HTMLtoDOCX(fullHtml, null, {
       title: base,
-      creator: 'WritCraft',
+      creator: 'AxeCoder',
       font: 'PingFang SC',
       lang: 'zh-CN',
     })

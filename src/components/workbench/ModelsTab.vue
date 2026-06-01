@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import type { ModelEntry, ModelSaveInput } from '../../types/writcraft'
+import type { ModelEntry, ModelSaveInput } from '../../types/axecoder'
 import ModelFormDialog from './ModelFormDialog.vue'
 
 const emit = defineEmits<{
@@ -25,7 +25,7 @@ const filtered = computed(() => {
 })
 
 const reload = async () => {
-  const data = await window.writcraft.listModels()
+  const data = await window.axecoder.listModels()
   models.value = data.models
   activeModelId.value = data.activeModelId
 }
@@ -47,7 +47,7 @@ const openEdit = (m: ModelEntry) => {
 const onSaved = async (payload: { entry: ModelEntry; apiKey: string }) => {
   const input: ModelSaveInput = { ...payload.entry }
   if (payload.apiKey.trim()) input.apiKey = payload.apiKey.trim()
-  const res = await window.writcraft.saveModel(input)
+  const res = await window.axecoder.saveModel(input)
   if (!res.ok) {
     alert(res.error)
     return
@@ -57,7 +57,7 @@ const onSaved = async (payload: { entry: ModelEntry; apiKey: string }) => {
 }
 
 const onToggle = async (m: ModelEntry) => {
-  const res = await window.writcraft.toggleModel(m.id, !m.enabled)
+  const res = await window.axecoder.toggleModel(m.id, !m.enabled)
   if (!res.ok) {
     alert(res.error)
     return
@@ -68,7 +68,7 @@ const onToggle = async (m: ModelEntry) => {
 
 const onDelete = async (m: ModelEntry) => {
   if (!confirm(`删除模型「${m.name}」？`)) return
-  const res = await window.writcraft.deleteModel(m.id)
+  const res = await window.axecoder.deleteModel(m.id)
   if (!res.ok) {
     alert(res.error)
     return

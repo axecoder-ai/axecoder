@@ -1,10 +1,17 @@
 import type { ModelEntry } from '../models-types'
-import type { AgentLoopMessage, AgentToolCall } from '../agent/agent-types'
+import type { AgentLoopMessage, AgentToolCall, AgentToolDef } from '../agent/agent-types'
 import { AGENT_TOOLS } from '../agent/agent-tool-defs'
 import { buildOpenAiChatUrl } from './providers/openai'
 import { buildAnthropicMessagesUrl } from './providers/anthropic'
 import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from './request-timeout'
 import { agentLoopToOpenAiWire, parseOpenAiAssistantParts } from './openai-messages'
+import {
+  consumeOpenAiSse,
+  emptyOpenAiStreamAccum,
+  mergeOpenAiStreamChunk,
+  openAiStreamAccumToMessage,
+} from './openai-sse'
+import type { OpenAiStreamDelta } from './providers/openai'
 
 export type ChatWithToolsResult =
   | {
@@ -16,8 +23,8 @@ export type ChatWithToolsResult =
     }
   | { ok: false; error: string }
 
-const openAiTools = () =>
-  AGENT_TOOLS.map((t) => ({
+const openAiTools = (tools: readonly AgentToolDef[]) =>
+  tools.map((t) => ({
     type: 'function' as const,
     function: {
       name: t.name,
@@ -53,10 +60,13 @@ export const chatOpenAiWithTools = async (
   model: ModelEntry,
   apiKey: string,
   messages: AgentLoopMessage[],
+  onDelta?: (delta: OpenAiStreamDelta) => void,
+  tools: readonly AgentToolDef[] = AGENT_TOOLS,
 ): Promise<ChatWithToolsResult> => {
   const url = buildOpenAiChatUrl(model.baseUrl)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
+  const useStream = !!onDelta
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -64,9 +74,9 @@ export const chatOpenAiWithTools = async (
       body: JSON.stringify({
         model: model.modelId,
         messages: agentLoopToOpenAiWire(messages),
-        tools: openAiTools(),
+        tools: openAiTools(tools),
         tool_choice: 'auto',
-        stream: false,
+        stream: useStream,
       }),
       signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
     })
@@ -74,8 +84,19 @@ export const chatOpenAiWithTools = async (
       const errText = await res.text()
       return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
     }
-    const data = (await res.json()) as { choices?: { message?: Record<string, unknown> }[] }
-    const message = data.choices?.[0]?.message ?? {}
+    let message: Record<string, unknown>
+    if (useStream) {
+      const accum = emptyOpenAiStreamAccum()
+      await consumeOpenAiSse(res, (obj) => {
+        const { contentDelta, reasoningDelta } = mergeOpenAiStreamChunk(accum, obj)
+        if (contentDelta) onDelta!({ content: contentDelta })
+        if (reasoningDelta) onDelta!({ reasoning: reasoningDelta })
+      })
+      message = openAiStreamAccumToMessage(accum)
+    } else {
+      const data = (await res.json()) as { choices?: { message?: Record<string, unknown> }[] }
+      message = data.choices?.[0]?.message ?? {}
+    }
     const parts = parseOpenAiAssistantParts(message)
     const toolCalls = parseOpenAiToolCalls(message)
     return {
@@ -90,8 +111,8 @@ export const chatOpenAiWithTools = async (
   }
 }
 
-const anthropicTools = () =>
-  AGENT_TOOLS.map((t) => ({
+const anthropicTools = (tools: readonly AgentToolDef[]) =>
+  tools.map((t) => ({
     name: t.name,
     description: t.description,
     input_schema: t.parameters,
@@ -153,6 +174,7 @@ export const chatAnthropicWithTools = async (
   model: ModelEntry,
   apiKey: string,
   messages: AgentLoopMessage[],
+  tools: readonly AgentToolDef[] = AGENT_TOOLS,
 ): Promise<ChatWithToolsResult> => {
   if (!apiKey.trim()) return { ok: false, error: 'Anthropic 需要 API Key' }
   const system = messages.find((m) => m.role === 'system')?.content ?? ''
@@ -170,7 +192,7 @@ export const chatAnthropicWithTools = async (
         max_tokens: 4096,
         system,
         messages: toAnthropicMessages(messages),
-        tools: anthropicTools(),
+        tools: anthropicTools(tools),
       }),
       signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
     })
@@ -204,13 +226,15 @@ export const chatWithToolsForModel = async (
   model: ModelEntry,
   apiKey: string,
   messages: AgentLoopMessage[],
+  onDelta?: (delta: OpenAiStreamDelta) => void,
+  tools: readonly AgentToolDef[] = AGENT_TOOLS,
 ): Promise<ChatWithToolsResult> => {
   if (model.provider === 'ollama') {
     return { ok: false, error: 'Ollama 暂不支持 Agent 文件工具，请使用 OpenAI 或 Anthropic' }
   }
   if (model.provider === 'openai') {
     if (!apiKey.trim()) return { ok: false, error: 'OpenAI 格式需要 API Key' }
-    return chatOpenAiWithTools(model, apiKey, messages)
+    return chatOpenAiWithTools(model, apiKey, messages, onDelta, tools)
   }
-  return chatAnthropicWithTools(model, apiKey, messages)
+  return chatAnthropicWithTools(model, apiKey, messages, tools)
 }

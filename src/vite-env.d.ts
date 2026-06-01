@@ -8,5 +8,5 @@ declare module '*.vue' {
 
 interface Window {
   ipcRenderer: import('electron').IpcRenderer
-  writcraft: import('./types/writcraft').WritcraftFs
+  axecoder: import('./types/axecoder').AxeCoderFs
 }

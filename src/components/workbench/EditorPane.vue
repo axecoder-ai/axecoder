@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import MarkdownIt from 'markdown-it'
-import MonacoEditor from './MonacoEditor.vue'
+
+const MonacoEditor = defineAsyncComponent(() => import('./MonacoEditor.vue'))
 import type { OpenFile } from '../../composables/workbench-state'
-import type { AppTheme } from '../../types/writcraft'
+import type { AppTheme } from '../../types/axecoder'
+import { isMarkdownPath, monacoLanguageForPath } from '../../utils/editor-language'
 
 const props = defineProps<{
   tabs: OpenFile[]
@@ -25,6 +27,8 @@ const emit = defineEmits<{
 const monacoRef = ref<InstanceType<typeof MonacoEditor> | null>(null)
 const md = new MarkdownIt()
 const previewHtml = computed(() => md.render(props.content))
+const isMarkdown = computed(() => isMarkdownPath(props.activePath))
+const editorLanguage = computed(() => monacoLanguageForPath(props.activePath))
 
 const revealLine = (line: number, col = 1) => {
   monacoRef.value?.revealPosition(line, col)
@@ -69,7 +73,7 @@ defineExpose({ revealLine, focusEditor })
           <span class="tab-name">未打开文件</span>
         </div>
       </div>
-      <div class="tab-actions">
+      <div v-if="isMarkdown" class="tab-actions">
         <button
           type="button"
           class="mode-btn"
@@ -90,17 +94,17 @@ defineExpose({ revealLine, focusEditor })
     </div>
     <div class="editor-body">
       <MonacoEditor
-        v-show="mode === 'markdown' && activePath"
+        v-if="activePath && (isMarkdown ? mode === 'markdown' : true)"
         ref="monacoRef"
         :model-value="content"
-        language="markdown"
+        :language="editorLanguage"
         :read-only="false"
         :font-size="fontSize ?? 14"
         :app-theme="appTheme"
         @update:model-value="emit('update:content', $event)"
         @cursor-change="(line, col) => emit('cursor-change', line, col)"
       />
-      <div v-show="mode === 'preview'" class="preview" v-html="previewHtml" />
+      <div v-show="isMarkdown && mode === 'preview'" class="preview" v-html="previewHtml" />
       <div v-if="!activePath" class="editor-empty">
         <p>从左侧选择文件，或使用 ⌘P 命令面板</p>
       </div>

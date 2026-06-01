@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import fs from 'node:fs/promises'
 import type { AiChatMessage } from './models-types'
 import { getModelById } from './models-store'
@@ -6,6 +6,17 @@ import { getSecret } from './secrets-store'
 import { chatWithProvider } from './ai/chat-with-provider'
 import { resolvePathInProject } from './agent/agent-path'
 import { buildUserMessageWithFiles } from '../../src/utils/chat-file-context'
+import { emitAiStream } from './ai-stream-emit'
+import type { OpenAiStreamDelta } from './ai/providers/openai'
+
+let aiStreamSeq = 0
+
+const openAiStreamHandler = (event: IpcMainInvokeEvent, streamId: string) => {
+  return (delta: OpenAiStreamDelta) => {
+    const text = (delta.content ?? '') + (delta.reasoning ?? '')
+    if (text) emitAiStream(event.sender, { streamId, delta: text })
+  }
+}
 
 export const registerAiIpc = () => {
   ipcMain.handle(
@@ -32,11 +43,20 @@ export const registerAiIpc = () => {
     },
   )
 
-  ipcMain.handle('ai:chat', async (_, modelId: string, messages: AiChatMessage[]) => {
-    if (!modelId?.trim()) return { ok: false as const, error: '未选择模型' }
-    const model = await getModelById(modelId)
-    if (!model) return { ok: false as const, error: '模型不存在' }
-    const apiKey = await getSecret(modelId)
-    return chatWithProvider(model, apiKey, messages)
-  })
+  ipcMain.handle(
+    'ai:chat',
+    async (event, modelId: string, messages: AiChatMessage[], clientStreamId?: string) => {
+      if (!modelId?.trim()) return { ok: false as const, error: '未选择模型' }
+      const model = await getModelById(modelId)
+      if (!model) return { ok: false as const, error: '模型不存在' }
+      const apiKey = await getSecret(modelId)
+      const streamId =
+        typeof clientStreamId === 'string' && clientStreamId.trim()
+          ? clientStreamId.trim()
+          : `ai-${Date.now()}-${++aiStreamSeq}`
+      const onDelta =
+        model.provider === 'openai' ? openAiStreamHandler(event, streamId) : undefined
+      return chatWithProvider(model, apiKey, messages, onDelta)
+    },
+  )
 }

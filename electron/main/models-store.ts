@@ -1,10 +1,10 @@
 import fs from 'node:fs/promises'
 import type { ModelEntry, ModelSaveInput, ModelsFile } from './models-types'
 import { isAllowedBaseUrl } from './models-types'
-import { ensureWritcraftDir, writcraftPath } from './writcraft-dir'
+import { ensureAxecoderDir, axecoderPath } from './axecoder-dir'
 import { deleteSecret, setSecret } from './secrets-store'
 
-const modelsPath = () => writcraftPath('models.json')
+const modelsPath = () => axecoderPath('models.json')
 
 const emptyModels = (): ModelsFile => ({
   schemaVersion: 1,
@@ -28,7 +28,7 @@ const readModelsFile = async (): Promise<ModelsFile> => {
 }
 
 const writeModelsFile = async (data: ModelsFile) => {
-  await ensureWritcraftDir()
+  await ensureAxecoderDir()
   await fs.writeFile(modelsPath(), JSON.stringify(data, null, 2), 'utf-8')
 }
 

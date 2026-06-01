@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { rgPath } from '@vscode/ripgrep'
-import { isUnderHiddenPathSegment } from '../../src/utils/background-init'
+import { isUnderHiddenPathSegment } from '../../src/utils/hidden-path'
 import { isPathInsideRoot } from './fs-utils'
 
 /** 按 glob 列出项目内文件路径（绝对路径） */
@@ -18,7 +18,7 @@ export const runRipgrepFiles = (rootPath: string, globPattern: string): Promise<
       '--glob',
       '!dist-electron/**',
       '--glob',
-      '!.writcraft/sessions/**',
+      '!.axecoder/sessions/**',
       '--glob',
       '!**/.*/**',
       '--glob',

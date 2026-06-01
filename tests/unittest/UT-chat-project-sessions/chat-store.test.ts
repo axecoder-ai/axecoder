@@ -12,7 +12,7 @@ import {
   projectSessionsDir,
   projectSessionFilePath,
   projectSessionsIndexPath,
-} from '../../../electron/main/project-writcraft-dir'
+} from '../../../electron/main/project-axecoder-dir'
 
 let projectA = ''
 let projectB = ''

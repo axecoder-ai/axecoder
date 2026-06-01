@@ -1,11 +1,7 @@
 <script setup lang="ts">
-import BackgroundMaterialsIcon from '../icons/BackgroundMaterialsIcon.vue'
-
 const items = [
   { id: 'explorer', title: '资源管理器' },
-  { id: 'search', title: '搜索' },
-  { id: 'background', title: '背景资料' },
-  { id: 'extensions', title: '扩展' },
+  { id: 'search', title: '在项目中搜索' },
 ] as const
 
 defineProps<{
@@ -41,18 +37,6 @@ defineEmits<{
       <svg v-else-if="item.id === 'search'" class="view-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <circle cx="7" cy="7" r="4" stroke="currentColor" />
         <path d="M10 10l3.5 3.5" stroke="currentColor" stroke-linecap="round" />
-      </svg>
-      <BackgroundMaterialsIcon v-else-if="item.id === 'background'" class="view-icon" />
-      <svg v-else class="view-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="0.5" stroke="currentColor" />
-        <rect x="9" y="2.5" width="4.5" height="4.5" rx="0.5" stroke="currentColor" />
-        <rect x="2.5" y="9" width="4.5" height="4.5" rx="0.5" stroke="currentColor" />
-        <rect x="9" y="9" width="4.5" height="4.5" rx="0.5" stroke="currentColor" />
-      </svg>
-    </button>
-    <button type="button" class="view-btn view-btn-more" title="更多视图" disabled>
-      <svg class="view-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path d="M4 6.5l4 3.5 4-3.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
     </button>
   </nav>
@@ -92,10 +76,6 @@ defineEmits<{
 .view-btn:disabled {
   opacity: 0.45;
   cursor: default;
-}
-
-.view-btn-more {
-  margin-left: auto;
 }
 
 .view-icon {

@@ -6,7 +6,7 @@ alwaysApply: false
 
 # 前端多主题兼容
 
-WritCraft 有三套主题，定义在 `src/style.css`：
+AxeCoder 有三套主题，定义在 `src/style.css`：
 
 - `[data-theme='vscode']`（默认深色）
 - `[data-theme='aura-light']`

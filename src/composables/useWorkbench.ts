@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import type { AppSettings, SearchHit } from '../types/writcraft'
+import type { AppSettings, SearchHit } from '../types/axecoder'
 import { applyTheme } from '../utils/apply-theme'
 import {
   fileNameFromPath,
@@ -13,7 +13,7 @@ import {
 } from './workbench-state'
 
 export const useWorkbench = () => {
-  const fs = window.writcraft
+  const fs = window.axecoder
 
   const openFiles = ref<OpenFile[]>([])
   const activePath = ref<string | null>(null)
@@ -26,6 +26,8 @@ export const useWorkbench = () => {
     autoSaveDelay: 400,
     fontSize: 14,
     theme: 'vscode',
+    agentAutoApplyWrites: false,
+    agentOutputStyle: 'default',
   })
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -116,7 +118,13 @@ export const useWorkbench = () => {
       activePath.value = path
       return
     }
-    const text = content ?? (await fs.readFile(path)).content
+    let text: string
+    if (content !== undefined) {
+      text = content
+    } else {
+      const res = await fs.readFile(path)
+      text = res.content
+    }
     const file: OpenFile = {
       path,
       name: fileNameFromPath(path),

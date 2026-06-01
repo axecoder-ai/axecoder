@@ -14,9 +14,6 @@ import {
   IGNORED_DIR_NAMES,
 } from './fs-utils'
 import { getSettings, setSettings } from './settings-store'
-import { readBackgroundMaterials } from './background-materials'
-import { initBackgroundMaterials } from './background-init'
-
 export type FileNode = {
   name: string
   path: string
@@ -384,44 +381,4 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
   ipcMain.handle('fs:getSettings', async () => getSettings())
   ipcMain.handle('fs:setSettings', async (_, partial) => setSettings(partial))
 
-  ipcMain.handle('fs:readBackgroundMaterials', async (_, projectRoot: string) =>
-    readBackgroundMaterials(projectRoot),
-  )
-
-  ipcMain.handle('fs:initBackground', async (event, projectRoot: string, modelId?: string) => {
-    const result = await initBackgroundMaterials(
-      projectRoot,
-      {
-        stage: (stage) => {
-          event.sender.send('background:initProgress', { type: 'stage', stage, status: 'start' })
-        },
-        file: (relativePath, current, total) => {
-          event.sender.send('background:initProgress', {
-            type: 'file',
-            relativePath,
-            current,
-            total,
-          })
-        },
-        ai: (payload) => {
-          event.sender.send('background:initProgress', { type: 'ai', ...payload })
-        },
-      },
-      typeof modelId === 'string' ? modelId : undefined,
-    )
-    if (result.ok) {
-      event.sender.send('background:initProgress', {
-        type: 'stage',
-        stage: 'done',
-        status: 'done',
-      })
-    } else {
-      event.sender.send('background:initProgress', {
-        type: 'stage',
-        stage: 'scan',
-        status: 'error',
-      })
-    }
-    return result
-  })
 }

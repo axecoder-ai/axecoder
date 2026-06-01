@@ -4,8 +4,6 @@ import TitleBar from './components/workbench/TitleBar.vue'
 import SidebarViewBar from './components/workbench/SidebarViewBar.vue'
 import FileExplorer from './components/workbench/FileExplorer.vue'
 import SearchPanel from './components/workbench/SearchPanel.vue'
-import BackgroundPanel from './components/workbench/BackgroundPanel.vue'
-import ExtensionsPanel from './components/workbench/ExtensionsPanel.vue'
 import EditorPane from './components/workbench/EditorPane.vue'
 import WelcomePage from './components/workbench/WelcomePage.vue'
 import ChatPane from './components/workbench/ChatPane.vue'
@@ -16,7 +14,6 @@ import SettingsModal from './components/workbench/SettingsModal.vue'
 import SettingsPanel from './components/workbench/SettingsPanel.vue'
 import CommandPalette from './components/workbench/CommandPalette.vue'
 import { useWorkbench } from './composables/useWorkbench'
-import { parseMarkdownOutline } from './utils/markdown-outline'
 import {
   clampAgentsWidth,
   clampAiPanelWidth,
@@ -26,10 +23,20 @@ import {
   WC_CHAT_MIN,
   WC_EDITOR_MIN,
 } from './utils/agents-panel'
-import type { SearchHit, WindowLayout } from './types/writcraft'
+import type { SearchHit, WindowLayout } from './types/axecoder'
+import { languageLabelForPath } from './utils/editor-language'
 
 const wb = useWorkbench()
-const projectRoot = computed(() => wb.projectRoot.value)
+const {
+  openFiles,
+  activePath,
+  editorContent,
+  projectRoot,
+  projectName,
+  saveStatus,
+  settings,
+} = wb
+const statusLanguage = computed(() => languageLabelForPath(activePath.value))
 
 const activeActivity = ref('explorer')
 const aiPanelVisible = ref(false)
@@ -45,7 +52,7 @@ const settingsPanelVisible = ref(false)
 const paletteVisible = ref(false)
 const recentFiles = ref<string[]>([])
 const recentProjects = ref<string[]>([])
-const WELCOME_ON_STARTUP_KEY = 'writcraft.welcomeOnStartup'
+const WELCOME_ON_STARTUP_KEY = 'axecoder.welcomeOnStartup'
 const welcomeOnStartup = ref(true)
 const windowLayout = ref<WindowLayout>({
   fullscreen: false,
@@ -158,18 +165,17 @@ const onAgentsSplitPointerUp = (e: PointerEvent) => {
   }
 }
 
-const outlineItems = computed(() => parseMarkdownOutline(wb.editorContent.value))
-const hasOpenEditorTabs = computed(() => wb.openFiles.value.length > 0)
-/** 已打开项目、编辑器标签或 AI 侧栏时不再占位欢迎页 */
-const hasWorkbenchContent = computed(
-  () => hasOpenEditorTabs.value || !!projectRoot.value || aiPanelVisible.value,
+const hasOpenEditorTabs = computed(() => openFiles.value.length > 0)
+/** 已打开项目或已有标签时显示编辑区（避免欢迎页与编辑器同时被 v-show 关掉） */
+const showEditorArea = computed(() => hasOpenEditorTabs.value || !!projectRoot.value)
+const showWelcomePage = computed(
+  () => welcomeOnStartup.value && !showEditorArea.value && !aiPanelVisible.value,
 )
-const showWelcomePage = computed(() => welcomeOnStartup.value && !hasWorkbenchContent.value)
 const aiPanelFillsCenter = computed(
-  () => aiPanelVisible.value && !hasOpenEditorTabs.value && !showWelcomePage.value,
+  () => aiPanelVisible.value && !showEditorArea.value && !showWelcomePage.value,
 )
 const aiPanelUsesFixedWidth = computed(
-  () => aiPanelVisible.value && (hasOpenEditorTabs.value || showWelcomePage.value),
+  () => aiPanelVisible.value && (showEditorArea.value || showWelcomePage.value),
 )
 
 const onSettingsModelsChanged = async () => {
@@ -178,8 +184,6 @@ const onSettingsModelsChanged = async () => {
 
 const showExplorer = () => activeActivity.value === 'explorer'
 const showSearch = () => activeActivity.value === 'search'
-const showBackground = () => activeActivity.value === 'background'
-const showExtensions = () => activeActivity.value === 'extensions'
 
 const paletteCommands = [
   { id: 'openProject', label: '打开项目', shortcut: '⌘O' },
@@ -196,8 +200,8 @@ const paletteCommands = [
 
 const loadRecent = async () => {
   const [filesRes, projectsRes] = await Promise.all([
-    window.writcraft.getRecentFiles(),
-    window.writcraft.getRecentProjects(),
+    window.axecoder.getRecentFiles(),
+    window.axecoder.getRecentProjects(),
   ])
   recentFiles.value = filesRes.files
   recentProjects.value = projectsRes.projects
@@ -256,19 +260,32 @@ const triggerOpenProject = () => {
   fileExplorerRef.value?.openProject()
 }
 
+const onEditorContentUpdate = (v: string) => {
+  editorContent.value = v
+}
+
+const onSelectTab = (p: string) => {
+  activePath.value = p
+}
+
 const onOpenFile = async (path: string) => {
-  await wb.openFileAtPath(path)
-  await loadRecent()
+  try {
+    await wb.openFileAtPath(path)
+    await loadRecent()
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    window.alert(`无法打开文件：\n${path}\n\n${msg}`)
+  }
 }
 
 const onProjectOpened = async (rootPath: string) => {
-  wb.openFiles.value = []
-  wb.activePath.value = null
+  openFiles.value = []
+  activePath.value = null
   await wb.onProjectOpened(rootPath)
-  await loadRecent()
+  void loadRecent()
   activeChatSessionId.value = ''
-  await chatPaneRef.value?.load()
-  await agentsPanelRef.value?.load()
+  void chatPaneRef.value?.load()
+  void agentsPanelRef.value?.load()
 }
 
 const onFileRenamed = (oldPath: string, newPath: string) => {
@@ -290,11 +307,6 @@ const onSearchOpen = async (hit: SearchHit) => {
   setTimeout(() => {
     editorPaneRef.value?.revealLine(hit.line, hit.col)
   }, 100)
-}
-
-const onOutlineJump = (line: number) => {
-  editorMode.value = 'markdown'
-  setTimeout(() => editorPaneRef.value?.revealLine(line, 1), 50)
 }
 
 const onFindInFiles = () => {
@@ -358,15 +370,15 @@ onMounted(async () => {
   await wb.loadSettings()
   await loadRecent()
   window.addEventListener('resize', clampLayoutWidths)
-  void window.writcraft.getWindowLayout().then((layout) => {
+  void window.axecoder.getWindowLayout().then((layout) => {
     windowLayout.value = layout
   })
-  offWindowLayout = window.writcraft.onWindowLayout((layout) => {
+  offWindowLayout = window.axecoder.onWindowLayout((layout) => {
     windowLayout.value = layout
   })
   await nextTick()
   clampLayoutWidths()
-  offOpenProject = window.writcraft.onOpenProject(triggerOpenProject)
+  offOpenProject = window.axecoder.onOpenProject(triggerOpenProject)
   wb.bindMenu({
     onNewFile: () => fileExplorerRef.value?.newFile(),
     onFindInFiles,
@@ -393,7 +405,7 @@ onUnmounted(() => {
     <TitleBar
       :primary-sidebar-visible="primarySidebarVisible"
       :ai-panel-visible="aiPanelVisible"
-      :project-name="wb.projectName.value"
+      :project-name="projectName"
       :window-layout="windowLayout"
       @toggle-primary-sidebar="togglePrimarySidebar"
       @toggle-ai-panel="toggleAiPanel"
@@ -405,34 +417,24 @@ onUnmounted(() => {
         <div v-show="primarySidebarVisible" class="primary-side">
           <SidebarViewBar :active="activeActivity" @select="onActivitySelect" />
           <div class="sidebar-panels">
-          <FileExplorer
-            v-show="showExplorer()"
-            ref="fileExplorerRef"
-            :visible="showExplorer()"
-            :active-file-path="wb.activePath.value"
-            :outline-items="outlineItems"
-            :recent-files="recentFiles"
-            @open-file="onOpenFile"
-            @project-opened="onProjectOpened"
-            @file-renamed="onFileRenamed"
-            @file-deleted="onFileDeleted"
-            @outline-jump="onOutlineJump"
-          />
-          <SearchPanel
-            v-show="showSearch()"
-            ref="searchPanelRef"
-            :visible="showSearch()"
-            :project-name="wb.projectName.value"
-            @search="onSearch"
-            @open="onSearchOpen"
-          />
-          <BackgroundPanel
-            v-show="showBackground()"
-            :visible="showBackground()"
-            :project-root="projectRoot"
-            @open-file="onOpenFile"
-          />
-          <ExtensionsPanel v-show="showExtensions()" :visible="showExtensions()" />
+            <FileExplorer
+              v-show="showExplorer()"
+              ref="fileExplorerRef"
+              :visible="showExplorer()"
+              :active-file-path="activePath"
+              @open-file="onOpenFile"
+              @project-opened="onProjectOpened"
+              @file-renamed="onFileRenamed"
+              @file-deleted="onFileDeleted"
+            />
+            <SearchPanel
+              v-show="showSearch()"
+              ref="searchPanelRef"
+              :visible="showSearch()"
+              :project-name="projectName"
+              @search="onSearch"
+              @open="onSearchOpen"
+            />
           </div>
         </div>
         <WelcomePage
@@ -449,17 +451,17 @@ onUnmounted(() => {
           @update:show-on-startup="onWelcomeShowOnStartupChange"
         />
         <EditorPane
-          v-show="hasOpenEditorTabs"
+          v-if="showEditorArea"
           ref="editorPaneRef"
-          :tabs="wb.openFiles.value"
-          :active-path="wb.activePath.value"
-          :content="wb.editorContent.value"
+          :tabs="openFiles"
+          :active-path="activePath"
+          :content="editorContent"
           :mode="editorMode"
-          :font-size="wb.settings.value.fontSize"
-          :app-theme="wb.settings.value.theme"
-          @update:content="(v) => (wb.editorContent.value = v)"
+          :font-size="settings.fontSize"
+          :app-theme="settings.theme"
+          @update:content="onEditorContentUpdate"
           @update:mode="editorMode = $event"
-          @select="(p) => (wb.activePath.value = p)"
+          @select="onSelectTab"
           @close="(p) => wb.closeTab(p)"
           @cursor-change="(l, c) => { cursorLine = l; cursorCol = c }"
         />
@@ -482,7 +484,7 @@ onUnmounted(() => {
           <ChatPane
             ref="chatPaneRef"
             :project-root="projectRoot"
-            :context-file-path="wb.activePath.value"
+            :context-file-path="activePath"
             :agents-sidebar-visible="agentsSidebarVisible"
             @close="aiPanelVisible = false"
             @show-agents-sidebar="agentsSidebarVisible = true"
@@ -522,19 +524,19 @@ onUnmounted(() => {
     <StatusBar
       :line="cursorLine"
       :col="cursorCol"
-      language="Markdown"
-      :project-name="wb.projectName.value"
-      :save-status="wb.saveStatus.value"
+      :language="statusLanguage"
+      :project-name="projectName"
+      :save-status="saveStatus"
     />
     <SettingsModal
       :visible="settingsVisible"
-      :settings="wb.settings.value"
+      :settings="settings"
       @close="settingsVisible = false"
       @save="onSettingsSave"
     />
     <SettingsPanel
       :visible="settingsPanelVisible"
-      :settings="wb.settings.value"
+      :settings="settings"
       @close="settingsPanelVisible = false"
       @changed="onSettingsModelsChanged"
       @save="onSettingsSave"

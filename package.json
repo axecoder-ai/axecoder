@@ -1,8 +1,8 @@
 {
-  "name": "writcraft",
+  "name": "axecoder",
   "version": "0.1.0",
   "main": "dist-electron/main/index.js",
-  "description": "标书撰写桌面工具 — Electron + Vue 3 + Monaco",
+  "description": "代码编写桌面 IDE — Electron + Vue 3 + Monaco",
   "author": "草鞋没号 <308487730@qq.com>",
   "license": "MIT",
   "private": true,
@@ -51,8 +51,8 @@
     "monaco-editor": "^0.55.1"
   },
   "build": {
-    "appId": "com.writcraft.app",
-    "productName": "WritCraft",
+    "appId": "com.axecoder.app",
+    "productName": "AxeCoder",
     "icon": "build/icon.png",
     "directories": {
       "output": "release/${version}"
@@ -63,6 +63,13 @@
         "zip"
       ],
       "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        "zip"
+      ],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
     }
   }
 }

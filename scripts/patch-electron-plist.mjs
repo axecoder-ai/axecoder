@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const name = 'WritCraft'
+const name = 'AxeCoder'
 
 if (process.platform !== 'darwin') {
   console.log('[patch-electron] 非 macOS，跳过')

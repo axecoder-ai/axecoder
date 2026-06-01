@@ -25,14 +25,20 @@ const appendOut = (text: string) => {
 
 const startTerminal = async () => {
   terminalOut.value = ''
-  await window.writcraft.terminalStart(props.projectRoot || '')
+  await window.axecoder.terminalStart(props.projectRoot || '')
 }
 
 const sendLine = async () => {
   const line = terminalIn.value
   if (!line.trim()) return
-  await window.writcraft.terminalWrite(line + (line.endsWith('\n') ? '' : '\n'))
+  await window.axecoder.terminalWrite(line + (line.endsWith('\n') ? '' : '\n'))
   terminalIn.value = ''
+}
+
+const onTerminalKeydown = async (e: KeyboardEvent) => {
+  if (!e.ctrlKey || e.key !== 'c') return
+  e.preventDefault()
+  await window.axecoder.terminalInterrupt()
 }
 
 watch(
@@ -40,7 +46,7 @@ watch(
   async ([vis]) => {
     if (vis && tab.value === 'terminal') {
       offTerminal?.()
-      offTerminal = window.writcraft.onTerminalData(appendOut)
+      offTerminal = window.axecoder.onTerminalData(appendOut)
       await startTerminal()
     }
   },
@@ -49,14 +55,14 @@ watch(
 watch(tab, async (t) => {
   if (t === 'terminal' && props.visible) {
     offTerminal?.()
-    offTerminal = window.writcraft.onTerminalData(appendOut)
+    offTerminal = window.axecoder.onTerminalData(appendOut)
     if (!terminalOut.value) await startTerminal()
   }
 })
 
 onUnmounted(() => {
   offTerminal?.()
-  void window.writcraft.terminalStop()
+  void window.axecoder.terminalStop()
 })
 
 const addOutput = (msg: string) => {
@@ -80,7 +86,12 @@ defineExpose({ addOutput, setProblems })
         <span v-if="problems.length" class="badge">{{ problems.length }}</span>
       </button>
     </div>
-    <div v-show="tab === 'terminal'" class="panel-content terminal">
+    <div
+      v-show="tab === 'terminal'"
+      class="panel-content terminal"
+      tabindex="0"
+      @keydown="onTerminalKeydown"
+    >
       <pre ref="outEl" class="terminal-out">{{ terminalOut }}</pre>
       <div class="terminal-in-row">
         <span class="prompt">$</span>
@@ -88,8 +99,9 @@ defineExpose({ addOutput, setProblems })
           ref="terminalInput"
           v-model="terminalIn"
           class="terminal-in"
-          placeholder="输入命令后回车"
+          placeholder="回车执行；Ctrl+C 中断"
           @keydown.enter="sendLine"
+          @keydown="onTerminalKeydown"
         />
       </div>
     </div>

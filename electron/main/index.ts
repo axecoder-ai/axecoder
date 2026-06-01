@@ -7,7 +7,7 @@ import { registerChatIpc } from './chat-store'
 import { registerAiIpc } from './ai-ipc'
 import { registerAgentIpc } from './agent-ipc'
 import { registerModelsIpc } from './models-ipc'
-import { runMigrate } from './migrate-writcraft'
+import { runMigrate } from './migrate-axecoder'
 import Store from 'electron-store'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -37,9 +37,9 @@ if (os.release().startsWith('6.1')) app.disableHardwareAcceleration()
 
 app.commandLine.appendSwitch('lang', 'en-US')
 
-app.setName('WritCraft')
+app.setName('AxeCoder')
 
-if (process.platform === 'win32') app.setAppUserModelId('com.writcraft.app')
+if (process.platform === 'win32') app.setAppUserModelId('com.axecoder.app')
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -188,7 +188,7 @@ const setupAppMenu = (getWin: () => BrowserWindow | null) => {
 
 async function createWindow() {
   win = new BrowserWindow({
-    title: 'WritCraft',
+    title: 'AxeCoder',
     width: 1440,
     height: 900,
     minWidth: 1024,
@@ -241,9 +241,9 @@ app.whenReady().then(async () => {
     const author =
       typeof pkg.author === 'string'
         ? pkg.author.replace(/\s*<[^>]+>\s*$/, '').trim()
-        : 'WritCraft'
+        : 'AxeCoder'
     app.setAboutPanelOptions({
-      applicationName: 'WritCraft',
+      applicationName: 'AxeCoder',
       applicationVersion: pkg.version,
       version: pkg.version,
       copyright: `Copyright © ${new Date().getFullYear()} ${author}`,

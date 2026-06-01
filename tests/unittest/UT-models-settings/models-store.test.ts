@@ -10,18 +10,18 @@ import {
   setActiveModel,
   getModelById,
 } from '../../../electron/main/models-store'
-import { setWritcraftDirForTests } from '../../../electron/main/writcraft-dir'
+import { setAxecoderDirForTests } from '../../../electron/main/axecoder-dir'
 import { writeSecrets } from '../../../electron/main/secrets-store'
 
 let tmpDir = ''
 
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wc-models-'))
-  setWritcraftDirForTests(tmpDir)
+  setAxecoderDirForTests(tmpDir)
 })
 
 afterEach(async () => {
-  setWritcraftDirForTests(null)
+  setAxecoderDirForTests(null)
   await fs.rm(tmpDir, { recursive: true, force: true })
 })
 

@@ -17,12 +17,19 @@ export type ModelsFile = {
 
 export type AppTheme = 'vscode' | 'aura-light' | 'aura-dark'
 
+/** Claude Code built-in output styles (`outputStyles.ts`) */
+export type AgentOutputStyleId = 'default' | 'Explanatory' | 'Learning'
+
 export type AppConfig = {
   schemaVersion: 1
   autoSave: boolean
   autoSaveDelay: number
   fontSize: number
   theme: AppTheme
+  /** Agent Write/Edit/Delete/Move 不经确认直接写盘 */
+  agentAutoApplyWrites: boolean
+  /** Agent 系统提示内置输出风格 */
+  agentOutputStyle: AgentOutputStyleId
 }
 
 export type AiChatMessage = {

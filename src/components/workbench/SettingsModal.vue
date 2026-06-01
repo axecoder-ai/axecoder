@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { AppSettings } from '../../types/writcraft'
+import type { AppSettings } from '../../types/axecoder'
 
 const props = defineProps<{
   visible: boolean

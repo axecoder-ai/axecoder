@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AppSettings, AppTheme } from '../../types/writcraft'
+import type { AgentOutputStyleId, AppSettings, AppTheme } from '../../types/axecoder'
 
 const props = defineProps<{
   settings: AppSettings
@@ -33,6 +33,22 @@ const onFontSize = (e: Event) => {
   const n = Number((e.target as HTMLInputElement).value)
   if (n >= 10 && n <= 24) emit('save', { fontSize: n })
 }
+
+const onAgentAutoApply = (e: Event) => {
+  emit('save', { agentAutoApplyWrites: (e.target as HTMLInputElement).checked })
+}
+
+const outputStyles: { id: AgentOutputStyleId; label: string; desc: string }[] = [
+  { id: 'default', label: '默认', desc: '标准软件工程助手' },
+  { id: 'Explanatory', label: '讲解', desc: '完成任务时附带代码库洞察' },
+  { id: 'Learning', label: '学习', desc: '协作式动手练习与 Insights' },
+]
+
+const onOutputStyle = (e: Event) => {
+  const v = (e.target as HTMLSelectElement).value as AgentOutputStyleId
+  if (v === props.settings.agentOutputStyle) return
+  emit('save', { agentOutputStyle: v })
+}
 </script>
 
 <template>
@@ -56,6 +72,33 @@ const onFontSize = (e: Event) => {
           <span class="theme-desc">{{ t.desc }}</span>
         </button>
       </div>
+    </section>
+
+    <section class="section">
+      <h3 class="section-title">Agent</h3>
+      <p class="section-desc">对话中 Agent 修改项目文件时的确认行为</p>
+      <label class="pref-row">
+        <span class="pref-label">自动应用写盘变更</span>
+        <input
+          type="checkbox"
+          :checked="settings.agentAutoApplyWrites"
+          @change="onAgentAutoApply"
+        />
+      </label>
+      <p class="section-desc hint">开启后 Write / Edit / Delete / Move 将直接写入磁盘，不再显示「应用 / 拒绝」</p>
+      <label class="pref-row output-style-row">
+        <span class="pref-label">输出风格</span>
+        <select
+          class="output-style-select"
+          :value="settings.agentOutputStyle"
+          @change="onOutputStyle"
+        >
+          <option v-for="s in outputStyles" :key="s.id" :value="s.id">
+            {{ s.label }} — {{ s.desc }}
+          </option>
+        </select>
+      </label>
+      <p class="section-desc hint">影响新发起的 Agent 会话系统提示（对齐 Claude Code Explanatory / Learning）</p>
     </section>
 
     <section class="section">
@@ -120,6 +163,10 @@ h2 {
   margin: 0 0 16px;
   font-size: 12px;
   color: var(--wc-text-dim);
+}
+
+.section-desc.hint {
+  margin: -4px 0 0;
 }
 
 .theme-grid {
@@ -208,5 +255,21 @@ h2 {
 
 .pref-input.narrow {
   width: 72px;
+}
+
+.output-style-row {
+  flex-wrap: wrap;
+}
+
+.output-style-select {
+  flex: 1;
+  min-width: 200px;
+  max-width: 420px;
+  padding: 6px 10px;
+  background: var(--wc-input-bg);
+  border: 1px solid var(--wc-border);
+  border-radius: 6px;
+  color: var(--wc-text);
+  font-size: 12px;
 }
 </style>

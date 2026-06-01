@@ -16,7 +16,7 @@ const builtins = [
   <aside v-show="visible" class="sidebar-panel">
     <div class="panel-title">扩展</div>
     <div class="panel-body">
-      <p class="hint">WritCraft 内置功能（V1 无第三方扩展市场）：</p>
+      <p class="hint">AxeCoder 内置功能（V1 无第三方扩展市场）：</p>
       <ul class="ext-list">
         <li v-for="(ext, i) in builtins" :key="i">
           <div class="ext-name">{{ ext.name }}</div>
