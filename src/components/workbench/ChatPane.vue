@@ -16,6 +16,7 @@ import ModelPickerDropdown from './ModelPickerDropdown.vue'
 import ChatDiffCard from './ChatDiffCard.vue'
 import ChatAskUserCard from './ChatAskUserCard.vue'
 import ChatBashCard from './ChatBashCard.vue'
+import AgentProgressStream from './AgentProgressStream.vue'
 import { isUnderProject, relativeToProject, type ChatFileRef } from '../../utils/chat-file-context'
 import {
   applyProgressPayload,
@@ -991,35 +992,13 @@ defineExpose({
       </div>
       <div v-if="showProgressBubble" class="message assistant">
         <div class="assistant-text loading-bubble agent-progress-bubble">
-          <div class="progress-headline">
-            <span class="progress-pulse" aria-hidden="true" />
-            {{ progressHeadline }}
-          </div>
-          <ul v-if="agentMode && progressSteps.length" class="progress-steps">
-            <li
-              v-for="step in progressSteps"
-              :key="step.id"
-              class="progress-step"
-              :class="step.status"
-            >
-              <span class="progress-dot" />
-              <span class="progress-label">{{ step.label }}</span>
-            </li>
-          </ul>
-          <ul v-if="agentMode && subagentTaskList.length" class="subagent-tasks">
-            <li
-              v-for="task in subagentTaskList"
-              :key="task.id"
-              class="subagent-task"
-              :class="task.status"
-            >
-              <span class="progress-dot" />
-              <span class="progress-label">
-                子代理 {{ task.id }} — {{ task.description }} ({{ task.status }})
-              </span>
-            </li>
-          </ul>
-          <pre v-if="streamText.trim()" class="stream-live-text">{{ streamText }}</pre>
+          <AgentProgressStream
+            :steps="progressSteps"
+            :stream-text="streamText"
+            :subagent-tasks="subagentTaskList"
+            :agent-mode="agentMode"
+            :fallback-headline="progressHeadline"
+          />
         </div>
       </div>
     </div>
@@ -1346,112 +1325,8 @@ defineExpose({
 .agent-progress-bubble {
   min-width: 200px;
   max-width: 100%;
-}
-
-.stream-live-text {
-  margin: 10px 0 0;
-  padding: 8px 10px;
-  max-height: 240px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--wc-text);
-  background: var(--wc-input-bg);
-  border: 1px solid var(--wc-border);
-  border-radius: 6px;
-}
-
-.progress-headline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--wc-text);
-}
-
-.progress-pulse {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--wc-accent, #4a9eff);
-  flex-shrink: 0;
-  animation: progress-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes progress-pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.85);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.1);
-  }
-}
-
-.progress-steps,
-.subagent-tasks {
-  list-style: none;
-  margin: 10px 0 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.subagent-task.running .progress-dot {
-  background: var(--wc-accent, #7aa2f7);
-}
-
-.progress-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--wc-text-dim);
-  line-height: 1.4;
-}
-
-.progress-step.active {
-  color: var(--wc-text);
-}
-
-.progress-step.active .progress-dot {
-  animation: progress-dot-blink 0.9s ease-in-out infinite;
-}
-
-.progress-step.done .progress-dot {
-  background: #3d9a5f;
-}
-
-.progress-step.error .progress-dot {
-  background: #c45c5c;
-}
-
-.progress-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  margin-top: 5px;
-  flex-shrink: 0;
-  background: var(--wc-text-dim);
-}
-
-@keyframes progress-dot-blink {
-  0%,
-  100% {
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.progress-label {
-  word-break: break-word;
+  background: transparent;
 }
 
 .reply-actions {

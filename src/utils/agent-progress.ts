@@ -6,7 +6,11 @@ export type AgentProgressStep = {
   turn: number
   label: string
   status: 'active' | 'done' | 'error'
+  toolName?: string
+  summary?: string
 }
+
+export const PROGRESS_COLLAPSE_KEEP = 5
 
 export type AgentProgressPayload =
   | {
@@ -101,6 +105,8 @@ export const applyProgressPayload = (
       turn: payload.turn,
       label: labelForToolStart(name, summary),
       status: 'active',
+      toolName: name,
+      summary,
     })
     return next
   }
@@ -114,6 +120,8 @@ export const applyProgressPayload = (
       if (s.phase === 'tool' && s.status === 'active' && s.turn === payload.turn) {
         s.status = ok ? 'done' : 'error'
         s.label = labelForToolDone(name, summary, ok)
+        s.toolName = name
+        s.summary = summary
         return next
       }
     }
@@ -123,9 +131,32 @@ export const applyProgressPayload = (
       turn: payload.turn,
       label: labelForToolDone(name, summary, ok),
       status: ok ? 'done' : 'error',
+      toolName: name,
+      summary,
     })
     return next
   }
 
   return next
+}
+
+export const activeProgressHeadline = (steps: AgentProgressStep[]): string => {
+  const active = [...steps].reverse().find((s) => s.status === 'active')
+  if (!active) return 'Working…'
+  if (active.phase === 'model') return 'Thinking…'
+  if (active.toolName) return active.toolName
+  return active.label
+}
+
+export const sliceProgressStepsForDisplay = (
+  steps: AgentProgressStep[],
+  expanded: boolean,
+  keep = PROGRESS_COLLAPSE_KEEP,
+): { visible: AgentProgressStep[]; hiddenCount: number } => {
+  if (expanded || steps.length <= keep) return { visible: steps, hiddenCount: 0 }
+  const inactive = steps.filter((s) => s.status !== 'active')
+  const active = steps.filter((s) => s.status === 'active')
+  if (inactive.length <= keep) return { visible: steps, hiddenCount: 0 }
+  const hiddenCount = inactive.length - keep
+  return { visible: [...inactive.slice(-keep), ...active], hiddenCount }
 }

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  activeProgressHeadline,
   applyProgressPayload,
   labelForModelTurn,
   labelForToolDone,
   labelForToolStart,
+  sliceProgressStepsForDisplay,
   type AgentProgressStep,
 } from '../../../src/utils/agent-progress'
 
@@ -77,5 +79,44 @@ describe('applyProgressPayload', () => {
       ok: false,
     })
     expect(steps[0].status).toBe('error')
+  })
+
+  it('stores toolName and summary on tool steps', () => {
+    let steps: AgentProgressStep[] = []
+    steps = applyProgressPayload(steps, {
+      ...base('s1'),
+      kind: 'tool',
+      status: 'start',
+      toolName: 'Glob',
+      summary: 'Glob *',
+    })
+    expect(steps[0].toolName).toBe('Glob')
+    expect(steps[0].summary).toBe('Glob *')
+  })
+})
+
+describe('progress display helpers', () => {
+  const mk = (id: string, status: AgentProgressStep['status']): AgentProgressStep => ({
+    id,
+    phase: 'tool',
+    turn: 1,
+    label: id,
+    status,
+    toolName: 'Read',
+    summary: id,
+  })
+
+  it('activeProgressHeadline prefers active tool name', () => {
+    const steps = [mk('a', 'done'), mk('b', 'active')]
+    expect(activeProgressHeadline(steps)).toBe('Read')
+  })
+
+  it('sliceProgressStepsForDisplay collapses old done steps', () => {
+    const steps = Array.from({ length: 8 }, (_, i) => mk(`s${i}`, 'done'))
+    steps.push({ ...mk('active', 'active'), id: 'active', status: 'active' })
+    const { visible, hiddenCount } = sliceProgressStepsForDisplay(steps, false, 5)
+    expect(hiddenCount).toBe(3)
+    expect(visible).toHaveLength(6)
+    expect(visible[visible.length - 1].status).toBe('active')
   })
 })
