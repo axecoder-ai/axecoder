@@ -115,6 +115,13 @@ export type AgentProgressPayload =
       kind: 'delta'
       delta: string
     }
+  | {
+      sessionId: string
+      kind: 'subagent'
+      taskId: string
+      status: 'running' | 'completed' | 'failed' | 'stopped'
+      description: string
+    }
 
 export type AgentSendResult =
   | {
@@ -257,6 +264,94 @@ export type AxeCoderFs = {
     modelId: string,
     messages: AiChatMessage[],
   ) => Promise<AgentSendResult>
+  agentRunUserShell: (
+    projectRoot: string,
+    command: string,
+  ) => Promise<{ ok: true; text: string; exitCode: number | null } | { ok: false; error: string }>
+  chatCompact: (
+    messages: AiChatMessage[],
+  ) => Promise<{ ok: true; messages: AiChatMessage[]; summary: string } | { ok: false; error: string }>
+  agentHooksHelp: () => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  agentListMcp: () => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  agentListSkills: (
+    projectRoot: string,
+  ) => Promise<
+    | { ok: true; skills: { name: string; path: string; source: string }[] }
+    | { ok: false; error: string }
+  >
+  agentLoadSkill: (
+    projectRoot: string,
+    skillName: string,
+  ) => Promise<
+    | { ok: true; name: string; text: string; path: string }
+    | { ok: false; error: string }
+  >
+  agentListOutputStyles: (projectRoot?: string) => Promise<
+    | {
+        ok: true
+        activeId: string
+        styles: { id: string; name: string; description: string; source: string }[]
+        dirs: string[]
+      }
+    | { ok: false; error: string }
+  >
+  agentSetOutputStyle: (
+    styleId: string,
+  ) => Promise<{ ok: true; activeId: string } | { ok: false; error: string }>
+  agentPlanModeHelp: () => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  agentRewindHelp: (
+    projectRoot: string,
+  ) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  agentListSessions: () => Promise<{
+    ok: true
+    sessions: {
+      id: string
+      turn: number
+      projectRoot: string
+      modelId: string
+      messageCount: number
+    }[]
+  }>
+  agentListCheckpoints: (sessionId: string) => Promise<
+    | {
+        ok: true
+        checkpoints: {
+          id: string
+          turn: number
+          label: string
+          createdAt: number
+          fileCount: number
+        }[]
+      }
+    | { ok: false; error: string }
+  >
+  agentRewind: (
+    sessionId: string,
+    checkpointId?: string,
+  ) => Promise<
+    | { ok: true; label: string; restoredFiles: number }
+    | { ok: false; error: string }
+  >
+  agentListBackgroundTasks: (sessionId?: string) => Promise<{
+    ok: true
+    tasks: {
+      id: string
+      description: string
+      status: 'running' | 'completed' | 'failed' | 'stopped'
+      startedAt: number
+    }[]
+  }>
+  agentReadMemory: () => Promise<
+    { ok: true; path: string; text: string } | { ok: false; error: string }
+  >
+  agentWriteMemory: (text: string) => Promise<
+    { ok: true; path: string } | { ok: false; error: string }
+  >
+  agentInitAgentsMd: (
+    projectRoot: string,
+  ) => Promise<
+    { ok: true; path: string; created: boolean } | { ok: false; error: string }
+  >
   agentConfirmWrite: (sessionId: string, pendingId: string) => Promise<AgentContinueResult>
   agentConfirmAllWrites: (sessionId: string) => Promise<AgentContinueResult>
   agentRejectWrite: (

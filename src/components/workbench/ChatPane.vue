@@ -23,6 +23,7 @@ import {
   type AgentProgressStep,
 } from '../../utils/agent-progress'
 import { runSlashCommand } from '../../slash-commands/run'
+import { refreshSlashCommandRegistry } from '../../slash-commands/registry'
 import type { SlashContext } from '../../slash-commands/types'
 
 const md = new MarkdownIt()
@@ -56,6 +57,13 @@ const includeContextFile = ref(false)
 const dropActive = ref(false)
 const pendingBusy = ref(false)
 const progressSteps = ref<AgentProgressStep[]>([])
+type SubagentTaskView = {
+  id: string
+  description: string
+  status: 'running' | 'completed' | 'failed' | 'stopped'
+}
+const subagentTasks = ref<Map<string, SubagentTaskView>>(new Map())
+const subagentTaskList = computed(() => [...subagentTasks.value.values()])
 const streamText = ref('')
 const idleHintIdx = ref(0)
 let idleHintTimer: ReturnType<typeof setInterval> | null = null
@@ -329,6 +337,14 @@ const bindAgentProgress = () => {
     if (!agentProgressActive.value) return
     if (payload.kind === 'delta') {
       streamText.value += payload.delta
+    } else if (payload.kind === 'subagent') {
+      const next = new Map(subagentTasks.value)
+      next.set(payload.taskId, {
+        id: payload.taskId,
+        description: payload.description,
+        status: payload.status,
+      })
+      subagentTasks.value = next
     } else {
       progressSteps.value = applyProgressPayload(progressSteps.value, payload)
     }
@@ -347,6 +363,7 @@ const clearProgressUi = () => {
   unbindAiStream()
   progressSteps.value = []
   streamText.value = ''
+  subagentTasks.value = new Map()
 }
 
 const formatToolLog = (log: AgentToolLogEntry[]) => {
@@ -637,11 +654,53 @@ const buildSlashContext = (): SlashContext => ({
     return { ok: res.ok, data: res.ok ? res.data : undefined }
   },
   openModelsSettings: () => emit('openModelsSettings'),
+  getAgentSessionId: () => {
+    const s = activeSession.value
+    if (!s) return undefined
+    for (let i = s.messages.length - 1; i >= 0; i--) {
+      const m = s.messages[i]
+      if (m.agentSessionId) return m.agentSessionId
+    }
+    return undefined
+  },
 })
 
 const send = async () => {
   const text = input.value.trim()
   if (!hasProject.value || !text || !activeSession.value) return
+
+  if (text.startsWith('!')) {
+    if (loading.value || pendingBusy.value) {
+      activeSession.value.messages.push({
+        role: 'assistant',
+        text: '请等待当前回复完成后再运行 shell 命令。',
+      })
+      activeSession.value.updatedAt = Date.now()
+      await persist()
+      return
+    }
+    const cmd = text.slice(1).trim()
+    if (!cmd) return
+    input.value = ''
+    await nextTick()
+    resizeInput()
+    activeSession.value.messages.push({ role: 'user', text })
+    loading.value = true
+    try {
+      const res = await window.axecoder.agentRunUserShell(props.projectRoot, cmd)
+      activeSession.value.messages.push({
+        role: 'assistant',
+        text: res.ok
+          ? `\`\`\`\n${res.text}\n\`\`\``
+          : `命令失败：${res.error ?? 'unknown'}`,
+      })
+      activeSession.value.updatedAt = Date.now()
+      await persist()
+    } finally {
+      loading.value = false
+    }
+    return
+  }
 
   if (text.startsWith('/')) {
     if (loading.value || pendingBusy.value || hasPendingAgentInteraction()) {
@@ -662,7 +721,7 @@ const send = async () => {
     if (slashResult === null) {
       activeSession.value.messages.push({
         role: 'assistant',
-        text: '暂无已注册的斜杠命令。',
+        text: '输入格式无效，请以 /命令名 开头。',
       })
       activeSession.value.updatedAt = Date.now()
       await persist()
@@ -827,7 +886,15 @@ watch(
 onMounted(() => {
   void loadModels()
   void load()
+  if (props.projectRoot) void refreshSlashCommandRegistry(props.projectRoot)
 })
+
+watch(
+  () => props.projectRoot,
+  (root) => {
+    if (root) void refreshSlashCommandRegistry(root)
+  },
+)
 
 onUnmounted(() => {
   clearProgressUi()
@@ -937,6 +1004,19 @@ defineExpose({
             >
               <span class="progress-dot" />
               <span class="progress-label">{{ step.label }}</span>
+            </li>
+          </ul>
+          <ul v-if="agentMode && subagentTaskList.length" class="subagent-tasks">
+            <li
+              v-for="task in subagentTaskList"
+              :key="task.id"
+              class="subagent-task"
+              :class="task.status"
+            >
+              <span class="progress-dot" />
+              <span class="progress-label">
+                子代理 {{ task.id }} — {{ task.description }} ({{ task.status }})
+              </span>
             </li>
           </ul>
           <pre v-if="streamText.trim()" class="stream-live-text">{{ streamText }}</pre>
@@ -1312,13 +1392,18 @@ defineExpose({
   }
 }
 
-.progress-steps {
+.progress-steps,
+.subagent-tasks {
   list-style: none;
   margin: 10px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.subagent-task.running .progress-dot {
+  background: var(--wc-accent, #7aa2f7);
 }
 
 .progress-step {

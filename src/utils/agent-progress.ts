@@ -23,6 +23,13 @@ export type AgentProgressPayload =
       kind: 'delta'
       delta: string
     }
+  | {
+      sessionId: string
+      kind: 'subagent'
+      taskId: string
+      status: 'running' | 'completed' | 'failed' | 'stopped'
+      description: string
+    }
 
 export const labelForModelTurn = (turn: number) => `第 ${turn} 轮：正在调用模型…`
 

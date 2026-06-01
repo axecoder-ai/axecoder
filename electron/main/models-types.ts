@@ -28,8 +28,27 @@ export type AppConfig = {
   theme: AppTheme
   /** Agent Write/Edit/Delete/Move 不经确认直接写盘 */
   agentAutoApplyWrites: boolean
-  /** Agent 系统提示内置输出风格 */
-  agentOutputStyle: AgentOutputStyleId
+  /** Agent 系统提示输出风格（内置 id 或自定义 output-styles 目录中的 slug） */
+  agentOutputStyle: string
+  /** Wave4：联网搜索（需 API Key） */
+  agentFeatureWebSearch?: boolean
+  agentWebSearchApiKey?: string
+  agentFeatureLsp?: boolean
+  agentFeatureWorktree?: boolean
+  agentFeatureSleep?: boolean
+  agentFeatureBrief?: boolean
+  agentFeatureWorkflow?: boolean
+  /** default | acceptEdits | bypassPermissions */
+  agentPermissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions'
+  agentAllowedTools?: string[]
+  agentDisallowedTools?: string[]
+  /** 上下文字符阈值，超过则自动 compact */
+  agentContextCompactThreshold?: number
+  /** FRC 保留最近 tool 条数 */
+  agentFrcKeepToolMessages?: number
+  agentTokenBudget?: number
+  agentProactiveEnabled?: boolean
+  agentHooksEnabled?: boolean
 }
 
 export type AiChatMessage = {

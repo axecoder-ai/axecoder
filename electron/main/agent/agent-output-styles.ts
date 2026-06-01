@@ -1,11 +1,13 @@
 /** Claude Code `src/constants/outputStyles.ts` — 内置 Explanatory / Learning（1:1 文案，符号用 ★ / •） */
 
+import { getCachedCustomOutputStyles } from './agent-output-styles-custom'
+
 export const DEFAULT_OUTPUT_STYLE_NAME = 'default' as const
 
 export type AgentBuiltInOutputStyleId = 'default' | 'Explanatory' | 'Learning'
 
 export type AgentOutputStyleConfig = {
-  name: AgentBuiltInOutputStyleId
+  name: string
   description: string
   prompt: string
   keepCodingInstructions?: boolean
@@ -129,6 +131,9 @@ ${outputStyleConfig.prompt}`
 export const resolveAgentOutputStyle = (
   styleId?: AgentBuiltInOutputStyleId | string | null,
 ): AgentOutputStyleConfig | null => {
-  const id = (styleId ?? DEFAULT_OUTPUT_STYLE_NAME) as AgentBuiltInOutputStyleId
-  return OUTPUT_STYLE_CONFIG[id] ?? null
+  const id = styleId ?? DEFAULT_OUTPUT_STYLE_NAME
+  if (id === DEFAULT_OUTPUT_STYLE_NAME) return null
+  const builtIn = OUTPUT_STYLE_CONFIG[id as AgentBuiltInOutputStyleId]
+  if (builtIn !== undefined) return builtIn
+  return getCachedCustomOutputStyles().styles[id] ?? null
 }

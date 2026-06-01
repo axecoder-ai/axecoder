@@ -1,14 +1,18 @@
 import type { SlashCommandDef } from './types'
+import { registerBuiltinSlashCommands } from './builtin'
+import { allCommands, setSlashCommands } from './registry-core'
 
-const COMMANDS: SlashCommandDef[] = []
+setSlashCommands(registerBuiltinSlashCommands())
 
-export function allCommands(): SlashCommandDef[] {
-  return COMMANDS
+export { refreshSlashCommandRegistry } from './registry-refresh'
+
+export function allSlashCommands(): SlashCommandDef[] {
+  return allCommands()
 }
 
 export function findCommand(name: string): SlashCommandDef | undefined {
   const key = name.toLowerCase()
-  for (const c of COMMANDS) {
+  for (const c of allCommands()) {
     if (c.name === key) return c
     if (c.aliases?.some((a) => a.toLowerCase() === key)) return c
   }

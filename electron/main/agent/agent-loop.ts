@@ -2,7 +2,9 @@ import type { ModelEntry } from '../models-types'
 import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 import { chatWithToolsForModel } from '../ai/chat-with-tools'
-import { AGENT_TOOLS, buildAgentSystemPrompt } from './agent-tool-defs'
+import { AGENT_TOOLS, buildAgentSystemPrompt, buildFullAgentTools } from './agent-tool-defs'
+import { getSessionActiveTools } from './agent-ext-executor'
+import type { AgentToolCall } from './agent-types'
 import type {
   AgentContinueResult,
   AgentLoopMessage,
@@ -13,18 +15,37 @@ import type {
   PendingWritePublic,
 } from './agent-types'
 import {
+  clearAgentCheckpoints,
+  pushAgentCheckpoint,
+  rewindAgentCheckpoint,
+} from './agent-checkpoint'
+import {
   createSessionId,
   deleteSession,
   getSession,
+  listAgentSessions,
   pendingAskToPublic,
   pendingBashToPublic,
   pendingToPublic,
   putSession,
   type StoredAgentSession,
 } from './agent-session-store'
-import { executeAgentTool, type AgentContext } from './tool-executor'
+import { executeAgentTool, type AgentContext, type ToolRunResult } from './tool-executor'
 import { emitAgentProgress } from './agent-progress-emit'
 import { getConfig } from '../config-store'
+import { resolveToolPermission } from './agent-permissions'
+import { runHooks } from './agent-hooks'
+import { clearOldToolResults } from './agent-frc'
+import { compactAgentMessages, shouldAutoCompact } from './agent-context-compact'
+import { getTokenBudgetSection } from './agent-token-budget'
+import { maybeInjectProactiveReminder } from './agent-proactive'
+import { ensureScratchpadDir } from './agent-scratchpad'
+import { refreshCustomOutputStylesCache } from './agent-output-styles-custom'
+import type { AgentToolName } from './agent-types'
+
+export { compactAgentMessages } from './agent-context-compact'
+export { runUserShellCommand } from './agent-user-shell'
+export { formatHooksHelp } from './agent-hooks'
 
 const MAX_TURNS = 12
 
@@ -46,7 +67,11 @@ const runModelStep = async (session: StoredAgentSession, sessionId: string) => {
           }
         }
       : undefined
-  return chatWithToolsForModel(model, apiKey, session.messages, onDelta)
+  return chatWithToolsForModel(model, apiKey, session.messages, onDelta, session.activeTools)
+}
+
+const refreshSessionActiveTools = (session: StoredAgentSession) => {
+  session.activeTools = getSessionActiveTools(buildFullAgentTools(), session.revealedToolNames)
 }
 
 const replyMeta = (content?: string, reasoningContent?: string) => ({
@@ -132,12 +157,54 @@ const hasPendingInSession = (session: StoredAgentSession) =>
   session.pendingBashById.size > 0 ||
   session.pendingAskById.size > 0
 
+const stripBudgetReminders = (messages: AgentLoopMessage[]) =>
+  messages.filter((m) => !(m.role === 'user' && m.content.includes('Context budget:')))
+
+const prepareSessionBeforeModel = async (session: StoredAgentSession) => {
+  const cfg = await getConfig()
+  clearOldToolResults(session.messages, cfg.agentFrcKeepToolMessages ?? 8)
+  const threshold = cfg.agentContextCompactThreshold ?? 120_000
+  if (shouldAutoCompact(session.messages, threshold)) {
+    const compacted = compactAgentMessages(session.messages)
+    session.messages = compacted.messages
+    session.compactedOnce = true
+  }
+  session.messages = stripBudgetReminders(session.messages)
+  const budget = getTokenBudgetSection(cfg, session.messages)
+  if (budget) {
+    session.messages.push({
+      role: 'user',
+      content: `<system-reminder>\n${budget}\n</system-reminder>`,
+    })
+  }
+  maybeInjectProactiveReminder(session)
+}
+
+const applyPendingToolRun = async (
+  session: StoredAgentSession,
+  run: ToolRunResult,
+): Promise<{ ok: true; content: string; logOk: boolean } | { ok: false; error: string }> => {
+  if (run.kind === 'pending') {
+    const applied = await run.pending.apply()
+    if (!applied.ok) return applied
+    return { ok: true, content: `Applied: ${run.pending.summary}`, logOk: true }
+  }
+  if (run.kind === 'bash_pending') {
+    const applied = await run.pendingBash.apply()
+    if (!applied.ok) return applied
+    return { ok: true, content: applied.content, logOk: applied.logOk }
+  }
+  return { ok: false, error: 'Not a pending tool run' }
+}
+
 export const runAgentLoopUntilDoneOrPending = async (
   sessionId: string,
   session: StoredAgentSession,
 ): Promise<AgentSendResult | AgentContinueResult> => {
   while (session.turn < MAX_TURNS) {
+    pushAgentCheckpoint(sessionId, session)
     session.turn += 1
+    await prepareSessionBeforeModel(session)
     emitAgentProgress({
       sessionId,
       turn: session.turn,
@@ -166,7 +233,11 @@ export const runAgentLoopUntilDoneOrPending = async (
       const pendingBashPublic: PendingBashPublic[] = []
       const pendingAskPublic: PendingAskUserPublic[] = []
 
-      for (const tc of res.toolCalls) {
+      session.ctx.planMode = session.planMode
+
+      const cfg = await getConfig()
+
+      const runOneTool = async (tc: AgentToolCall) => {
         const toolSummary =
           strArg(tc.arguments, 'file_path') ||
           strArg(tc.arguments, 'pattern') ||
@@ -180,8 +251,93 @@ export const runAgentLoopUntilDoneOrPending = async (
           toolName: tc.name,
           summary: toolSummary,
         })
-        const run = await executeAgentTool(session.ctx, tc)
-        session.toolLog.push(run.log)
+
+        const perm = resolveToolPermission(cfg, tc.name as AgentToolName)
+        if (perm === 'deny') {
+          const denied: ToolRunResult = {
+            kind: 'immediate',
+            content: 'Error: Tool blocked by agent permission settings (disallowedTools or mode).',
+            log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
+          }
+          emitAgentProgress({
+            sessionId,
+            turn: session.turn,
+            kind: 'tool',
+            status: 'done',
+            toolName: tc.name,
+            summary: toolSummary,
+            ok: false,
+          })
+          return { tc, run: denied }
+        }
+
+        if (cfg.agentHooksEnabled !== false) {
+          const pre = await runHooks('PreToolUse', session.projectRoot, {
+            toolName: tc.name as AgentToolName,
+          })
+          if (!pre.ok) {
+            const blocked: ToolRunResult = {
+              kind: 'immediate',
+              content: `<user-prompt-submit-hook>Hook blocked tool: ${pre.message}</user-prompt-submit-hook>`,
+              log: { name: tc.name as AgentToolName, summary: 'hook blocked', ok: false },
+            }
+            emitAgentProgress({
+              sessionId,
+              turn: session.turn,
+              kind: 'tool',
+              status: 'done',
+              toolName: tc.name,
+              summary: 'hook blocked',
+              ok: false,
+            })
+            return { tc, run: blocked }
+          }
+        }
+
+        let run = await executeAgentTool(session.ctx, tc)
+
+        if (cfg.agentHooksEnabled !== false) {
+          const post = await runHooks('PostToolUse', session.projectRoot, {
+            toolName: tc.name as AgentToolName,
+          })
+          if (!post.ok) {
+            run = {
+              kind: 'immediate',
+              content: `Hook blocked after tool: ${post.message}`,
+              log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
+            }
+          } else if (post.notes.length && run.kind === 'immediate') {
+            run = {
+              ...run,
+              content: `${run.content}\n\n[hook]\n${post.notes.join('\n')}`,
+            }
+          }
+        }
+
+        if (
+          (perm === 'allow' || cfg.agentAutoApplyWrites) &&
+          (run.kind === 'pending' || run.kind === 'bash_pending')
+        ) {
+          const applied = await applyPendingToolRun(session, run)
+          if (applied.ok) {
+            run = {
+              kind: 'immediate',
+              content: applied.content,
+              log: {
+                name: tc.name as AgentToolName,
+                summary: toolSummary,
+                ok: applied.logOk,
+              },
+            }
+          } else {
+            run = {
+              kind: 'immediate',
+              content: `Error: ${applied.error}`,
+              log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
+            }
+          }
+        }
+
         emitAgentProgress({
           sessionId,
           turn: session.turn,
@@ -191,6 +347,13 @@ export const runAgentLoopUntilDoneOrPending = async (
           summary: run.log.summary,
           ok: run.log.ok,
         })
+        return { tc, run }
+      }
+
+      const toolOutcomes = await Promise.all(res.toolCalls.map(runOneTool))
+
+      for (const { tc, run } of toolOutcomes) {
+        session.toolLog.push(run.log)
 
         if (run.kind === 'pending') {
           session.pendingById.set(run.pending.id, run.pending)
@@ -228,6 +391,11 @@ export const runAgentLoopUntilDoneOrPending = async (
           })
         }
       }
+
+      if (toolOutcomes.some((o) => o.tc.name === 'ToolSearch')) {
+        refreshSessionActiveTools(session)
+      }
+      session.planMode = session.ctx.planMode ?? session.planMode
 
       if (pendingPublic.length || pendingBashPublic.length || pendingAskPublic.length) {
         const cfg = await getConfig()
@@ -269,17 +437,31 @@ export const startAgentTurn = async (
   if (!projectRoot.trim()) return { ok: false, error: '请先打开项目' }
   const model = await getModelById(modelId)
   if (!model) return { ok: false, error: '模型不存在' }
-  if (model.provider === 'ollama') {
-    return { ok: false, error: 'Ollama 暂不支持 Agent 文件工具，请使用 OpenAI 或 Anthropic' }
-  }
-
   const cfg = await getConfig()
+
+  const sessionId = createSessionId()
+  const revealedToolNames = new Set<import('./agent-types').AgentToolName>()
+  const activeTools = getSessionActiveTools(buildFullAgentTools(), revealedToolNames)
+  const scratchpadDir = await ensureScratchpadDir(sessionId)
+
+  const lastUser = [...history].reverse().find((m) => m.role === 'user')?.content ?? ''
+  if (cfg.agentHooksEnabled !== false && lastUser.trim()) {
+    const hook = await runHooks('UserPromptSubmit', projectRoot, { userPrompt: lastUser })
+    if (!hook.ok) {
+      return { ok: false, error: `User prompt hook blocked: ${hook.message}` }
+    }
+  }
 
   const ctx: AgentContext = {
     projectRoot,
     readCache: new Set<string>(),
     modelId,
+    sessionId,
+    planMode: false,
+    scratchpadDir,
   }
+
+  await refreshCustomOutputStylesCache(projectRoot)
 
   const messages: AgentLoopMessage[] = [
     {
@@ -303,7 +485,6 @@ export const startAgentTurn = async (
     }
   }
 
-  const sessionId = createSessionId()
   const session: StoredAgentSession = {
     projectRoot,
     modelId,
@@ -314,6 +495,13 @@ export const startAgentTurn = async (
     pendingBashById: new Map(),
     pendingAskById: new Map(),
     turn: 0,
+    planMode: false,
+    revealedToolNames,
+    activeTools,
+    proactiveEnabled: cfg.agentProactiveEnabled ?? false,
+    proactiveTick: 0,
+    scratchpadDir,
+    compactedOnce: false,
   }
   putSession(sessionId, session)
   return runAgentLoopUntilDoneOrPending(sessionId, session)
@@ -535,5 +723,10 @@ export const answerAgentQuestions = async (
   return runAgentLoopUntilDoneOrPending(sessionId, session)
 }
 
-export const modelSupportsAgentTools = (model: ModelEntry | null | undefined) =>
-  !!model && model.provider !== 'ollama'
+export const modelSupportsAgentTools = (model: ModelEntry | null | undefined) => !!model
+
+export { listAgentSessions, rewindAgentCheckpoint }
+export {
+  listAgentCheckpoints,
+  clearAgentCheckpoints,
+} from './agent-checkpoint'

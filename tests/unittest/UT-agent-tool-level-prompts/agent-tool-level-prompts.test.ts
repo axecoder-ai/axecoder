@@ -1,26 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { AGENT_TOOLS } from '../../../electron/main/agent/agent-tool-defs'
-import { buildAgentTools } from '../../../electron/main/agent/agent-tool-prompts'
+import { AGENT_TOOLS, buildFullAgentTools } from '../../../electron/main/agent/agent-tool-defs'
+import { ALL_AGENT_TOOL_NAMES } from '../../../electron/main/agent/agent-types'
 
 const tool = (name: string) => AGENT_TOOLS.find((t) => t.name === name)!
 
 describe('agent-tool-level-prompts', () => {
-  it('buildAgentTools 与 AGENT_TOOLS 工具名一致', () => {
-    const built = buildAgentTools().map((t) => t.name).sort()
+  it('buildFullAgentTools 与 AGENT_TOOLS 工具名一致', () => {
+    const built = buildFullAgentTools().map((t) => t.name).sort()
     const names = AGENT_TOOLS.map((t) => t.name).sort()
     expect(built).toEqual(names)
-    expect(names).toEqual([
-      'Agent',
-      'AskUserQuestion',
-      'Bash',
-      'Delete',
-      'Edit',
-      'Glob',
-      'Grep',
-      'Move',
-      'Read',
-      'Write',
-    ])
+    expect(names).toEqual([...ALL_AGENT_TOOL_NAMES].sort())
+    expect(names.length).toBe(36)
   })
 
   it('strict：各工具 description 达到长文下限', () => {
@@ -71,5 +61,12 @@ describe('agent-tool-level-prompts', () => {
     expect(tool('Glob').description).toMatch(/Glob/i)
     expect(tool('Glob').description).toMatch(/find|ls/i)
     expect(tool('Grep').description).toMatch(/ripgrep|grep/i)
+  })
+
+  it('扩展工具已注册', () => {
+    expect(tool('TodoWrite').name).toBe('TodoWrite')
+    expect(tool('EnterPlanMode').name).toBe('EnterPlanMode')
+    expect(tool('CallMcpTool').name).toBe('CallMcpTool')
+    expect(tool('ToolSearch').name).toBe('ToolSearch')
   })
 })

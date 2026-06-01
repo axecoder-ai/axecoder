@@ -3,6 +3,17 @@ import { spawn } from 'node:child_process'
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_OUTPUT_CHARS = 200_000
 
+/** 危险 git 命令（对齐 Claude Code Bash 约束） */
+export const isDangerousGitCommand = (command: string) => {
+  const c = command.toLowerCase()
+  if (/\bgit\s+push\b/.test(c) && (/--force\b/.test(c) || /\s-f\b/.test(c) || /\s--force-with-lease\b/.test(c))) {
+    return 'force push'
+  }
+  if (/\bgit\s+config\b/.test(c)) return 'git config'
+  if (/\bgit\s+reset\s+--hard\b/.test(c)) return 'hard reset'
+  return ''
+}
+
 const trimOutput = (text: string) => {
   if (text.length <= MAX_OUTPUT_CHARS) return text
   return `${text.slice(0, MAX_OUTPUT_CHARS)}\n...[output truncated]`
@@ -20,6 +31,13 @@ export const runAgentBash = async (
   const cmd = command.trim()
   if (!cmd) return { ok: false, error: 'command is required' }
   if (!projectRoot.trim()) return { ok: false, error: 'project root is required' }
+  const gitRisk = isDangerousGitCommand(cmd)
+  if (gitRisk) {
+    return {
+      ok: false,
+      error: `Rejected dangerous git operation (${gitRisk}). Do not run without explicit user approval.`,
+    }
+  }
 
   return new Promise((resolve) => {
     const isWin = process.platform === 'win32'

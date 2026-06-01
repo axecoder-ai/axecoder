@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { allCommands, findCommand } from '../../../src/slash-commands/registry'
+import { allSlashCommands, findCommand } from '../../../src/slash-commands/registry'
 
 describe('findCommand', () => {
-  it('registry 当前无注册命令', () => {
-    expect(allCommands()).toHaveLength(0)
-    expect(findCommand('init')).toBeUndefined()
+  it('registry 已注册内置命令', () => {
+    const names = allSlashCommands().map((c) => c.name)
+    expect(names).toContain('help')
+    expect(names).toContain('clear')
+    expect(names).toContain('compact')
+    expect(names).toContain('hooks')
+    expect(names).toContain('mcp')
+    expect(names).toContain('plan')
+    expect(names).toContain('skills')
+    expect(names).toContain('style')
+    expect(names).toContain('model')
   })
 
   it('未知命令返回 undefined', () => {
-    expect(findCommand('help')).toBeUndefined()
     expect(findCommand('unknown-cmd')).toBeUndefined()
+    expect(findCommand('help')?.name).toBe('help')
   })
 })

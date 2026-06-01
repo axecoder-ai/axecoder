@@ -19,6 +19,14 @@ import {
   readProjectFile,
   writeProjectFile,
 } from './agent-fs'
+import { executeExtendedAgentTool } from './agent-ext-executor'
+import {
+  createBackgroundRunId,
+  getBackgroundRun,
+  putBackgroundRun,
+} from './agent-subagent-tasks'
+import { buildSubAgentToolList } from './agent-tool-registry'
+import { trackCheckpointFileCtx } from './agent-checkpoint'
 export type AgentContext = {
   projectRoot: string
   readCache: Set<string>
@@ -26,6 +34,11 @@ export type AgentContext = {
   modelId?: string
   /** ≥1 表示已在子代理内，禁止再调 Agent */
   subAgentDepth?: number
+  sessionId?: string
+  planMode?: boolean
+  scratchpadDir?: string
+  /** 本轮将写入 checkpoint 的文件快照（相对路径 → 修改前内容） */
+  checkpointFiles?: Record<string, string>
 }
 
 export type PendingAskUserInternal = PendingAskUserPublic & {
@@ -100,11 +113,21 @@ export const parseAskUserQuestions = (
 let pendingSeq = 0
 const nextPendingId = () => `pw-${Date.now()}-${pendingSeq++}`
 
+const PLAN_BLOCKED = new Set(['Edit', 'Write', 'Delete', 'Move', 'Bash'])
+
 export const executeAgentTool = async (
   ctx: AgentContext,
   call: AgentToolCall,
 ): Promise<ToolRunResult> => {
   const { name, arguments: args } = call
+
+  if (ctx.planMode && PLAN_BLOCKED.has(name)) {
+    return {
+      kind: 'immediate',
+      content: 'Error: Plan mode is active. Use ExitPlanMode before mutating files or running shell.',
+      log: { name, summary: `${name} blocked`, ok: false },
+    }
+  }
 
   if (name === 'Read') {
     const file_path = str(args.file_path)
@@ -202,8 +225,10 @@ export const executeAgentTool = async (
         summary: `编辑 ${resolved}`,
         patchText,
         apply: async () => {
+          const rel = relativeInProject(ctx.projectRoot, resolved)
+          if (rel) trackCheckpointFileCtx(ctx, rel, oldContent)
           await writeProjectFile(resolved, newContent)
-          return { ok: true as const }
+          return { ok: true as const, content: 'Applied.', logOk: true }
         },
       },
     }
@@ -239,9 +264,11 @@ export const executeAgentTool = async (
         summary: `写入 ${resolved}`,
         patchText,
         apply: async () => {
+          const rel = relativeInProject(ctx.projectRoot, resolved)
+          if (rel) trackCheckpointFileCtx(ctx, rel, oldContent)
           await writeProjectFile(resolved, content)
           ctx.readCache.add(resolved)
-          return { ok: true as const }
+          return { ok: true as const, content: 'Applied.', logOk: true }
         },
       },
     }
@@ -369,8 +396,42 @@ export const executeAgentTool = async (
         log: { name, summary: 'Agent', ok: false },
       }
     }
+    const subagentType = str(args.subagent_type) || 'generalPurpose'
+    const runInBackground = args.run_in_background === true
     const { runSubAgentTask, formatAgentToolSummary } = await import('./agent-subagent')
-    const sub = await runSubAgentTask(ctx.projectRoot, ctx.modelId, taskPrompt)
+
+    if (runInBackground && ctx.sessionId) {
+      const taskId = createBackgroundRunId()
+      putBackgroundRun({
+        id: taskId,
+        description: formatAgentToolSummary(args),
+        status: 'running',
+        report: '',
+        startedAt: Date.now(),
+        sessionId: ctx.sessionId,
+      })
+      void runSubAgentTask(ctx.projectRoot, ctx.modelId, taskPrompt, {
+        subagentType,
+        tools: buildSubAgentToolList(subagentType),
+      }).then((sub) => {
+        const run = getBackgroundRun(taskId)
+        if (!run) return
+        run.status = sub.ok ? 'completed' : 'failed'
+        run.report = sub.ok ? sub.report : ''
+        run.error = sub.ok ? undefined : sub.error
+        putBackgroundRun(run)
+      })
+      return {
+        kind: 'immediate',
+        content: `Background sub-agent started. Task id: ${taskId}. Use TaskOutput to read results.`,
+        log: { name, summary: formatAgentToolSummary(args), ok: true },
+      }
+    }
+
+    const sub = await runSubAgentTask(ctx.projectRoot, ctx.modelId, taskPrompt, {
+      subagentType,
+      tools: buildSubAgentToolList(subagentType),
+    })
     if (!sub.ok) {
       return {
         kind: 'immediate',
@@ -409,6 +470,9 @@ export const executeAgentTool = async (
       },
     }
   }
+
+  const ext = await executeExtendedAgentTool(ctx, call)
+  if (ext) return ext
 
   return {
     kind: 'immediate',

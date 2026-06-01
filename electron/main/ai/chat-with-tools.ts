@@ -229,11 +229,10 @@ export const chatWithToolsForModel = async (
   onDelta?: (delta: OpenAiStreamDelta) => void,
   tools: readonly AgentToolDef[] = AGENT_TOOLS,
 ): Promise<ChatWithToolsResult> => {
-  if (model.provider === 'ollama') {
-    return { ok: false, error: 'Ollama 暂不支持 Agent 文件工具，请使用 OpenAI 或 Anthropic' }
-  }
-  if (model.provider === 'openai') {
-    if (!apiKey.trim()) return { ok: false, error: 'OpenAI 格式需要 API Key' }
+  if (model.provider === 'ollama' || model.provider === 'openai') {
+    if (model.provider === 'openai' && !apiKey.trim()) {
+      return { ok: false, error: 'OpenAI 格式需要 API Key' }
+    }
     return chatOpenAiWithTools(model, apiKey, messages, onDelta, tools)
   }
   return chatAnthropicWithTools(model, apiKey, messages, tools)

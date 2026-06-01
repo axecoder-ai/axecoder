@@ -98,7 +98,7 @@ const onOutputStyle = (e: Event) => {
           </option>
         </select>
       </label>
-      <p class="section-desc hint">影响新发起的 Agent 会话系统提示（对齐 Claude Code Explanatory / Learning）</p>
+      <p class="section-desc hint">影响新发起的 Agent 会话系统提示。自定义风格可放入 ~/.axecoder/output-styles、~/.claude/output-styles 或项目 .axecoder/output-styles（*.md）；聊天中可用 /style 切换。</p>
     </section>
 
     <section class="section">

@@ -17,8 +17,17 @@ export type SlashContext = {
   setModelsFile: (m: ModelsFile) => void
   setActiveModel: (id: string) => Promise<{ ok: boolean; data?: ModelsFile }>
   openModelsSettings: () => void
+  /** 当前聊天中最近一次 Agent 运行的 sessionId */
+  getAgentSessionId?: () => string | undefined
 }
 
 export type SlashRunResult =
-  | { ok: true; message: string; silent?: boolean }
+  | {
+      ok: true
+      message: string
+      silent?: boolean
+      /** Skill 动态命令：注入会话的正文 */
+      skillText?: string
+      skillName?: string
+    }
   | { ok: false; message: string }

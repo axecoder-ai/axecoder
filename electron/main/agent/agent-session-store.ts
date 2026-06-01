@@ -1,6 +1,8 @@
 import type {
   AgentLoopMessage,
+  AgentToolDef,
   AgentToolLogEntry,
+  AgentToolName,
   PendingAskUserPublic,
   PendingBashPublic,
   PendingWritePublic,
@@ -22,6 +24,13 @@ export type StoredAgentSession = {
   pendingBashById: Map<string, PendingBashInternal>
   pendingAskById: Map<string, PendingAskUserInternal>
   turn: number
+  planMode: boolean
+  revealedToolNames: Set<AgentToolName>
+  activeTools: AgentToolDef[]
+  proactiveEnabled: boolean
+  proactiveTick: number
+  scratchpadDir: string
+  compactedOnce: boolean
 }
 
 const sessions = new Map<string, StoredAgentSession>()
@@ -38,6 +47,15 @@ export const getSession = (id: string) => sessions.get(id)
 export const deleteSession = (id: string) => {
   sessions.delete(id)
 }
+
+export const listAgentSessions = () =>
+  [...sessions.entries()].map(([id, s]) => ({
+    id,
+    turn: s.turn,
+    projectRoot: s.projectRoot,
+    modelId: s.modelId,
+    messageCount: s.messages.length,
+  }))
 
 export const pendingToPublic = (p: PendingWriteInternal): PendingWritePublic => ({
   id: p.id,

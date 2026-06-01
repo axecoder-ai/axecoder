@@ -1,5 +1,5 @@
 import type { AgentToolDef } from './agent-types'
-import { buildAgentTools } from './agent-tool-prompts'
+import { buildFullAgentTools, buildSubAgentToolList } from './agent-tool-registry'
 
 export type { AgentToolDef } from './agent-types'
 
@@ -28,16 +28,12 @@ export {
   type SessionSpecificGuidanceOptions,
 } from './agent-system-prompt'
 
-export { buildAgentTools } from './agent-tool-prompts'
+export { buildCoreAgentTools, buildAgentTools } from './agent-tool-prompts'
+export { buildFullAgentTools, buildSubAgentToolList } from './agent-tool-registry'
+export { buildExtendedAgentTools } from './agent-tool-prompts-ext'
 
-/** 主 Agent 内置工具（§14 长 description 见 agent-tool-prompts.ts） */
-export const AGENT_TOOLS: AgentToolDef[] = buildAgentTools()
+/** 主 Agent 内置 + 扩展工具 */
+export const AGENT_TOOLS: AgentToolDef[] = buildFullAgentTools()
 
-/** 子代理可用工具（不可递归委派、不可阻塞问用户） */
-export const SUB_AGENT_TOOLS: AgentToolDef[] = []
-
-for (const t of AGENT_TOOLS) {
-  if (t.name !== 'Agent' && t.name !== 'AskUserQuestion') {
-    SUB_AGENT_TOOLS.push(t)
-  }
-}
+/** 默认子代理工具（generalPurpose；运行时按 subagent_type 再过滤） */
+export const SUB_AGENT_TOOLS: AgentToolDef[] = buildSubAgentToolList('generalPurpose')

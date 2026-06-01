@@ -1,7 +1,9 @@
 import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 import { chatWithToolsForModel } from '../ai/chat-with-tools'
-import { SUB_AGENT_TOOLS, buildDefaultSubAgentSystemPrompt } from './agent-tool-defs'
+import type { AgentToolDef } from './agent-types'
+import { buildDefaultSubAgentSystemPrompt } from './agent-tool-defs'
+import { buildSubAgentToolList } from './agent-tool-registry'
 import type { AgentLoopMessage } from './agent-types'
 import {
   executeAgentTool,
@@ -51,26 +53,32 @@ const applySubAgentPending = async (
 }
 
 /** 内联子代理循环（不注册 session store；写/Bash 自动执行） */
+export type RunSubAgentOptions = {
+  subagentType?: string
+  tools?: AgentToolDef[]
+}
+
 export const runSubAgentTask = async (
   projectRoot: string,
   modelId: string,
   taskPrompt: string,
+  options?: RunSubAgentOptions,
 ): Promise<{ ok: true; report: string } | { ok: false; error: string }> => {
   const prompt = taskPrompt.trim()
   if (!prompt) return { ok: false, error: 'Sub-agent prompt is required' }
 
   const model = await getModelById(modelId)
   if (!model) return { ok: false, error: '模型不存在' }
-  if (model.provider === 'ollama') {
-    return { ok: false, error: 'Ollama 暂不支持子代理' }
-  }
-
   const apiKey = await getSecret(modelId)
+  const subagentType = options?.subagentType || 'generalPurpose'
+  const tools = options?.tools ?? buildSubAgentToolList(subagentType)
+
   const ctx: AgentContext = {
     projectRoot,
     readCache: new Set<string>(),
     modelId,
     subAgentDepth: 1,
+    planMode: subagentType === 'plan' || subagentType === 'explore',
   }
 
   const messages: AgentLoopMessage[] = [
@@ -90,7 +98,7 @@ export const runSubAgentTask = async (
   let turn = 0
   while (turn < MAX_SUB_TURNS) {
     turn += 1
-    const res = await chatWithToolsForModel(model, apiKey, messages, undefined, SUB_AGENT_TOOLS)
+    const res = await chatWithToolsForModel(model, apiKey, messages, undefined, tools)
     if (!res.ok) return { ok: false, error: res.error }
 
     if (res.toolCalls.length) {
@@ -101,8 +109,10 @@ export const runSubAgentTask = async (
         toolCalls: res.toolCalls,
       })
 
-      for (const tc of res.toolCalls) {
-        const run = await executeAgentTool(ctx, tc)
+      const toolResults = await Promise.all(
+        res.toolCalls.map(async (tc) => ({ tc, run: await executeAgentTool(ctx, tc) })),
+      )
+      for (const { tc, run } of toolResults) {
         if (run.kind === 'pending') {
           pendingById.set(run.pending.id, run.pending)
           messages.push({

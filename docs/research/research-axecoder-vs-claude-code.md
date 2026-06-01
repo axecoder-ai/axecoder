@@ -109,11 +109,11 @@ AxeCoder 为 **Electron 桌面 IDE**（活动栏、文件树、Monaco、聊天/A
 
 | 项 | Claude Code | AxeCoder |
 |----|-------------|----------|
-| Checkpoint / `/rewind` | ✓ | **无**（依赖 Git / 编辑器历史） |
-| `/resume`、`/export`、`/init`、`/memory` 等 | ✓ | **无** |
-| 并行 tool call | 提示要求无依赖时并行 | 模型可返回多个 call，**循环内顺序执行**（`agent-loop.ts` `for (const tc of res.toolCalls)`） |
-| 子代理 UI 进度 / TaskOutput | ✓ | **无** |
-| Ollama Agent | — | **不支持**文件工具与子代理 |
+| Checkpoint / `/rewind` | ✓ | **V1**：每轮前 checkpoint + `/rewind` 恢复消息与文件快照（`agent-checkpoint.ts`） |
+| `/resume`、`/export`、`/init`、`/memory` 等 | ✓ | **V1**：`builtin.ts` 已注册（`/resume` 列活跃 Agent 会话；`/export` 导出聊天 JSON） |
+| 并行 tool call | 提示要求无依赖时并行 | **已实现**：`Promise.all` 并行执行（`agent-loop.ts`） |
+| 子代理 UI 进度 / TaskOutput | ✓ | **V1**：`subagent` 进度事件 + Chat 任务条；TaskOutput 工具已有 |
+| Ollama Agent | — | **V1**：经 Ollama OpenAI 兼容 `/v1/chat/completions` + tools（依赖本地模型） |
 
 ---
 
@@ -167,3 +167,4 @@ AxeCoder 为 **Electron 桌面 IDE**（活动栏、文件树、Monaco、聊天/A
 | 日期 | 说明 |
 |------|------|
 | 2026-06-01 | 初版：对照 agent 交付物与 `claude-code` 文档整理差距 |
+| 2026-06-01 | §5 更新：checkpoint/斜杠/子代理 UI/Ollama；并行 tool call 已实现 |

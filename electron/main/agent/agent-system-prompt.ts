@@ -7,6 +7,7 @@ import {
   getOutputStyleSection,
   resolveAgentOutputStyle,
 } from './agent-output-styles'
+import { getMcpInstructionsSection } from './agent-mcp-instructions'
 
 /** Claude Code — 静态/动态分界；仅用于组装，不写入发给模型的字符串 */
 export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY = '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
@@ -293,12 +294,15 @@ export const buildAgentSystemPrompt = async (
     getOutputEfficiencySection(),
   ].filter((part): part is string => part !== null && part !== '')
 
+  const mcpInstructions = await getMcpInstructionsSection()
+
   const dynamicParts = [
     sessionGuidance,
     memory ?? null,
     envInfo,
     language,
     outputStyleSection,
+    mcpInstructions,
     SUMMARIZE_TOOL_RESULTS_SECTION,
     getAgentToolPathRulesSection(),
     `- Project root (only files under here are accessible): ${root}`,

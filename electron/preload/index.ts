@@ -145,6 +145,111 @@ contextBridge.exposeInMainWorld('axecoder', {
       modelId,
       JSON.parse(JSON.stringify(messages)),
     ) as Promise<import('../../src/types/axecoder').AgentSendResult>,
+  agentRunUserShell: (projectRoot: string, command: string) =>
+    ipcRenderer.invoke('agent:runUserShell', cloneForIpc(projectRoot), command) as Promise<
+      | { ok: true; text: string; exitCode: number | null }
+      | { ok: false; error: string }
+    >,
+  chatCompact: (messages: import('../../src/types/axecoder').AiChatMessage[]) =>
+    ipcRenderer.invoke('chat:compact', JSON.parse(JSON.stringify(messages))) as Promise<
+      | { ok: true; messages: import('../../src/types/axecoder').AiChatMessage[]; summary: string }
+      | { ok: false; error: string }
+    >,
+  agentHooksHelp: () =>
+    ipcRenderer.invoke('agent:hooksHelp') as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
+  agentListMcp: () =>
+    ipcRenderer.invoke('agent:listMcp') as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
+  agentListSkills: (projectRoot: string) =>
+    ipcRenderer.invoke('agent:listSkills', cloneForIpc(projectRoot)) as Promise<
+      | {
+          ok: true
+          skills: { name: string; path: string; source: string }[]
+        }
+      | { ok: false; error: string }
+    >,
+  agentLoadSkill: (projectRoot: string, skillName: string) =>
+    ipcRenderer.invoke('agent:loadSkill', cloneForIpc(projectRoot), skillName) as Promise<
+      | { ok: true; name: string; text: string; path: string }
+      | { ok: false; error: string }
+    >,
+  agentListOutputStyles: (projectRoot?: string) =>
+    ipcRenderer.invoke('agent:listOutputStyles', projectRoot ? cloneForIpc(projectRoot) : undefined) as Promise<
+      | {
+          ok: true
+          activeId: string
+          styles: { id: string; name: string; description: string; source: string }[]
+          dirs: string[]
+        }
+      | { ok: false; error: string }
+    >,
+  agentSetOutputStyle: (styleId: string) =>
+    ipcRenderer.invoke('agent:setOutputStyle', styleId) as Promise<
+      { ok: true; activeId: string } | { ok: false; error: string }
+    >,
+  agentPlanModeHelp: () =>
+    ipcRenderer.invoke('agent:planModeHelp') as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
+  agentRewindHelp: (projectRoot: string) =>
+    ipcRenderer.invoke('agent:rewindHelp', cloneForIpc(projectRoot)) as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
+  agentListSessions: () =>
+    ipcRenderer.invoke('agent:listSessions') as Promise<{
+      ok: true
+      sessions: {
+        id: string
+        turn: number
+        projectRoot: string
+        modelId: string
+        messageCount: number
+      }[]
+    }>,
+  agentListCheckpoints: (sessionId: string) =>
+    ipcRenderer.invoke('agent:listCheckpoints', sessionId) as Promise<
+      | {
+          ok: true
+          checkpoints: {
+            id: string
+            turn: number
+            label: string
+            createdAt: number
+            fileCount: number
+          }[]
+        }
+      | { ok: false; error: string }
+    >,
+  agentRewind: (sessionId: string, checkpointId?: string) =>
+    ipcRenderer.invoke('agent:rewind', sessionId, checkpointId) as Promise<
+      | { ok: true; label: string; restoredFiles: number }
+      | { ok: false; error: string }
+    >,
+  agentListBackgroundTasks: (sessionId?: string) =>
+    ipcRenderer.invoke('agent:listBackgroundTasks', sessionId) as Promise<{
+      ok: true
+      tasks: {
+        id: string
+        description: string
+        status: 'running' | 'completed' | 'failed' | 'stopped'
+        startedAt: number
+      }[]
+    }>,
+  agentReadMemory: () =>
+    ipcRenderer.invoke('agent:readMemory') as Promise<
+      { ok: true; path: string; text: string } | { ok: false; error: string }
+    >,
+  agentWriteMemory: (text: string) =>
+    ipcRenderer.invoke('agent:writeMemory', text) as Promise<
+      { ok: true; path: string } | { ok: false; error: string }
+    >,
+  agentInitAgentsMd: (projectRoot: string) =>
+    ipcRenderer.invoke('agent:initAgentsMd', cloneForIpc(projectRoot)) as Promise<
+      { ok: true; path: string; created: boolean } | { ok: false; error: string }
+    >,
   agentConfirmWrite: (sessionId: string, pendingId: string) =>
     ipcRenderer.invoke('agent:confirmWrite', sessionId, pendingId) as Promise<
       import('../../src/types/axecoder').AgentContinueResult

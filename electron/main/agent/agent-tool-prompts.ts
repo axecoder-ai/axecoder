@@ -165,7 +165,8 @@ When NOT to use:
 
 Do not use a colon before tool calls in surrounding text; keep user-facing prose brief.`
 
-export const buildAgentTools = (): AgentToolDef[] => [
+/** 核心文件/Shell/子代理工具（不含扩展层） */
+export const buildCoreAgentTools = (): AgentToolDef[] => [
   {
     name: 'Read',
     description: READ_DESCRIPTION,
@@ -326,6 +327,17 @@ export const buildAgentTools = (): AgentToolDef[] => [
           description:
             'Detailed task instructions for the sub-agent. Required. Include goals, constraints, and what to return in the report.',
         },
+        subagent_type: {
+          type: 'string',
+          enum: ['generalPurpose', 'explore', 'plan'],
+          description:
+            'Sub-agent profile: explore (read-only), plan (read-only planning), generalPurpose (default).',
+        },
+        run_in_background: {
+          type: 'boolean',
+          description:
+            'If true, start sub-agent in background and return task id; use TaskOutput to read results.',
+        },
       },
       required: ['prompt'],
     },
@@ -369,3 +381,6 @@ export const buildAgentTools = (): AgentToolDef[] => [
     },
   },
 ]
+
+/** @deprecated 使用 buildFullAgentTools / AGENT_TOOLS */
+export const buildAgentTools = buildCoreAgentTools
