@@ -34,6 +34,7 @@ const props = defineProps<{
   /** 当前编辑器打开的文件，发送时可作为上下文 */
   contextFilePath?: string | null
   agentsSidebarVisible: boolean
+  agentAutoApplyWrites: boolean
 }>()
 
 const emit = defineEmits<{
@@ -43,11 +44,14 @@ const emit = defineEmits<{
   activeChange: [id: string]
   sessionsChanged: []
   filesChanged: []
+  'update:agentAutoApplyWrites': [value: boolean]
 }>()
 
 const sessionMetas = ref<ChatSessionMeta[]>([])
 const activeSession = ref<ChatSession | null>(null)
 const activeId = ref('')
+const openTabIds = ref<string[]>([])
+const sessionCache = ref<Record<string, ChatSession>>({})
 const input = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const messagesEl = ref<HTMLElement | null>(null)
@@ -88,6 +92,30 @@ const activeModel = computed(
 
 const newId = () => `chat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 
+const cacheSession = (s: ChatSession) => {
+  sessionCache.value = { ...sessionCache.value, [s.id]: s }
+}
+
+const addOpenTab = (id: string) => {
+  if (!openTabIds.value.includes(id)) openTabIds.value = [...openTabIds.value, id]
+}
+
+const removeOpenTab = (id: string) => {
+  openTabIds.value = openTabIds.value.filter((t) => t !== id)
+  const next = { ...sessionCache.value }
+  delete next[id]
+  sessionCache.value = next
+}
+
+const tabTitleFor = (id: string) => {
+  if (id === activeId.value && activeSession.value) return activeSession.value.title
+  const cached = sessionCache.value[id]
+  if (cached) return cached.title
+  return sessionMetas.value.find((m) => m.id === id)?.title ?? '对话'
+}
+
+const openTabs = computed(() => openTabIds.value.map((id) => ({ id, title: tabTitleFor(id) })))
+
 const syncMetaFromActive = () => {
   if (!activeSession.value) return
   const m: ChatSessionMeta = {
@@ -117,6 +145,7 @@ const persist = async () => {
     })),
   })
   if (!res.ok) return
+  if (activeSession.value) cacheSession(activeSession.value)
   syncMetaFromActive()
   emit('sessionsChanged')
 }
@@ -125,6 +154,8 @@ const reset = () => {
   sessionMetas.value = []
   activeSession.value = null
   activeId.value = ''
+  openTabIds.value = []
+  sessionCache.value = {}
 }
 
 const resizeInput = () => {
@@ -145,11 +176,19 @@ const renderMarkdown = (text: string) => md.render(text)
 
 const selectSession = async (id: string): Promise<boolean> => {
   if (!hasProject.value) return false
-  if (activeSession.value && activeId.value && activeId.value !== id) {
+  if (activeId.value === id) return true
+  if (activeSession.value && activeId.value) {
+    cacheSession(activeSession.value)
     await persist()
   }
-  const { session } = await window.axecoder.getChatSession(props.projectRoot, id)
-  if (!session) return false
+  let session = sessionCache.value[id]
+  if (!session) {
+    const res = await window.axecoder.getChatSession(props.projectRoot, id)
+    if (!res.session) return false
+    session = res.session
+  }
+  cacheSession(session)
+  addOpenTab(id)
   activeSession.value = session
   activeId.value = id
   input.value = ''
@@ -160,6 +199,10 @@ const selectSession = async (id: string): Promise<boolean> => {
       : 0
   }
   return true
+}
+
+const switchToTab = async (id: string) => {
+  await selectSession(id)
 }
 
 const loadModels = async () => {
@@ -174,13 +217,24 @@ const load = async () => {
   const res = await window.axecoder.getChatSessions(props.projectRoot)
   sessionMetas.value = res.sessions
   if (!sessionMetas.value.length) {
-    reset()
+    activeSession.value = null
+    activeId.value = ''
+    openTabIds.value = []
+    sessionCache.value = {}
     return
   }
+  const keptTabs = openTabIds.value.filter((id) => sessionMetas.value.some((s) => s.id === id))
+  if (!keptTabs.length) {
+    activeSession.value = null
+    activeId.value = ''
+    openTabIds.value = []
+    return
+  }
+  openTabIds.value = keptTabs
   const pickId =
-    activeId.value && sessionMetas.value.some((s) => s.id === activeId.value)
+    activeId.value && keptTabs.includes(activeId.value)
       ? activeId.value
-      : sessionMetas.value[0].id
+      : keptTabs[keptTabs.length - 1]
   await selectSession(pickId)
 }
 
@@ -188,7 +242,7 @@ const newChat = async () => {
   if (!hasProject.value) return
   const s: ChatSession = {
     id: newId(),
-    title: '新对话',
+    title: 'New Agent',
     updatedAt: Date.now(),
     messages: [],
   }
@@ -198,6 +252,8 @@ const newChat = async () => {
     { id: s.id, title: s.title, updatedAt: s.updatedAt },
     ...sessionMetas.value.filter((m) => m.id !== s.id),
   ]
+  cacheSession(s)
+  addOpenTab(s.id)
   activeSession.value = s
   activeId.value = s.id
   emit('sessionsChanged')
@@ -210,6 +266,7 @@ const deleteSession = async (id: string) => {
     activeSession.value = null
     activeId.value = ''
   }
+  removeOpenTab(id)
   await window.axecoder.deleteChatSession(props.projectRoot, id)
   sessionMetas.value = sessionMetas.value.filter((s) => s.id !== id)
   if (!sessionMetas.value.length) {
@@ -218,21 +275,25 @@ const deleteSession = async (id: string) => {
     return
   }
   if (wasActive) {
-    await selectSession(sessionMetas.value[0].id)
+    const nextId = openTabIds.value[openTabIds.value.length - 1] ?? sessionMetas.value[0].id
+    await selectSession(nextId)
   }
   emit('sessionsChanged')
 }
 
-const closeChat = async () => {
+const closeTab = async (id: string) => {
   if (!hasProject.value) {
     emit('close')
     return
   }
-  if (!activeSession.value) {
-    emit('close')
-    return
-  }
-  await deleteSession(activeId.value)
+  const wasActive = activeId.value === id
+  if (wasActive && activeSession.value) await persist()
+  removeOpenTab(id)
+  if (!wasActive) return
+  activeSession.value = null
+  activeId.value = ''
+  const remaining = openTabIds.value
+  if (remaining.length) await selectSession(remaining[remaining.length - 1])
 }
 
 const onModelPick = async (id: string) => {
@@ -367,11 +428,7 @@ const clearProgressUi = () => {
   subagentTasks.value = new Map()
 }
 
-const formatToolLog = (log: AgentToolLogEntry[]) => {
-  if (!log.length) return ''
-  const lines = log.map((t) => `- ${t.ok ? '✓' : '✗'} ${t.name}: ${t.summary}`)
-  return `\n\n---\n工具：\n${lines.join('\n')}`
-}
+const formatToolLog = (_log: AgentToolLogEntry[]) => ''
 
 const pushAssistantFromAgent = (res: AgentSendResult | AgentContinueResult) => {
   if (!activeSession.value) return
@@ -612,6 +669,14 @@ const onRejectAllPending = async () => {
   }
 }
 
+const onAgentAutoApplyChange = async (e: Event) => {
+  const checked = (e.target as HTMLInputElement).checked
+  emit('update:agentAutoApplyWrites', checked)
+  if (checked && sessionPendingState.value.count > 0) {
+    await onConfirmAllPending()
+  }
+}
+
 const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiChatMessage[]) => {
   const useSse = model.provider === 'openai'
   let streamId = ''
@@ -761,7 +826,7 @@ const send = async () => {
   activeSession.value.messages.push(userMsg)
   attachedFiles.value = []
   includeContextFile.value = false
-  if (activeSession.value.title === '新对话') {
+  if (activeSession.value.title === 'New Agent' || activeSession.value.title === '新对话') {
     activeSession.value.title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
   }
   activeSession.value.updatedAt = Date.now()
@@ -903,6 +968,26 @@ onUnmounted(() => {
 
 const showProgressBubble = computed(() => loading.value || pendingBusy.value)
 
+const showNoSessionLanding = computed(() => hasProject.value && !activeSession.value)
+
+const isEmptyChat = computed(
+  () =>
+    hasProject.value &&
+    !!activeSession.value &&
+    messages.value.length === 0 &&
+    !loading.value &&
+    !pendingBusy.value,
+)
+
+const landingShortcuts = [
+  { label: 'New Agent', keys: ['+'] },
+  { label: 'Show/Hide Terminal', keys: ['⌘', '`'] },
+  { label: 'Command Palette', keys: ['⌘', '⇧', 'P'] },
+  { label: 'Show/Hide AI Panel', keys: ['⌘', '⇧', 'C'] },
+  { label: 'Open Project', keys: ['⌘', 'O'] },
+  { label: 'Find in Project', keys: ['⌘', '⇧', 'F'] },
+]
+
 const progressHeadline = computed(() => {
   if (agentMode.value && progressSteps.value.length) {
     const active = [...progressSteps.value].reverse().find((s) => s.status === 'active')
@@ -925,13 +1010,33 @@ defineExpose({
 </script>
 
 <template>
-  <section class="chat-pane" :class="{ 'agents-hidden': !agentsSidebarVisible }">
+  <section
+    class="chat-pane"
+    :class="{
+      'agents-hidden': !agentsSidebarVisible,
+      'chat-empty': isEmptyChat,
+      'chat-no-session': showNoSessionLanding,
+    }"
+  >
     <div class="chat-tabs">
-      <div v-if="activeSession" class="chat-tab active">
-        <span class="tab-label">{{ activeSession.title }}</span>
-        <button type="button" class="tab-close" title="关闭对话" @click="closeChat">×</button>
+      <div
+        v-for="tab in openTabs"
+        :key="tab.id"
+        class="chat-tab"
+        :class="{ active: tab.id === activeId }"
+        @click="switchToTab(tab.id)"
+      >
+        <span class="tab-label">{{ tab.title }}</span>
+        <button
+          type="button"
+          class="tab-close"
+          title="关闭标签"
+          @click.stop="closeTab(tab.id)"
+        >
+          ×
+        </button>
       </div>
-      <button type="button" class="new-tab" title="新对话" @click="newChat">+</button>
+      <button type="button" class="new-tab" title="New Agent" @click="newChat">+</button>
       <div class="tabs-spacer" />
       <button
         v-if="!agentsSidebarVisible"
@@ -946,9 +1051,24 @@ defineExpose({
         </svg>
       </button>
     </div>
-    <div ref="messagesEl" :key="activeId" class="chat-messages">
-      <div v-if="!hasProject" class="empty-hint">请先打开项目，再开始 AI 对话</div>
-      <div v-else-if="!activeSession" class="empty-hint">点击 + 或右侧「新建对话」开始</div>
+    <div
+      ref="messagesEl"
+      :key="activeId"
+      class="chat-messages"
+      :class="{ 'chat-messages--landing': showNoSessionLanding }"
+    >
+      <div v-if="showNoSessionLanding" class="chat-landing">
+        <img class="chat-landing-logo" src="/donkey-loading.png" width="80" height="80" alt="" />
+        <ul class="chat-landing-shortcuts">
+          <li v-for="item in landingShortcuts" :key="item.label">
+            <span class="landing-label">{{ item.label }}</span>
+            <span class="landing-keys">
+              <kbd v-for="(key, ki) in item.keys" :key="ki">{{ key }}</kbd>
+            </span>
+          </li>
+        </ul>
+      </div>
+      <div v-else-if="!hasProject" class="empty-hint">请先打开项目，再开始 AI 对话</div>
       <div v-else-if="!messages.length" class="empty-hint">发送第一条消息，或从右侧选择历史会话</div>
       <div v-for="(msg, i) in messages" :key="i" class="message" :class="msg.role">
         <div v-if="msg.role === 'user'" class="user-bubble">
@@ -1043,9 +1163,19 @@ defineExpose({
       </button>
     </div>
     <div v-if="sessionPendingState.count > 0" class="pending-bulk-bar">
-      <span class="pending-bulk-label">
-        {{ sessionPendingState.count }} 项待确认（文件变更 / 命令）
-      </span>
+      <div class="pending-bulk-left">
+        <span class="pending-bulk-label">
+          {{ sessionPendingState.count }} 项待确认（文件变更 / 命令）
+        </span>
+        <label class="pending-auto-apply" title="开启后 Write / Edit / Delete / Move / Bash 将直接执行，不再弹出确认">
+          <input
+            type="checkbox"
+            :checked="agentAutoApplyWrites"
+            @change="onAgentAutoApplyChange"
+          />
+          自动应用，无需确认
+        </label>
+      </div>
       <div class="pending-bulk-actions">
         <button
           type="button"
@@ -1065,7 +1195,7 @@ defineExpose({
         </button>
       </div>
     </div>
-    <div class="chat-input-area">
+    <div v-if="activeSession" class="chat-input-area">
       <div
         class="input-box"
         :class="{ 'drop-active': dropActive }"
@@ -1103,7 +1233,7 @@ defineExpose({
           v-model="input"
           class="chat-input"
           rows="1"
-          placeholder=""
+          placeholder="Plan, Build, / for commands, @ for context"
           @input="resizeInput"
           @keydown.enter.exact.prevent="send"
         />
@@ -1137,22 +1267,18 @@ defineExpose({
             </button>
           </div>
           <div class="footer-right">
-            <button
-              type="button"
-              class="icon-btn"
-              title="历史会话"
-              @click="emit('showAgentsSidebar')"
+            <label
+              v-if="agentMode"
+              class="auto-apply-toggle"
+              title="开启后 Agent 的文件变更与 Bash 命令将直接应用，不再显示「应用 / 拒绝」"
             >
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.2"
-                  stroke-linecap="round"
-                  d="M8 3a5 5 0 1 0 4.2 7.6M8 1.5v3M8 4.5H5.5"
-                />
-              </svg>
-            </button>
+              <input
+                type="checkbox"
+                :checked="agentAutoApplyWrites"
+                @change="onAgentAutoApplyChange"
+              />
+              Auto Run
+            </label>
             <button
               type="button"
               class="send-btn"
@@ -1188,6 +1314,98 @@ defineExpose({
   background: var(--wc-panel);
   min-height: 0;
   overflow: hidden;
+  position: relative;
+  font-family: var(--wc-font-sans);
+  font-size: var(--wc-font-size-ui);
+  font-weight: var(--wc-font-weight-ui);
+}
+
+.chat-pane.chat-empty .empty-hint {
+  display: none;
+}
+
+.chat-messages--landing {
+  justify-content: center;
+  align-items: center;
+}
+
+.chat-landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  width: 100%;
+  max-width: 340px;
+  user-select: none;
+}
+
+.chat-landing-logo {
+  display: block;
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+}
+
+.chat-landing-shortcuts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-landing-shortcuts li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--wc-font-size-ui);
+  color: var(--wc-landing-label);
+  line-height: 1.4;
+}
+
+.landing-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.landing-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.landing-keys kbd {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  border: 1px solid var(--wc-kbd-border);
+  background: var(--wc-kbd-bg);
+  font-size: var(--wc-font-size-kbd);
+  font-family: var(--wc-font-sans);
+  font-weight: var(--wc-font-weight-ui);
+  color: var(--wc-kbd-fg);
+  line-height: 1;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.chat-pane.chat-empty .chat-input-area {
+  position: absolute;
+  top: calc(35px + (100% - 35px) / 2);
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
 }
 
 .chat-tabs {
@@ -1200,7 +1418,8 @@ defineExpose({
   gap: 4px;
   flex-shrink: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .tabs-spacer {
@@ -1237,9 +1456,16 @@ defineExpose({
   max-width: min(220px, 100%);
   padding: 6px 8px 6px 12px;
   font-size: 12px;
-  background: var(--wc-panel);
+  background: transparent;
   border-radius: 4px 4px 0 0;
   overflow: hidden;
+  cursor: pointer;
+  color: var(--wc-text-muted);
+}
+
+.chat-tab.active {
+  background: var(--wc-panel);
+  color: var(--wc-text);
 }
 
 .tab-close {
@@ -1353,10 +1579,27 @@ defineExpose({
   flex-shrink: 0;
 }
 
+.pending-bulk-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .pending-bulk-label {
   font-size: 12px;
   color: var(--wc-text-muted);
   min-width: 0;
+}
+
+.pending-auto-apply {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--wc-text-dim);
+  cursor: pointer;
+  user-select: none;
 }
 
 .pending-bulk-actions {
@@ -1381,6 +1624,16 @@ defineExpose({
 .btn-reject-all:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.auto-apply-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--wc-text-dim);
+  cursor: pointer;
+  user-select: none;
 }
 
 .btn-reject-all {
@@ -1476,6 +1729,14 @@ defineExpose({
   font-size: 13px;
   line-height: 1.5;
   color: var(--wc-text);
+}
+
+.chat-input::placeholder {
+  color: var(--wc-text-muted);
+}
+
+.chat-pane.chat-empty .chat-input {
+  min-height: 72px;
 }
 
 .chat-input-footer {

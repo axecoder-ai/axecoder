@@ -147,6 +147,10 @@ const fileName = (p: string) => {
   background: var(--wc-panel);
   min-height: 0;
   overflow: auto;
+  border-left: 1px solid var(--wc-workbench-separator);
+  font-family: var(--wc-font-sans);
+  font-size: var(--wc-font-size-ui);
+  font-weight: var(--wc-font-weight-ui);
 }
 
 .welcome-hero {

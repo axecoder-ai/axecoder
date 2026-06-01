@@ -77,62 +77,82 @@ const onOutputStyle = (e: Event) => {
     <section class="section">
       <h3 class="section-title">Agent</h3>
       <p class="section-desc">对话中 Agent 修改项目文件时的确认行为</p>
-      <label class="pref-row">
-        <span class="pref-label">自动应用写盘变更</span>
-        <input
-          type="checkbox"
-          :checked="settings.agentAutoApplyWrites"
-          @change="onAgentAutoApply"
-        />
-      </label>
-      <p class="section-desc hint">开启后 Write / Edit / Delete / Move 将直接写入磁盘，不再显示「应用 / 拒绝」</p>
-      <label class="pref-row output-style-row">
-        <span class="pref-label">输出风格</span>
-        <select
-          class="output-style-select"
-          :value="settings.agentOutputStyle"
-          @change="onOutputStyle"
-        >
-          <option v-for="s in outputStyles" :key="s.id" :value="s.id">
-            {{ s.label }} — {{ s.desc }}
-          </option>
-        </select>
-      </label>
-      <p class="section-desc hint">影响新发起的 Agent 会话系统提示。自定义风格可放入 ~/.axecoder/output-styles、~/.claude/output-styles 或项目 .axecoder/output-styles（*.md）；聊天中可用 /style 切换。</p>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">自动应用写盘变更</span>
+          <p class="pref-hint">开启后 Write / Edit / Delete / Move 将直接写入磁盘，不再显示「应用 / 拒绝」</p>
+        </div>
+        <div class="pref-control">
+          <input
+            type="checkbox"
+            :checked="settings.agentAutoApplyWrites"
+            @change="onAgentAutoApply"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">输出风格</span>
+          <p class="pref-hint">影响新发起的 Agent 会话系统提示。自定义风格可放入 ~/.axecoder/output-styles、~/.claude/output-styles 或项目 .axecoder/output-styles（*.md）；聊天中可用 /style 切换。</p>
+        </div>
+        <div class="pref-control pref-control--wide">
+          <select
+            class="output-style-select"
+            :value="settings.agentOutputStyle"
+            @change="onOutputStyle"
+          >
+            <option v-for="s in outputStyles" :key="s.id" :value="s.id">
+              {{ s.label }} — {{ s.desc }}
+            </option>
+          </select>
+        </div>
+      </div>
     </section>
 
     <section class="section">
       <h3 class="section-title">编辑器</h3>
-      <label class="pref-row">
-        <span class="pref-label">自动保存</span>
-        <input
-          type="checkbox"
-          :checked="settings.autoSave"
-          @change="onAutoSave"
-        />
-      </label>
-      <label class="pref-row">
-        <span class="pref-label">自动保存延迟（毫秒）</span>
-        <input
-          type="number"
-          class="pref-input"
-          min="200"
-          step="100"
-          :value="settings.autoSaveDelay"
-          @change="onDelay"
-        />
-      </label>
-      <label class="pref-row">
-        <span class="pref-label">编辑器字号</span>
-        <input
-          type="number"
-          class="pref-input narrow"
-          min="10"
-          max="24"
-          :value="settings.fontSize"
-          @change="onFontSize"
-        />
-      </label>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">自动保存</span>
+        </div>
+        <div class="pref-control">
+          <input
+            type="checkbox"
+            :checked="settings.autoSave"
+            @change="onAutoSave"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">自动保存延迟（毫秒）</span>
+        </div>
+        <div class="pref-control">
+          <input
+            type="number"
+            class="pref-input"
+            min="200"
+            step="100"
+            :value="settings.autoSaveDelay"
+            @change="onDelay"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">编辑器字号</span>
+        </div>
+        <div class="pref-control">
+          <input
+            type="number"
+            class="pref-input narrow"
+            min="10"
+            max="24"
+            :value="settings.fontSize"
+            @change="onFontSize"
+          />
+        </div>
+      </div>
     </section>
   </div>
 </template>
@@ -160,13 +180,44 @@ h2 {
 }
 
 .section-desc {
-  margin: 0 0 16px;
+  margin: 0 0 12px;
   font-size: 12px;
   color: var(--wc-text-dim);
 }
 
-.section-desc.hint {
-  margin: -4px 0 0;
+.pref-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--wc-border);
+}
+
+.pref-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.pref-label {
+  display: block;
+  font-size: 13px;
+  color: var(--wc-text);
+}
+
+.pref-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--wc-text-dim);
+}
+
+.pref-control {
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
+.pref-control--wide {
+  width: 240px;
 }
 
 .theme-grid {
@@ -229,22 +280,8 @@ h2 {
   color: var(--wc-text-dim);
 }
 
-.pref-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--wc-border);
-  font-size: 13px;
-}
-
-.pref-label {
-  color: var(--wc-text);
-}
-
 .pref-input {
-  width: 120px;
+  width: 100%;
   padding: 6px 10px;
   background: var(--wc-input-bg);
   border: 1px solid var(--wc-border);
@@ -257,14 +294,8 @@ h2 {
   width: 72px;
 }
 
-.output-style-row {
-  flex-wrap: wrap;
-}
-
 .output-style-select {
-  flex: 1;
-  min-width: 200px;
-  max-width: 420px;
+  width: 100%;
   padding: 6px 10px;
   background: var(--wc-input-bg);
   border: 1px solid var(--wc-border);

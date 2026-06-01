@@ -43,6 +43,10 @@ const onSave = () => {
         编辑器字号
         <input v-model.number="local.fontSize" type="number" min="10" max="24" />
       </label>
+      <label class="row row-check">
+        <input v-model="local.agentAutoApplyWrites" type="checkbox" />
+        Agent 自动应用文件变更与命令（无需逐项确认）
+      </label>
       <div class="actions">
         <button type="button" @click="emit('close')">取消</button>
         <button type="button" class="primary" @click="onSave">保存</button>
@@ -89,6 +93,12 @@ const onSave = () => {
   border: 1px solid var(--wc-border);
   border-radius: 4px;
   color: var(--wc-text);
+}
+
+.row-check {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .actions {

@@ -42,7 +42,8 @@ const saveLabel = (s?: string) => {
   padding: 0 8px;
   background: var(--wc-status-bg);
   color: #fff;
-  font-size: 12px;
+  font-family: var(--wc-font-sans);
+  font-size: var(--wc-font-size-caption);
   flex-shrink: 0;
 }
 

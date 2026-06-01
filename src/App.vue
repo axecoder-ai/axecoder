@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import TitleBar from './components/workbench/TitleBar.vue'
 import SidebarViewBar from './components/workbench/SidebarViewBar.vue'
 import FileExplorer from './components/workbench/FileExplorer.vue'
@@ -166,17 +166,30 @@ const onAgentsSplitPointerUp = (e: PointerEvent) => {
 }
 
 const hasOpenEditorTabs = computed(() => openFiles.value.length > 0)
-/** 已打开项目或已有标签时显示编辑区（避免欢迎页与编辑器同时被 v-show 关掉） */
-const showEditorArea = computed(() => hasOpenEditorTabs.value || !!projectRoot.value)
+/** 仅在有打开的文件标签时显示编辑区；无文件时 AI 面板可占满中间区域 */
+const showEditorArea = computed(() => hasOpenEditorTabs.value)
+/** 有打开的文件时不显示右侧 AI 面板 */
+const showAiSidePanel = computed(
+  () => aiPanelVisible.value && !showEditorArea.value,
+)
+/** 欢迎页仅在没有打开项目时显示 */
 const showWelcomePage = computed(
-  () => welcomeOnStartup.value && !showEditorArea.value && !aiPanelVisible.value,
+  () =>
+    !projectRoot.value &&
+    welcomeOnStartup.value &&
+    !showEditorArea.value &&
+    !aiPanelVisible.value,
 )
 const aiPanelFillsCenter = computed(
-  () => aiPanelVisible.value && !showEditorArea.value && !showWelcomePage.value,
+  () => showAiSidePanel.value && !showWelcomePage.value,
 )
 const aiPanelUsesFixedWidth = computed(
-  () => aiPanelVisible.value && (showEditorArea.value || showWelcomePage.value),
+  () => showAiSidePanel.value && showWelcomePage.value,
 )
+
+watch(hasOpenEditorTabs, (has) => {
+  if (has) aiPanelVisible.value = false
+})
 
 const onSettingsModelsChanged = async () => {
   await chatPaneRef.value?.loadModels()
@@ -240,6 +253,10 @@ const onActivitySelect = (id: string) => {
 }
 
 const toggleAiPanel = () => {
+  if (showEditorArea.value) {
+    aiPanelVisible.value = false
+    return
+  }
   aiPanelVisible.value = !aiPanelVisible.value
 }
 
@@ -282,11 +299,29 @@ const onProjectOpened = async (rootPath: string) => {
   openFiles.value = []
   activePath.value = null
   await wb.onProjectOpened(rootPath)
+  aiPanelVisible.value = true
   void loadRecent()
   activeChatSessionId.value = ''
   void chatPaneRef.value?.load()
   void agentsPanelRef.value?.load()
 }
+
+/** 中间不能全空：无标签且 AI 已关时，有欢迎页则靠欢迎页，否则自动打开 AI 面板 */
+watch(
+  () =>
+    [
+      projectRoot.value,
+      openFiles.value.length,
+      aiPanelVisible.value,
+      welcomeOnStartup.value,
+    ] as const,
+  ([root, tabCount, aiVisible, welcome]) => {
+    if (tabCount > 0 || aiVisible) return
+    if (!root && welcome) return
+    aiPanelVisible.value = true
+  },
+  { immediate: true },
+)
 
 const onFileRenamed = (oldPath: string, newPath: string) => {
   wb.onFileRenamed(oldPath, newPath)
@@ -404,7 +439,7 @@ onUnmounted(() => {
   <div class="workbench">
     <TitleBar
       :primary-sidebar-visible="primarySidebarVisible"
-      :ai-panel-visible="aiPanelVisible"
+      :ai-panel-visible="showAiSidePanel"
       :project-name="projectName"
       :window-layout="windowLayout"
       @toggle-primary-sidebar="togglePrimarySidebar"
@@ -475,7 +510,7 @@ onUnmounted(() => {
           @pointercancel="onAiPanelSplitPointerUp"
         />
         <aside
-          v-show="aiPanelVisible"
+          v-show="showAiSidePanel"
           ref="aiSidePanelRef"
           class="ai-side-panel"
           :class="{ 'ai-side-panel--fill': aiPanelFillsCenter }"
@@ -486,6 +521,10 @@ onUnmounted(() => {
             :project-root="projectRoot"
             :context-file-path="activePath"
             :agents-sidebar-visible="agentsSidebarVisible"
+            :agent-auto-apply-writes="settings.agentAutoApplyWrites"
+            @update:agent-auto-apply-writes="
+              onSettingsSave({ agentAutoApplyWrites: $event })
+            "
             @close="aiPanelVisible = false"
             @show-agents-sidebar="agentsSidebarVisible = true"
             @open-models-settings="settingsPanelVisible = true"
@@ -579,7 +618,6 @@ onUnmounted(() => {
   width: var(--wc-sidebar-w);
   min-height: 0;
   background: var(--wc-sidebar);
-  border-right: 1px solid var(--wc-border);
 }
 
 .sidebar-panels {
@@ -633,6 +671,7 @@ onUnmounted(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  border-left: 1px solid var(--wc-workbench-separator);
 }
 
 .ai-side-panel--fill {

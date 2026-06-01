@@ -5,11 +5,16 @@
   --wc-bg-dark: #181818;
   --wc-sidebar: #252526;
   --wc-panel: #1e1e1e;
-  --wc-border: #3a3a3a;
-  --wc-border-light: #484848;
+  --wc-border: #303031;
+  --wc-border-light: #454545;
+  --wc-workbench-separator: #303031;
   --wc-text: #cccccc;
-  --wc-text-muted: #8b8b8b;
+  --wc-text-muted: #969696;
   --wc-text-dim: #6e6e6e;
+  --wc-landing-label: #9d9d9d;
+  --wc-kbd-bg: #333333;
+  --wc-kbd-border: #3c3c3c;
+  --wc-kbd-fg: #cccccc;
   --wc-accent: #3794ff;
   --wc-hover: #2a2d2e;
   --wc-active: #37373d;
@@ -51,11 +56,16 @@
   --wc-bg-dark: #ebebeb;
   --wc-sidebar: #ebebeb;
   --wc-panel: #f5f5f5;
-  --wc-border: #c0c0c0;
+  --wc-border: #c8c8c8;
   --wc-border-light: #b0b0b0;
+  --wc-workbench-separator: #c8c8c8;
   --wc-text: #333333;
-  --wc-text-muted: #888888;
-  --wc-text-dim: #aaaaaa;
+  --wc-text-muted: #6e6e6e;
+  --wc-text-dim: #999999;
+  --wc-landing-label: #6e6e6e;
+  --wc-kbd-bg: #f3f3f3;
+  --wc-kbd-border: #c8c8c8;
+  --wc-kbd-fg: #333333;
   --wc-accent: #2563eb;
   --wc-hover: #e8e8e8;
   --wc-active: #dedede;
@@ -87,11 +97,16 @@
   --wc-bg-dark: #141414;
   --wc-sidebar: #242424;
   --wc-panel: #1c1c1c;
-  --wc-border: #424242;
-  --wc-border-light: #525252;
+  --wc-border: #303031;
+  --wc-border-light: #454545;
+  --wc-workbench-separator: #303031;
   --wc-text: #e4e4e4;
-  --wc-text-muted: #9a9a9a;
+  --wc-text-muted: #9d9d9d;
   --wc-text-dim: #6b6b6b;
+  --wc-landing-label: #9d9d9d;
+  --wc-kbd-bg: #333333;
+  --wc-kbd-border: #3c3c3c;
+  --wc-kbd-fg: #e4e4e4;
   --wc-accent: #3b82f6;
   --wc-hover: #2a2a2a;
   --wc-active: #353535;
@@ -119,10 +134,17 @@
 
 :root {
   /* 与 Cursor 一致：SF Pro UI + JetBrains Mono 等宽 */
-  --wc-font-sans: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --wc-font-sans: 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    sans-serif;
   --wc-font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+  --wc-font-size-ui: 13px;
+  --wc-font-size-caption: 11px;
+  --wc-font-size-kbd: 11px;
+  --wc-font-weight-ui: 400;
+  --wc-font-weight-section: 600;
   font-family: var(--wc-font-sans);
-  font-size: 13px;
+  font-size: var(--wc-font-size-ui);
+  font-weight: var(--wc-font-weight-ui);
   color: var(--wc-text);
   background: var(--wc-bg);
 }

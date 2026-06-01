@@ -9,6 +9,7 @@ const icon = path.join(root, 'build/icon.png')
 const fav32 = path.join(root, 'public/favicon-32.png')
 const favico = path.join(root, 'public/favicon.ico')
 const loading = path.join(root, 'public/donkey-loading.png')
+const landingMask = path.join(root, 'src/assets/donkey-silhouette-mask.png')
 const tmpBase = path.join(root, 'build/.icon-base.png')
 const tmpRounded = path.join(root, 'build/.icon-rounded.png')
 
@@ -27,6 +28,9 @@ execSync(`magick -size 1024x1024 xc:none "${tmpRounded}" -gravity center -compos
 execSync(`magick "${icon}" -filter Lanczos -resize 32x32 "${fav32}"`)
 execSync(`magick "${icon}" -define icon:auto-resize=16,32,48,64,128,256 "${favico}"`)
 execSync(`magick "${icon}" -filter Lanczos -resize 96x96 "${loading}"`)
+execSync(
+  `magick "${src}" \\( +clone -alpha extract \\) -fill white -colorize 100 -compose CopyOpacity -composite -resize 112x112 -background none -gravity center -extent 112x112 "${landingMask}"`,
+)
 
 fs.unlinkSync(tmpBase)
 fs.unlinkSync(tmpRounded)

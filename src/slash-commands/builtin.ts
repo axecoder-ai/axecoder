@@ -23,7 +23,7 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
       const s = ctx.getSession()
       if (!s) return { ok: false, message: '无活动会话' }
       s.messages = []
-      s.title = '新对话'
+      s.title = 'New Agent'
       s.updatedAt = Date.now()
       ctx.setSession(s)
       await ctx.persist()

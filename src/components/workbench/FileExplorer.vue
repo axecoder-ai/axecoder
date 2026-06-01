@@ -712,11 +712,12 @@ onUnmounted(() => {
 }
 
 .panel-title {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--wc-font-size-caption);
+  font-weight: var(--wc-font-weight-section);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--wc-text-muted);
+  font-family: var(--wc-font-sans);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -810,7 +811,8 @@ onUnmounted(() => {
   padding: 3px 8px 3px 4px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--wc-font-size-ui);
+  font-family: var(--wc-font-sans);
   user-select: none;
 }
 

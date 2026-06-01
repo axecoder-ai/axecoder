@@ -69,9 +69,6 @@ defineExpose({ revealLine, focusEditor })
             ×
           </button>
         </div>
-        <div v-if="!tabs.length" class="tab empty-tab">
-          <span class="tab-name">未打开文件</span>
-        </div>
       </div>
       <div v-if="isMarkdown" class="tab-actions">
         <button
@@ -105,9 +102,6 @@ defineExpose({ revealLine, focusEditor })
         @cursor-change="(line, col) => emit('cursor-change', line, col)"
       />
       <div v-show="isMarkdown && mode === 'preview'" class="preview" v-html="previewHtml" />
-      <div v-if="!activePath" class="editor-empty">
-        <p>从左侧选择文件，或使用 ⌘P 命令面板</p>
-      </div>
     </div>
   </section>
 </template>
@@ -120,6 +114,9 @@ defineExpose({ revealLine, focusEditor })
   flex-direction: column;
   background: var(--wc-panel);
   min-height: 0;
+  border-left: 1px solid var(--wc-workbench-separator);
+  font-family: var(--wc-font-sans);
+  font-size: var(--wc-font-size-ui);
 }
 
 .tab-bar {
@@ -153,11 +150,6 @@ defineExpose({ revealLine, focusEditor })
 
 .tab.active {
   background: var(--wc-panel);
-}
-
-.tab.empty-tab {
-  cursor: default;
-  color: var(--wc-text-muted);
 }
 
 .dirty-dot {
@@ -227,18 +219,6 @@ defineExpose({ revealLine, focusEditor })
   flex: 1;
   min-height: 0;
   position: relative;
-}
-
-.editor-empty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--wc-text-muted);
-  font-size: 13px;
-  gap: 8px;
 }
 
 .preview {
