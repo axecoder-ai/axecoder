@@ -12,11 +12,7 @@ import {
   type AgentTaskItem,
 } from './agent-todo-store'
 import { discoverSkills, findSkillByName, readSkillContent } from './agent-skills'
-import {
-  callMcpToolStub,
-  listMcpResourcesStub,
-  loadMcpConfig,
-} from './agent-mcp'
+import { callMcpTool, listMcpResources, loadMcpConfig, readMcpResource } from './agent-mcp'
 import { fetchUrl, webSearchStub } from './agent-web'
 import { editNotebookCell } from './agent-notebook'
 import {
@@ -187,12 +183,13 @@ export const executeExtendedAgentTool = async (
   }
 
   if (name === 'CallMcpTool') {
-    const res = await callMcpToolStub(
+    const res = await callMcpTool(
       str(args.server),
       str(args.toolName),
       (args.arguments as Record<string, unknown>) ?? {},
     )
-    return immediate(name, 'CallMcpTool', `Error: ${res.error}`, false)
+    if (!res.ok) return immediate(name, 'CallMcpTool', `Error: ${res.error}`, false)
+    return immediate(name, 'CallMcpTool', res.text, true)
   }
 
   if (name === 'McpAuth') {
@@ -203,23 +200,20 @@ export const executeExtendedAgentTool = async (
     return immediate(
       name,
       'McpAuth',
-      `MCP auth stub: server "${server}" is configured. Complete authentication in Cursor MCP settings if required.`,
+      `MCP server "${server}" is configured (${found.url ? 'url' : 'stdio'}). If the server requires OAuth, complete authentication in mcp.json / Cursor MCP settings, then retry CallMcpTool.`,
       true,
     )
   }
 
   if (name === 'ListMcpResources') {
-    const res = await listMcpResourcesStub()
+    const res = await listMcpResources()
     return immediate(name, 'ListMcpResources', res.ok ? res.text : `Error: ${res.error}`, res.ok)
   }
 
   if (name === 'ReadMcpResource') {
-    return immediate(
-      name,
-      'ReadMcpResource',
-      `Error: ReadMcpResource stub — URI ${str(args.uri)} on server ${str(args.server)} requires live MCP client.`,
-      false,
-    )
+    const res = await readMcpResource(str(args.server), str(args.uri))
+    if (!res.ok) return immediate(name, 'ReadMcpResource', `Error: ${res.error}`, false)
+    return immediate(name, 'ReadMcpResource', res.text, true)
   }
 
   if (name === 'TaskOutput') {

@@ -29,7 +29,7 @@ import { axecoderPath } from './axecoder-dir'
 import type { AgentLoopMessage } from './agent/agent-types'
 import { compactChatHistory } from './chat-compact'
 import { bindAgentProgressWindow } from './agent/agent-progress-emit'
-import { listMcpResourcesStub } from './agent/agent-mcp'
+import { listMcpResources } from './agent/agent-mcp'
 import { discoverSkills, findSkillByName, readSkillContent } from './agent/agent-skills'
 import {
   getCachedCustomOutputStyles,
@@ -129,7 +129,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
   ipcMain.handle('agent:hooksHelp', async () => ({ ok: true as const, text: await formatHooksHelp() }))
 
   ipcMain.handle('agent:listMcp', async () => {
-    const res = await listMcpResourcesStub()
+    const res = await listMcpResources()
     if (!res.ok) return { ok: false as const, error: res.error }
     return { ok: true as const, text: res.text }
   })

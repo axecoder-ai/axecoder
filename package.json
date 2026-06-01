@@ -42,6 +42,7 @@
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@vscode/ripgrep": "^1.15.11",
     "chokidar": "^4.0.3",
     "diff": "^7.0.0",
