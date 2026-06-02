@@ -87,7 +87,7 @@ const onPickAvatar = async (userId: string) => {
 
 const onDelete = async (u: UserEntry) => {
   if (u.isBuiltin) return
-  if (!confirm(`删除用户「${u.displayName}」？`)) return
+  if (!confirm(`Delete user "${u.displayName}"?`)) return
   const res = await window.axecoder.deleteUser(u.id)
   if (!res.ok) {
     alert(res.error)
@@ -105,10 +105,10 @@ defineExpose({ reload })
 <template>
   <div class="users-tab">
     <h2>Users</h2>
-    <p class="desc">管理协作成员资料，保存在 ~/.aex-coder/users.json</p>
+    <p class="desc">Manage collaborator profiles stored in ~/.axecoder/users.json</p>
     <div class="toolbar">
-      <input v-model="search" type="search" class="search" placeholder="搜索用户…" />
-      <button type="button" class="add-btn" @click="openAdd">添加用户</button>
+      <input v-model="search" type="search" class="search" placeholder="Search users…" />
+      <button type="button" class="add-btn" @click="openAdd">Add user</button>
     </div>
     <ul v-if="filtered.length" class="user-list">
       <li v-for="u in filtered" :key="u.id" class="user-row">
@@ -119,25 +119,25 @@ defineExpose({ reload })
         <div class="user-info">
           <span class="user-name">
             {{ u.displayName }}
-            <span v-if="u.isBuiltin" class="badge">内置</span>
+            <span v-if="u.isBuiltin" class="badge">Built-in</span>
           </span>
           <span class="user-meta">{{ u.role }}</span>
           <span v-if="u.expertise" class="user-expertise">{{ u.expertise }}</span>
         </div>
         <div class="user-actions">
-          <button type="button" class="link" @click="openEdit(u)">编辑</button>
+          <button type="button" class="link" @click="openEdit(u)">Edit</button>
           <button
             v-if="!u.isBuiltin"
             type="button"
             class="link danger"
             @click="onDelete(u)"
           >
-            删除
+            Delete
           </button>
         </div>
       </li>
     </ul>
-    <p v-else class="empty">暂无用户</p>
+    <p v-else class="empty">No users yet</p>
     <UserFormDialog
       ref="formRef"
       :visible="formVisible"
@@ -151,8 +151,9 @@ defineExpose({ reload })
 
 <style scoped>
 .users-tab {
+  box-sizing: border-box;
+  width: 100%;
   padding: 24px 32px;
-  max-width: 720px;
 }
 
 h2 {

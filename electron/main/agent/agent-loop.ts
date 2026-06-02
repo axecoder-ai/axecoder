@@ -2,6 +2,7 @@ import type { ModelEntry } from '../models-types'
 import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 import { chatWithToolsForModel } from '../ai/chat-with-tools'
+import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
 import { AGENT_TOOLS, buildAgentSystemPrompt, buildFullAgentTools } from './agent-tool-defs'
 import { getSessionActiveTools } from './agent-ext-executor'
 import type { AgentToolCall } from './agent-types'
@@ -35,11 +36,18 @@ import { emitAgentProgress } from './agent-progress-emit'
 import { getConfig } from '../config-store'
 import { resolveToolPermission } from './agent-permissions'
 import { runHooks } from './agent-hooks'
-import { clearOldToolResults } from './agent-frc'
+import { clearOldToolResults, dropOrphanToolMessages } from './agent-frc'
 import { compactAgentMessages, shouldAutoCompact } from './agent-context-compact'
 import { getTokenBudgetSection } from './agent-token-budget'
 import { maybeInjectProactiveReminder } from './agent-proactive'
 import { ensureScratchpadDir } from './agent-scratchpad'
+import { buildAgentContextInjections } from './agent-context-inject'
+import {
+  abortAgentRun,
+  bindAgentRunAbort,
+  clearAgentRunAbort,
+  getAgentRunAbortSignal,
+} from './agent-run-abort'
 import { refreshCustomOutputStylesCache } from './agent-output-styles-custom'
 import type { AgentToolName } from './agent-types'
 
@@ -52,10 +60,26 @@ const strArg = (args: Record<string, unknown>, key: string) => {
   return typeof v === 'string' && v.trim() ? v.trim() : ''
 }
 
+const lastUserTextFromMessages = (messages: StoredAgentSession['messages']): string => {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m?.role === 'user' && 'content' in m) {
+      const c = m.content
+      return typeof c === 'string' ? c : ''
+    }
+  }
+  return ''
+}
+
 const runModelStep = async (session: StoredAgentSession, sessionId: string) => {
   const model = await getModelById(session.modelId)
   if (!model) return { ok: false as const, error: '模型不存在' }
   const apiKey = await getSecret(session.modelId)
+  const apiModelId = await resolveApiModelIdForTask(
+    model,
+    'main',
+    lastUserTextFromMessages(session.messages),
+  )
   const onDelta =
     model.provider === 'openai'
       ? (delta: { content?: string; reasoning?: string }) => {
@@ -65,7 +89,15 @@ const runModelStep = async (session: StoredAgentSession, sessionId: string) => {
           }
         }
       : undefined
-  return chatWithToolsForModel(model, apiKey, session.messages, onDelta, session.activeTools)
+  return chatWithToolsForModel(
+    model,
+    apiKey,
+    session.messages,
+    onDelta,
+    session.activeTools,
+    getAgentRunAbortSignal(sessionId),
+    apiModelId,
+  )
 }
 
 const refreshSessionActiveTools = (session: StoredAgentSession) => {
@@ -158,7 +190,12 @@ const hasPendingInSession = (session: StoredAgentSession) =>
 const stripBudgetReminders = (messages: AgentLoopMessage[]) =>
   messages.filter((m) => !(m.role === 'user' && m.content.includes('Context budget:')))
 
-const prepareSessionBeforeModel = async (session: StoredAgentSession) => {
+const stripContextInjectReminders = (messages: AgentLoopMessage[]) =>
+  messages.filter(
+    (m) => !(m.role === 'user' && m.content.includes('<agent-context-injection>')),
+  )
+
+const prepareSessionBeforeModel = async (sessionId: string, session: StoredAgentSession) => {
   const cfg = await getConfig()
   clearOldToolResults(session.messages, cfg.agentFrcKeepToolMessages ?? 8)
   const threshold = cfg.agentContextCompactThreshold ?? 120_000
@@ -167,12 +204,21 @@ const prepareSessionBeforeModel = async (session: StoredAgentSession) => {
     session.messages = compacted.messages
     session.compactedOnce = true
   }
+  session.messages = dropOrphanToolMessages(session.messages)
   session.messages = stripBudgetReminders(session.messages)
+  session.messages = stripContextInjectReminders(session.messages)
   const budget = getTokenBudgetSection(cfg, session.messages)
   if (budget) {
     session.messages.push({
       role: 'user',
       content: `<system-reminder>\n${budget}\n</system-reminder>`,
+    })
+  }
+  const injectBlocks = await buildAgentContextInjections(sessionId)
+  if (injectBlocks.length) {
+    session.messages.push({
+      role: 'user',
+      content: `<system-reminder>\n<agent-context-injection>\n${injectBlocks.join('\n\n---\n\n')}\n</agent-context-injection>\n</system-reminder>`,
     })
   }
   maybeInjectProactiveReminder(session)
@@ -195,14 +241,37 @@ const applyPendingToolRun = async (
   return { ok: false, error: 'Not a pending tool run' }
 }
 
+const finishAbortedAgent = (
+  sessionId: string,
+  session: StoredAgentSession,
+): AgentSendResult | AgentContinueResult => {
+  const toolLog = [...session.toolLog]
+  deleteSession(sessionId)
+  return { ok: true, status: 'done', assistantText: '（已停止）', toolLog }
+}
+
+export const stopAgentTurn = (sessionId: string): { ok: true } | { ok: false; error: string } => {
+  const sid = sessionId.trim()
+  if (!sid) return { ok: false, error: 'sessionId 无效' }
+  const session = getSession(sid)
+  if (!session) return { ok: false, error: 'Agent 会话不存在或已结束' }
+  session.abortRequested = true
+  abortAgentRun(sid)
+  return { ok: true }
+}
+
 export const runAgentLoopUntilDoneOrPending = async (
   sessionId: string,
   session: StoredAgentSession,
 ): Promise<AgentSendResult | AgentContinueResult> => {
+  session.abortRequested = false
+  bindAgentRunAbort(sessionId)
+  try {
   while (true) {
+    if (session.abortRequested) return finishAbortedAgent(sessionId, session)
     pushAgentCheckpoint(sessionId, session)
     session.turn += 1
-    await prepareSessionBeforeModel(session)
+    await prepareSessionBeforeModel(sessionId, session)
     emitAgentProgress({
       sessionId,
       turn: session.turn,
@@ -210,6 +279,7 @@ export const runAgentLoopUntilDoneOrPending = async (
       status: 'start',
     })
     const res = await runModelStep(session, sessionId)
+    if (session.abortRequested) return finishAbortedAgent(sessionId, session)
     if (!res.ok) return { ok: false, error: res.error }
     emitAgentProgress({
       sessionId,
@@ -348,7 +418,11 @@ export const runAgentLoopUntilDoneOrPending = async (
         return { tc, run }
       }
 
+      if (session.abortRequested) return finishAbortedAgent(sessionId, session)
+
       const toolOutcomes = await Promise.all(res.toolCalls.map(runOneTool))
+
+      if (session.abortRequested) return finishAbortedAgent(sessionId, session)
 
       for (const { tc, run } of toolOutcomes) {
         session.toolLog.push(run.log)
@@ -427,6 +501,9 @@ export const runAgentLoopUntilDoneOrPending = async (
       res.reasoningContent,
     )
   }
+  } finally {
+    clearAgentRunAbort(sessionId)
+  }
 }
 
 export const startAgentTurn = async (
@@ -470,6 +547,8 @@ export const startAgentTurn = async (
         modelId: model.modelId,
         enabledToolNames: AGENT_TOOLS.map((t) => t.name),
         outputStyleId: cfg.agentOutputStyle,
+        scratchpadDir,
+        agentFrcKeepToolMessages: cfg.agentFrcKeepToolMessages ?? 8,
       }),
     },
   ]
@@ -726,17 +805,32 @@ export const answerAgentQuestions = async (
 export const modelSupportsAgentTools = (model: ModelEntry | null | undefined) => !!model
 
 export type WorkshopAgentTurnResult =
-  | { ok: true; report: string }
-  | { ok: true; report: string; needsUser: true; userQuestion: string }
+  | { ok: true; report: string; reasoningContent?: string }
+  | { ok: true; report: string; needsUser: true; userQuestion: string; reasoningContent?: string }
   | { ok: false; error: string }
 
+const collectWorkshopTurnReasoning = (session: StoredAgentSession): string => {
+  const parts: string[] = []
+  for (const m of session.messages) {
+    if (m.role === 'assistant' && m.reasoningContent?.trim()) {
+      parts.push(m.reasoningContent.trim())
+    }
+  }
+  return parts.join('\n\n').trim()
+}
+
 /** Workshop 单角色：与 Chat Agent 同源循环（Read/Write/Grep…），sessionId 建议 `workshop-{id}-{role}` */
+export type WorkshopAgentTurnOptions = {
+  speakMode?: 'plan' | 'execute' | 'verify'
+}
+
 export const runWorkshopRoleAgentTurn = async (
   projectRoot: string,
   modelId: string,
   sessionId: string,
   taskPrompt: string,
   roleName: string,
+  options?: WorkshopAgentTurnOptions,
 ): Promise<WorkshopAgentTurnResult> => {
   const root = projectRoot.trim()
   if (!root) return { ok: false, error: '请先打开项目' }
@@ -768,13 +862,25 @@ export const runWorkshopRoleAgentTurn = async (
 
   await refreshCustomOutputStylesCache(root)
 
-  const roleLead = [
-    `【Collab Workshop · ${roleName}】`,
-    '你在多角色协作群聊中发言。必须使用 Read、Grep、Glob、Write、Edit 等工具查看真实代码后再给结论。',
-    '禁止声称无法访问本地文件系统。',
-    '完成后用简洁中文给出结论与相关文件路径。',
-    '',
-  ].join('\n')
+  const isPlan = options?.speakMode === 'plan'
+  const isVerify = options?.speakMode === 'verify'
+  const roleLead = isPlan
+    ? [
+        `【Collab Workshop · ${roleName}】`,
+        '拆任务阶段：可用工具读代码，但最终一条 assistant 回复只能包含 ```json 步骤计划，禁止输出英文思考或过程描述。',
+        '',
+      ].join('\n')
+    : isVerify
+      ? [
+          `【Collab Workshop · ${roleName}】`,
+          '验收阶段：最终回复首行必须是 VERIFY: approve|redo|abort，其余用简短中文。',
+          '',
+        ].join('\n')
+      : [
+          `【Collab Workshop · ${roleName}】`,
+          '执行本步任务：先用工具查看代码；最终回复只用简短中文结论（不要英文思考过程），可附文件路径。',
+          '',
+        ].join('\n')
 
   const messages: AgentLoopMessage[] = [
     {
@@ -812,9 +918,15 @@ export const runWorkshopRoleAgentTurn = async (
   if (!result.ok) return { ok: false, error: result.error }
 
   const report = (result.assistantText || '').trim() || '（无结论）'
+  const liveBeforeTeardown = getSession(sid)
+  const reasoningContent = liveBeforeTeardown
+    ? collectWorkshopTurnReasoning(liveBeforeTeardown)
+    : ''
+  const reasoningMeta = reasoningContent ? { reasoningContent } : {}
 
   if (result.status === 'done') {
-    return { ok: true, report }
+    deleteSession(sid)
+    return { ok: true, report, ...reasoningMeta }
   }
 
   const asks = result.pendingAsks ?? []
@@ -825,7 +937,7 @@ export const runWorkshopRoleAgentTurn = async (
         .flatMap((a) => a.questions.map((qq) => qq.prompt))
         .filter(Boolean)
         .join('；') || '请补充需求细节？'
-    return { ok: true, report, needsUser: true, userQuestion: q.slice(0, 300) }
+    return { ok: true, report, needsUser: true, userQuestion: q.slice(0, 300), ...reasoningMeta }
   }
 
   const live = getSession(sid)
@@ -833,11 +945,15 @@ export const runWorkshopRoleAgentTurn = async (
     const applied = await applyAllPendingInSession(live)
     deleteSession(sid)
     if (!applied.ok) return { ok: false, error: applied.error }
-    return { ok: true, report: `${report}\n\n（已自动应用文件/命令变更）`.trim() }
+    return {
+      ok: true,
+      report: `${report}\n\n（已自动应用文件/命令变更）`.trim(),
+      ...reasoningMeta,
+    }
   }
 
   deleteSession(sid)
-  return { ok: true, report }
+  return { ok: true, report, ...reasoningMeta }
 }
 
 export { listAgentSessions, rewindAgentCheckpoint }

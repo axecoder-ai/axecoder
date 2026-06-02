@@ -4,9 +4,16 @@ import {
   ensureProjectSessionsDir,
   normalizeProjectRoot,
   projectSessionFilePath,
-  projectSessionsIndexPath,
   resolveProjectSessionsDir,
 } from './project-axecoder-dir'
+import {
+  listRegistryByKind,
+  readRegistry,
+  removeRegistryEntry,
+  upsertRegistryEntry,
+  writeRegistry,
+} from './session/session-registry'
+import type { SessionRegistryEntry } from './session/session-types'
 
 export type ChatMessage = {
   role: 'user' | 'assistant'
@@ -32,26 +39,13 @@ const writeFileAtomic = async (filePath: string, content: string) => {
   await fs.rename(tmp, filePath)
 }
 
-const readIndex = async (projectRoot: string): Promise<ChatSessionMeta[]> => {
-  try {
-    const sessionsDir = await resolveProjectSessionsDir(projectRoot)
-    const raw = await fs.readFile(projectSessionsIndexPath(projectRoot, sessionsDir), 'utf-8')
-    const list = JSON.parse(raw) as ChatSessionMeta[]
-    return Array.isArray(list) ? list : []
-  } catch {
-    return []
-  }
-}
+const registryToChatMeta = (list: SessionRegistryEntry[]): ChatSessionMeta[] =>
+  list
+    .filter((s) => s.kind === 'agent')
+    .map(({ id, title, updatedAt }) => ({ id, title, updatedAt }))
 
-const writeIndex = async (projectRoot: string, list: ChatSessionMeta[]) => {
-  await ensureProjectSessionsDir(projectRoot)
-  await writeFileAtomic(projectSessionsIndexPath(projectRoot), JSON.stringify(list))
-}
-
-const upsertMeta = (list: ChatSessionMeta[], session: ChatSessionMeta) => {
-  const rest = list.filter((s) => s.id !== session.id)
-  return [session, ...rest].sort((a, b) => b.updatedAt - a.updatedAt)
-}
+const readIndex = async (projectRoot: string): Promise<ChatSessionMeta[]> =>
+  registryToChatMeta(await listRegistryByKind(projectRoot, 'agent'))
 
 export const listChatSessions = async (projectRoot: string) => {
   const root = await normalizeProjectRoot(projectRoot)
@@ -83,14 +77,15 @@ export const saveChatSession = async (
   if (!session?.id?.trim()) return { ok: false, error: '会话 id 无效' }
   try {
     await ensureProjectSessionsDir(root)
-    const meta: ChatSessionMeta = {
+    const meta: SessionRegistryEntry = {
       id: session.id,
       title: session.title,
       updatedAt: session.updatedAt,
+      kind: 'agent',
     }
-    const index = upsertMeta(await readIndex(root), meta)
+    const index = upsertRegistryEntry(await readRegistry(root), meta)
     await writeFileAtomic(projectSessionFilePath(root, session.id), JSON.stringify(session))
-    await writeIndex(root, index)
+    await writeRegistry(root, index)
     return { ok: true }
   } catch (e) {
     const msg = e instanceof Error ? e.message : '保存失败'
@@ -105,8 +100,8 @@ export const deleteChatSession = async (
   const root = await normalizeProjectRoot(projectRoot)
   if (!root) return { ok: false, error: '未打开项目' }
   try {
-    const index = (await readIndex(root)).filter((s) => s.id !== sessionId)
-    await writeIndex(root, index)
+    const index = removeRegistryEntry(await readRegistry(root), sessionId, 'agent')
+    await writeRegistry(root, index)
     await fs.rm(projectSessionFilePath(root, sessionId), { force: true })
     return { ok: true }
   } catch (e) {

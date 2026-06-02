@@ -8,14 +8,16 @@ export const chatWithProvider = async (
   apiKey: string,
   messages: AiChatMessage[],
   onDelta?: (delta: OpenAiStreamDelta) => void,
+  apiModelId?: string,
 ): Promise<AiChatResult> => {
   if (!model.enabled) return { ok: false, error: '模型已禁用' }
+  const apiName = (apiModelId?.trim() || model.modelId).trim()
   if (model.provider === 'openai') {
     if (!apiKey.trim()) return { ok: false, error: 'OpenAI 格式需要 API Key' }
-    return chatOpenAi(model.baseUrl, model.modelId, apiKey, messages, onDelta)
+    return chatOpenAi(model.baseUrl, apiName, apiKey, messages, onDelta)
   }
   if (model.provider === 'ollama') {
-    return chatOllama(model.baseUrl, model.modelId, apiKey, messages)
+    return chatOllama(model.baseUrl, apiName, apiKey, messages)
   }
-  return chatAnthropic(model.baseUrl, model.modelId, apiKey, messages)
+  return chatAnthropic(model.baseUrl, apiName, apiKey, messages)
 }

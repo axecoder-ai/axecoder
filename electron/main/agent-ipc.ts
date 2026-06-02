@@ -23,6 +23,7 @@ import {
   rewindAgentCheckpoint,
   runUserShellCommand,
   startAgentTurn,
+  stopAgentTurn,
 } from './agent/agent-loop'
 import { getSession } from './agent/agent-session-store'
 import { axecoderPath } from './axecoder-dir'
@@ -67,6 +68,8 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
       return startAgentTurn(projectRoot, modelId, history)
     },
   )
+
+  ipcMain.handle('agent:stop', async (_, sessionId: string) => stopAgentTurn(sessionId))
 
   ipcMain.handle('agent:confirmWrite', async (_, sessionId: string, pendingId: string) => {
     return confirmAgentWrite(sessionId, pendingId)
@@ -172,7 +175,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
       ok: true as const,
       activeId: cfg.agentOutputStyle,
       styles: [{ id: 'default', name: 'default', description: '标准软件工程助手', source: 'builtin' as const }, ...builtin, ...custom],
-      dirs: ['~/.aex-coder/output-styles', '~/.claude/output-styles', '<project>/.axecoder/output-styles'],
+      dirs: ['~/.axecoder/output-styles', '~/.claude/output-styles', '<project>/.axecoder/output-styles'],
     }
   })
 
@@ -200,7 +203,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
         '- 计划模式下 Edit / Write / Delete / Move / Bash 会被阻断，便于先规划再实施。',
         '- 斜杠命令 /plan 仅显示本说明；实际切换由 Agent 工具完成。',
         '',
-        `Hooks：${hooks}（配置见 ~/.aex-coder/hooks.json，/hooks 查看详情）`,
+        `Hooks：${hooks}（配置见 ~/.axecoder/hooks.json，/hooks 查看详情）`,
       ].join('\n'),
     }
   })

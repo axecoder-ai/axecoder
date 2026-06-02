@@ -49,7 +49,6 @@ defineEmits<{
   gap: 2px;
   padding: 4px 8px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--wc-border);
   background: var(--wc-sidebar);
 }
 

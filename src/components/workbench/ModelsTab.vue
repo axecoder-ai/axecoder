@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import type { ModelEntry, ModelSaveInput } from '../../types/axecoder'
 import ModelFormDialog from './ModelFormDialog.vue'
+import SwitchToggle from './SwitchToggle.vue'
 
 const emit = defineEmits<{
   changed: []
@@ -58,18 +59,22 @@ const onSaved = async (payload: { entry: ModelEntry; apiKey: string }) => {
   emit('changed')
 }
 
-const onToggle = async (m: ModelEntry) => {
-  const res = await window.axecoder.toggleModel(m.id, !m.enabled)
+const onToggle = async (m: ModelEntry, enabled: boolean) => {
+  const prev = models.value
+  models.value = models.value.map((x) => (x.id === m.id ? { ...x, enabled } : x))
+  const res = await window.axecoder.toggleModel(m.id, enabled)
   if (!res.ok) {
+    models.value = prev
     alert(res.error)
     return
   }
-  await reload()
+  models.value = res.data.models
+  activeModelId.value = res.data.activeModelId
   emit('changed')
 }
 
 const onDelete = async (m: ModelEntry) => {
-  if (!confirm(`删除模型「${m.name}」？`)) return
+  if (!confirm(`Delete model "${m.name}"?`)) return
   const res = await window.axecoder.deleteModel(m.id)
   if (!res.ok) {
     alert(res.error)
@@ -85,7 +90,7 @@ const onPing = async (m: ModelEntry) => {
   try {
     const res = await window.axecoder.pingModel(m.id)
     if (res.ok) {
-      pingMessage.value = { id: m.id, ok: true, text: `连接成功：${res.preview}` }
+      pingMessage.value = { id: m.id, ok: true, text: `Connected: ${res.preview}` }
     } else {
       pingMessage.value = { id: m.id, ok: false, text: res.error }
     }
@@ -99,21 +104,25 @@ defineExpose({ reload })
 
 <template>
   <div class="models-tab">
-    <h2>模型</h2>
-    <p class="tab-desc">配置 API 与启用状态；「当前」为聊天与协作工坊默认使用的模型。</p>
+    <h2>Models</h2>
+    <p class="tab-desc">
+      Configure API endpoints and enablement. Each model can have fast and deep API model IDs; routing picks by task complexity; subagents default to the fast ID.
+    </p>
     <div class="toolbar">
-      <input v-model="search" type="search" class="search" placeholder="搜索模型…" />
-      <button type="button" class="add-btn" @click="openAdd">添加模型</button>
+      <input v-model="search" type="search" class="search" placeholder="Search models…" />
+      <button type="button" class="add-btn" @click="openAdd">Add model</button>
     </div>
     <ul v-if="filtered.length" class="model-list">
       <li v-for="m in filtered" :key="m.id" class="model-row">
         <div class="model-info">
           <span class="model-name">
             {{ m.name }}
-            <span v-if="m.id === activeModelId" class="active-badge">当前</span>
-            <span v-if="!m.enabled" class="disabled-badge">已禁用</span>
+            <span v-if="m.id === activeModelId" class="active-badge">Active</span>
+            <span v-if="!m.enabled" class="disabled-badge">Disabled</span>
           </span>
-          <span class="model-meta">{{ m.provider }} · {{ m.modelId }}</span>
+          <span class="model-meta">
+            {{ m.provider }} · fast {{ m.fastApiModelId || m.modelId }} / deep {{ m.modelId }}
+          </span>
           <span
             v-if="pingMessage?.id === m.id"
             class="ping-result"
@@ -129,26 +138,27 @@ defineExpose({ reload })
             :disabled="pingingId === m.id"
             @click="onPing(m)"
           >
-            {{ pingingId === m.id ? '测试中…' : '测试连接' }}
+            {{ pingingId === m.id ? 'Testing…' : 'Test connection' }}
           </button>
-          <button type="button" class="link" @click="openEdit(m)">编辑</button>
-          <button type="button" class="link danger" @click="onDelete(m)">删除</button>
-          <label class="switch">
-            <input type="checkbox" :checked="m.enabled" @change="onToggle(m)" />
-            <span class="slider" />
-          </label>
+          <button type="button" class="link" @click="openEdit(m)">Edit</button>
+          <button type="button" class="link danger" @click="onDelete(m)">Delete</button>
+          <SwitchToggle
+            :model-value="m.enabled"
+            @update:model-value="(v: boolean) => onToggle(m, v)"
+          />
         </div>
       </li>
     </ul>
-    <p v-else class="empty">暂无模型，点击「添加模型」配置 API</p>
+    <p v-else class="empty">No models yet. Click Add model to configure an API.</p>
     <ModelFormDialog :visible="formVisible" :editing="editing" @close="formVisible = false" @save="onSaved" />
   </div>
 </template>
 
 <style scoped>
 .models-tab {
+  box-sizing: border-box;
+  width: 100%;
   padding: 24px 32px;
-  max-width: 720px;
 }
 
 h2 {
@@ -158,9 +168,31 @@ h2 {
 }
 
 .tab-desc {
-  margin: 0 0 20px;
+  margin: 0 0 12px;
   font-size: 13px;
   color: var(--wc-text-dim);
+}
+
+.tier-picks {
+  margin-bottom: 20px;
+}
+
+.tier-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--wc-text);
+}
+
+.tier-select {
+  max-width: 420px;
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid var(--wc-border);
+  background: var(--wc-bg);
+  color: var(--wc-text);
 }
 
 .active-badge {
@@ -261,48 +293,6 @@ h2 {
 
 .link.danger:hover {
   color: #f48771;
-}
-
-.switch {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.slider {
-  position: absolute;
-  inset: 0;
-  background: var(--wc-border);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.slider::before {
-  content: '';
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  left: 2px;
-  top: 2px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform 0.2s;
-}
-
-.switch input:checked + .slider {
-  background: #3fb950;
-}
-
-.switch input:checked + .slider::before {
-  transform: translateX(16px);
 }
 
 .empty {

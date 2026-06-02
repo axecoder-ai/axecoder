@@ -1,31 +1,66 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { WorkshopRoleId } from '../../types/axecoder'
+import { computed, ref } from 'vue'
+import MarkdownIt from 'markdown-it'
+import type { WorkshopMessageKind, WorkshopRoleId } from '../../types/axecoder'
 import { workshopRoleUi } from '../../utils/workshop-roles'
+import AgentProgressStream from './AgentProgressStream.vue'
+import type { AgentProgressStep } from '../../utils/agent-progress'
+
+const md = new MarkdownIt()
+const renderMarkdown = (text: string) => md.render(text)
 
 const props = defineProps<{
   roleId: WorkshopRoleId
   text: string
+  reasoningContent?: string
   relatedFiles?: string[]
+  messageKind?: WorkshopMessageKind
   thinking?: boolean
   streaming?: boolean
   avatarUrl?: string
   nickname?: string
   roleTitle?: string
+  unbound?: boolean
+  liveProgress?: {
+    steps: AgentProgressStep[]
+    streamText: string
+  }
 }>()
+
+const reasoningOpen = ref(false)
+const isReasoningLegacy = computed(() => props.messageKind === 'reasoning')
+const reasoningText = computed(() =>
+  isReasoningLegacy.value ? props.text : props.reasoningContent?.trim() ?? '',
+)
+const hasReasoning = computed(() => !!reasoningText.value)
+const showBody = computed(
+  () => !isReasoningLegacy.value && (props.text.trim() || props.streaming || props.thinking),
+)
 
 defineEmits<{
   openFile: [path: string]
 }>()
 
 const ui = computed(() => workshopRoleUi(props.roleId))
-const displayNickname = computed(() => props.nickname?.trim() || ui.value.nickname)
-const displayRoleTitle = computed(() => props.roleTitle?.trim() || ui.value.roleTitle)
+const displayNickname = computed(() => {
+  if (props.unbound) return '未配置'
+  return props.nickname?.trim() || (props.roleId === 'system' ? ui.value.nickname : '')
+})
+const displayRoleTitle = computed(() => {
+  if (props.unbound) return props.roleId
+  return props.roleTitle?.trim() || (props.roleId === 'system' ? ui.value.roleTitle : '')
+})
 const avatarLetter = computed(
   () => displayNickname.value.slice(0, 1) || ui.value.avatar.slice(0, 1),
 )
 const isUser = computed(() => props.roleId === 'user')
 const isSystem = computed(() => props.roleId === 'system')
+const showLiveProgress = computed(
+  () => !!props.liveProgress && (props.liveProgress.steps.length > 0 || props.liveProgress.streamText),
+)
+const useMarkdown = computed(
+  () => !isUser.value && !isSystem.value && !props.streaming,
+)
 </script>
 
 <template>
@@ -45,11 +80,11 @@ const isSystem = computed(() => props.roleId === 'system')
         <span class="ws-nickname">{{ displayNickname }}</span>
         <span class="ws-role-badge">{{ displayRoleTitle }}</span>
       </div>
-      <div v-if="thinking" class="ws-bubble ws-bubble--thinking">
+      <div v-if="thinking && !showBody" class="ws-bubble ws-bubble--thinking">
         <span class="ws-dots"><span>.</span><span>.</span><span>.</span></span>
       </div>
       <div
-        v-else
+        v-if="showBody"
         class="ws-bubble"
         :class="{
           'ws-bubble--system': isSystem,
@@ -57,9 +92,27 @@ const isSystem = computed(() => props.roleId === 'system')
           'ws-bubble--streaming': streaming,
         }"
       >
-        {{ text }}<span v-if="streaming" class="ws-cursor">▍</span>
+        <div v-if="useMarkdown" class="ws-md" v-html="renderMarkdown(text)" />
+        <template v-else>
+          {{ text }}<span v-if="streaming" class="ws-cursor">▍</span>
+        </template>
       </div>
-      <div v-if="relatedFiles?.length && !thinking" class="ws-files">
+      <div v-if="hasReasoning" class="ws-reasoning">
+        <button type="button" class="ws-reasoning-toggle" @click="reasoningOpen = !reasoningOpen">
+          {{ reasoningOpen ? '收起思考' : '思考过程' }}
+        </button>
+        <pre v-show="reasoningOpen" class="ws-reasoning-body">{{ reasoningText }}</pre>
+      </div>
+      <div v-if="showLiveProgress" class="ws-live-progress">
+        <AgentProgressStream
+          :steps="liveProgress!.steps"
+          :stream-text="liveProgress!.streamText"
+          :subagent-tasks="[]"
+          :agent-mode="true"
+          fallback-headline="思考中…"
+        />
+      </div>
+      <div v-if="relatedFiles?.length && showBody" class="ws-files">
         <button
           v-for="f in relatedFiles"
           :key="f"
@@ -222,5 +275,124 @@ const isSystem = computed(() => props.roleId === 'system')
   font-size: 11px;
   color: var(--wc-accent);
   text-decoration: underline;
+}
+.ws-reasoning {
+  font-size: 12px;
+  color: var(--wc-text-dim);
+  border-left: 2px solid var(--wc-border);
+  padding-left: 8px;
+  max-width: 100%;
+}
+.ws-reasoning-toggle {
+  background: none;
+  border: none;
+  color: var(--wc-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  text-decoration: underline;
+}
+.ws-reasoning-body {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  max-height: 240px;
+  overflow: auto;
+}
+.ws-live-progress {
+  font-size: 12px;
+  max-width: 100%;
+}
+.ws-md {
+  line-height: 1.6;
+  overflow-x: auto;
+}
+.ws-md :deep(p) {
+  margin: 0 0 0.6em;
+}
+.ws-md :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.ws-md :deep(pre) {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--wc-code-block-bg);
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: var(--wc-font-mono);
+  font-size: 12px;
+}
+.ws-md :deep(code) {
+  font-family: var(--wc-font-mono);
+  font-size: 12px;
+}
+.ws-md :deep(ul),
+.ws-md :deep(ol) {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+.ws-md :deep(h1),
+.ws-md :deep(h2),
+.ws-md :deep(h3),
+.ws-md :deep(h4) {
+  margin: 1em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.ws-md :deep(h1) {
+  font-size: 1.35em;
+}
+.ws-md :deep(h2) {
+  font-size: 1.2em;
+}
+.ws-md :deep(h3) {
+  font-size: 1.1em;
+}
+.ws-md :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.8em 0;
+  font-size: 12px;
+}
+.ws-md :deep(th),
+.ws-md :deep(td) {
+  border: 1px solid var(--wc-border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.ws-md :deep(th) {
+  background: var(--wc-muted-surface);
+  font-weight: 600;
+}
+.ws-md :deep(blockquote) {
+  margin: 0.6em 0;
+  padding: 0.2em 0 0.2em 12px;
+  border-left: 3px solid var(--wc-border);
+  color: var(--wc-text-muted);
+}
+.ws-md :deep(hr) {
+  margin: 1em 0;
+  border: none;
+  border-top: 1px solid var(--wc-border);
+}
+.ws-md :deep(a) {
+  color: var(--wc-accent, #4a9eff);
+  text-decoration: none;
+}
+.ws-md :deep(a:hover) {
+  text-decoration: underline;
+}
+.ws-md :deep(:not(pre) > code) {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--wc-code-block-bg);
+}
+.ws-md :deep(pre code) {
+  padding: 0;
+  background: transparent;
 }
 </style>

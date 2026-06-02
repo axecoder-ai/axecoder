@@ -1,4 +1,5 @@
 import { runSubAgentTask } from '../agent/agent-subagent'
+import { modelTaskKindForWorkshopRole, resolveModelIdForTask } from '../ai/model-resolve'
 import { buildSubAgentToolList } from '../agent/agent-tool-registry'
 import { roleDefById } from './workshop-roles'
 import { buildWorkshopStreamId } from './workshop-stream'
@@ -22,7 +23,55 @@ export const extractRelatedFiles = (text: string): string[] => {
 
 export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
   const role = roleDefById(input.roleId)
-  const name = role?.name ?? input.roleId
+  const name = input.assigneeUser?.displayName ?? role?.name ?? input.roleId
+  if (input.speakMode === 'plan') {
+    const roster =
+      input.users
+        ?.filter((u) => !(u.isBuiltin && u.builtinRole === 'manager'))
+        .map((u) => `- assigneeUserId: "${u.id}" → ${u.displayName}（${u.role}）`)
+        .join('\n') ?? ''
+    const force = input.forcePlanJson
+      ? '\n【紧急】上一轮未解析出 JSON。本轮最终回复只能有一个 ```json 代码块，禁止任何其它文字或英文思考。'
+      : ''
+    return [
+      '【Collab Workshop · 技术经理 · 拆任务】',
+      '先用工具查看代码；思考过程不要写入最终回复。',
+      '最终回复有且仅有一个 ```json 代码块（中文步骤 title），格式：',
+      '{ "steps": [ { "id": "s1", "title": "步骤标题", "assigneeUserId": "user-xxx" } ] }',
+      'assigneeUserId 必须从下列用户中选择（勿指派技术经理）：',
+      roster || '（暂无可用执行人，请在设置中添加用户）',
+      force,
+      '',
+      `【用户需求】\n${input.userBrief}`,
+      input.priorSummary ? `【此前讨论】\n${input.priorSummary}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+  if (input.speakMode === 'verify') {
+    return [
+      '【Collab Workshop · 技术经理 · 验收】',
+      `【当前步骤】${input.step?.title ?? ''}（id: ${input.step?.id ?? ''}）`,
+      `【本步产出】\n${input.stepOutput ?? ''}`,
+      '请验收。首行必须是以下之一：VERIFY: approve | VERIFY: redo | VERIFY: abort',
+      '其后可写简短评审意见。',
+      '',
+      `【用户需求】\n${input.userBrief}`,
+    ].join('\n')
+  }
+  if (input.speakMode === 'execute' && input.assigneeUser) {
+    return [
+      `【Collab Workshop · ${name}（${input.assigneeUser.role}）· 执行步骤】`,
+      `【本步任务】${input.step?.title ?? ''}`,
+      '必须使用 Read、Grep、Glob 等工具查看真实代码后再交付。',
+      '完成后用简洁中文给出：结论、已查看的文件、建议改动（可含相对路径）。',
+      '',
+      `【用户需求】\n${input.userBrief}`,
+      input.priorSummary ? `【此前讨论】\n${input.priorSummary}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
   return [
     `【Collab Workshop · ${name}】`,
     '你在多角色协作群聊中发言。必须使用 Read、Grep、Glob 等工具查看真实代码后再给结论。',
@@ -87,8 +136,15 @@ export const buildSubagentRoleSpeaker = (
     const subagentType = subagentTypeForRole(input.roleId)
     const tools = buildSubAgentToolList(subagentType)
     const taskPrompt = buildRoleTaskPrompt(input)
-    const streamId = buildWorkshopStreamId(workshopId, input.roleId)
-    const res = await runSubAgentTask(root, modelId, taskPrompt, {
+    const streamKey =
+      input.speakMode === 'execute' && input.assigneeUser
+        ? `u-${input.assigneeUser.id}`
+        : input.roleId
+    const streamId = buildWorkshopStreamId(workshopId, streamKey)
+    const roleModelId = await resolveModelIdForTask(
+      modelTaskKindForWorkshopRole(input.roleId, input.speakMode),
+    )
+    const res = await runSubAgentTask(root, roleModelId, taskPrompt, {
       subagentType,
       tools,
       maxTurns: 14,

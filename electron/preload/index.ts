@@ -98,6 +98,18 @@ contextBridge.exposeInMainWorld('axecoder', {
   getSettings: () => ipcRenderer.invoke('fs:getSettings') as Promise<import('../../src/types/axecoder').AppSettings>,
   setSettings: (partial: Partial<import('../../src/types/axecoder').AppSettings>) =>
     ipcRenderer.invoke('fs:setSettings', partial) as Promise<import('../../src/types/axecoder').AppSettings>,
+  pickCompletionSound: () =>
+    ipcRenderer.invoke('fs:pickCompletionSound') as Promise<
+      import('../../src/types/axecoder').PickCompletionSoundResult
+    >,
+  getCompletionSoundDataUrl: () =>
+    ipcRenderer.invoke('fs:getCompletionSoundDataUrl') as Promise<
+      import('../../src/types/axecoder').CompletionSoundDataUrlResult
+    >,
+  pickProfileAvatar: () =>
+    ipcRenderer.invoke('fs:pickProfileAvatar') as Promise<
+      import('../../src/types/axecoder').PickProfileAvatarResult
+    >,
   listModels: () =>
     ipcRenderer.invoke('models:list') as Promise<import('../../src/types/axecoder').ModelsFile>,
   saveModel: (input: import('../../src/types/axecoder').ModelSaveInput) =>
@@ -125,6 +137,34 @@ contextBridge.exposeInMainWorld('axecoder', {
   pickUserAvatar: (userId: string) =>
     ipcRenderer.invoke('users:pickAvatar', userId) as Promise<
       import('../../src/types/axecoder').UsersPickAvatarResult
+    >,
+  listRules: (projectRoot?: string | null) =>
+    ipcRenderer.invoke('rules:list', projectRoot) as Promise<
+      import('../../src/types/axecoder').RulesMutationResult
+    >,
+  readRule: (scope: import('../../src/types/axecoder').RuleScope, fileName: string, projectRoot?: string) =>
+    ipcRenderer.invoke('rules:read', scope, fileName, projectRoot) as Promise<
+      import('../../src/types/axecoder').RulesReadResult
+    >,
+  saveRule: (input: import('../../src/types/axecoder').RuleSaveInput) =>
+    ipcRenderer.invoke('rules:save', input) as Promise<
+      import('../../src/types/axecoder').RulesMutationResult
+    >,
+  deleteRule: (
+    scope: import('../../src/types/axecoder').RuleScope,
+    fileName: string,
+    projectRoot?: string,
+  ) =>
+    ipcRenderer.invoke('rules:delete', scope, fileName, projectRoot) as Promise<
+      import('../../src/types/axecoder').RulesMutationResult
+    >,
+  getRulesThirdPartyImport: () =>
+    ipcRenderer.invoke('rules:getThirdPartyImport') as Promise<
+      { ok: true; enabled: boolean } | { ok: false; error: string }
+    >,
+  setRulesThirdPartyImport: (enabled: boolean) =>
+    ipcRenderer.invoke('rules:setThirdPartyImport', enabled) as Promise<
+      { ok: true } | { ok: false; error: string }
     >,
   expandChatUserWithFiles: (projectRoot: string, text: string, filePaths: string[]) =>
     ipcRenderer.invoke(
@@ -161,6 +201,10 @@ contextBridge.exposeInMainWorld('axecoder', {
       modelId,
       JSON.parse(JSON.stringify(messages)),
     ) as Promise<import('../../src/types/axecoder').AgentSendResult>,
+  agentStop: (sessionId: string) =>
+    ipcRenderer.invoke('agent:stop', sessionId) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
   agentRunUserShell: (projectRoot: string, command: string) =>
     ipcRenderer.invoke('agent:runUserShell', cloneForIpc(projectRoot), command) as Promise<
       | { ok: true; text: string; exitCode: number | null }
@@ -318,6 +362,18 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.on('terminal:data', listener)
     return () => ipcRenderer.off('terminal:data', listener)
   },
+  listAllSessions: (projectRoot: string) =>
+    ipcRenderer.invoke('session:listAll', projectRoot) as Promise<{
+      sessions: import('../../src/types/axecoder').SessionListItem[]
+    }>,
+  suggestChatSessionTitle: (
+    modelId: string,
+    messages: { role: 'user' | 'assistant'; text: string }[],
+    currentTitle: string,
+  ) =>
+    ipcRenderer.invoke('session:suggestTitle', modelId, messages, currentTitle) as Promise<
+      { ok: true; title: string } | { ok: false; error: string }
+    >,
   getChatSessions: (projectRoot: string) =>
     ipcRenderer.invoke('chat:getSessions', projectRoot) as Promise<{
       sessions: import('../../src/types/axecoder').ChatSessionMeta[]

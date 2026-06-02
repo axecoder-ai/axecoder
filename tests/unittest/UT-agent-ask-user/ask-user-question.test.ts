@@ -1,10 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import { AGENT_TOOLS } from '../../../electron/main/agent/agent-tool-defs'
+import {
+  normalizeAgentToolCall,
+  resolveAgentToolName,
+} from '../../../electron/main/agent/agent-tool-aliases'
 import { parseAskUserQuestions } from '../../../electron/main/agent/tool-executor'
 
 describe('AskUserQuestion tool', () => {
   it('已注册 AskUserQuestion', () => {
     expect(AGENT_TOOLS.map((t) => t.name)).toContain('AskUserQuestion')
+  })
+
+  it('AskQuestion 别名为 AskUserQuestion', () => {
+    expect(resolveAgentToolName('AskQuestion')).toBe('AskUserQuestion')
+    expect(
+      normalizeAgentToolCall({
+        id: 'tc-1',
+        name: 'AskQuestion' as 'AskUserQuestion',
+        arguments: { questions: [] },
+      }).name,
+    ).toBe('AskUserQuestion')
   })
 })
 

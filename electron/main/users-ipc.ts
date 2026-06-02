@@ -40,9 +40,9 @@ export const registerUsersIpc = (getMainWindow: () => BrowserWindow | null) => {
     try {
       const win = getMainWindow()
       const result = await dialog.showOpenDialog(win ?? undefined, {
-        title: '选择头像',
+        title: 'Choose avatar',
         properties: ['openFile'],
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
       })
       if (result.canceled || !result.filePaths[0]) {
         return { ok: true as const, cancelled: true as const }

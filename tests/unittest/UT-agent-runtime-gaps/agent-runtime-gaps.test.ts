@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { clearOldToolResults, estimateContextChars } from '../../../electron/main/agent/agent-frc'
+import {
+  clearOldToolResults,
+  dropOrphanToolMessages,
+  estimateContextChars,
+} from '../../../electron/main/agent/agent-frc'
 import { compactAgentMessages, shouldAutoCompact } from '../../../electron/main/agent/agent-context-compact'
 import { resolveToolPermission } from '../../../electron/main/agent/agent-permissions'
 import type { AgentLoopMessage } from '../../../electron/main/agent/agent-types'
@@ -31,6 +35,26 @@ describe('agent-runtime-gaps', () => {
     }
     const { messages: next } = compactAgentMessages(messages, 5)
     expect(next.length).toBeLessThan(messages.length)
+  })
+
+  it('compact 后 dropOrphanToolMessages 去掉悬空 tool', () => {
+    const messages: AgentLoopMessage[] = [
+      { role: 'system', content: 'sys' },
+      {
+        role: 'assistant',
+        content: '',
+        toolCalls: [{ id: 'call_old', name: 'Read', arguments: { path: 'a' } }],
+      },
+      { role: 'tool', toolCallId: 'call_old', name: 'Read', content: 'old result' },
+      ...Array.from({ length: 28 }, (_, i) => ({
+        role: 'user' as const,
+        content: `filler ${i}`,
+      })),
+      { role: 'tool', toolCallId: 'call_old', name: 'Read', content: 'orphan in tail' },
+    ]
+    const { messages: compacted } = compactAgentMessages(messages, 5)
+    const fixed = dropOrphanToolMessages(compacted)
+    expect(fixed.some((m) => m.role === 'tool' && m.toolCallId === 'call_old')).toBe(false)
   })
 
   it('acceptEdits 允许 Edit', () => {

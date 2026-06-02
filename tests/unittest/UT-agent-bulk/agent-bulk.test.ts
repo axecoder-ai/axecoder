@@ -24,6 +24,7 @@ vi.mock('../../../electron/main/models-store', () => ({
   getModelById: vi.fn(async () => ({
     id: 'm1',
     provider: 'openai',
+    modelId: 'gpt-test',
     enabled: true,
   })),
 }))

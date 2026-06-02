@@ -4,6 +4,9 @@ export const WC_CHAT_MIN = 320
 export const WC_AGENTS_MIN = 200
 export const WC_AGENTS_DEFAULT = 280
 export const WC_EDITOR_MIN = 280
+export const WC_SIDEBAR_DEFAULT = 260
+export const WC_SIDEBAR_MIN = 180
+export const WC_SIDEBAR_MAX = 560
 export const WC_AI_PANEL_DEFAULT = WC_CHAT_MIN + WC_AGENTS_DEFAULT
 export const AGENTS_GROUP_LIMIT = 8
 
@@ -27,6 +30,16 @@ export const clampAgentsWidth = (
   chatMin = WC_CHAT_MIN,
   agentsMin = WC_AGENTS_MIN,
 ): number => clampPanelWidth(width, containerWidth, chatMin, agentsMin)
+
+export const clampSidebarWidth = (
+  width: number,
+  bodyWidth: number,
+  centerMin: number,
+): number => {
+  if (bodyWidth <= 0) return WC_SIDEBAR_DEFAULT
+  const max = Math.max(WC_SIDEBAR_MIN, Math.min(WC_SIDEBAR_MAX, bodyWidth - centerMin))
+  return Math.min(Math.max(width, WC_SIDEBAR_MIN), max)
+}
 
 export const clampAiPanelWidth = (
   width: number,
@@ -69,8 +82,8 @@ export const groupSessionsByDay = (
     else older.push(s)
   }
   const groups: AgentSessionGroup[] = []
-  if (today.length) groups.push({ key: 'today', label: '今天', items: today })
-  if (older.length) groups.push({ key: 'older', label: '更早', items: older })
+  if (today.length) groups.push({ key: 'today', label: 'Today', items: today })
+  if (older.length) groups.push({ key: 'older', label: 'Earlier', items: older })
   return groups
 }
 

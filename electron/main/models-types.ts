@@ -4,7 +4,10 @@ export type ModelEntry = {
   id: string
   name: string
   provider: ModelProvider
+  /** 深度任务 API 模型名 */
   modelId: string
+  /** 简单问答/子任务 API 模型名；空则与 modelId 相同 */
+  fastApiModelId?: string
   baseUrl: string
   enabled: boolean
 }
@@ -49,6 +52,20 @@ export type AppConfig = {
   agentTokenBudget?: number
   agentProactiveEnabled?: boolean
   agentHooksEnabled?: boolean
+  /** 为 false 时主/子任务均使用 activeModelId */
+  agentModelTierRoutingEnabled?: boolean
+  /** Agent 任务完成时播放提示音 */
+  agentCompletionSoundEnabled?: boolean
+  /** ~/.axecoder 下音频文件名，如 agent-completion-sound.mp3 */
+  agentCompletionSoundPath?: string
+  /** 选择文件时的原始文件名（仅展示） */
+  agentCompletionSoundDisplayName?: string
+  /** 设置 Rules 页：是否导入第三方 Plugins/Skills 配置（V1 仅占位） */
+  rulesIncludeThirdPartyPlugins?: boolean
+  /** 设置侧栏个人资料昵称 */
+  profileDisplayName?: string
+  /** ~/.axecoder 下头像相对路径 */
+  profileAvatarPath?: string
 }
 
 export type AiChatMessage = {

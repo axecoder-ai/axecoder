@@ -112,8 +112,9 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
   line-height: 1.45;
   color: var(--wc-text-dim);
   background: var(--wc-chat-box-bg, var(--wc-input-bg));
-  border: 1px solid var(--wc-border);
   border-radius: 8px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--wc-border);
   padding: 10px 12px;
   max-width: 100%;
 }

@@ -1,0 +1,27 @@
+---
+description: 代码修改完成后自动清理 AxeCoder dev/Electron 进程，便于干净重启
+alwaysApply: true
+---
+
+# 改码后清理 AxeCoder 进程
+
+完成**本轮**对业务代码、Electron 主进程、preload 或 Vite 前端的修改后（单测已通过或用户未要求跑测），在回复收尾前执行一次进程清理。
+
+## 何时执行
+
+- 修改了 `electron/`、`src/`、`vite` 配置、或会影响 dev 打包的运行时代码
+- **不执行**：仅改文档、`docs/`、`.md`、纯讨论、用户明确说不要杀进程
+
+## 命令（项目根目录）
+
+```bash
+bash .cursor/skills/kill-aexcoder-processes/scripts/kill.sh
+```
+
+## 禁止
+
+- 不要用 `pkill Electron`、`killall Electron`（会误杀 Cursor 等）
+
+## 汇报
+
+用一两句说明：结束了哪些进程、3344 是否释放、是否仍有残留。

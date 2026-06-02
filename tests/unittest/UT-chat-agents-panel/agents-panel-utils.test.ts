@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   clampAgentsWidth,
   clampAiPanelWidth,
+  clampSidebarWidth,
   groupSessionsByDay,
   isToday,
   minAiPanelWidth,
@@ -9,6 +10,8 @@ import {
   WC_AGENTS_MIN,
   WC_CHAT_MIN,
   WC_EDITOR_MIN,
+  WC_SIDEBAR_DEFAULT,
+  WC_SIDEBAR_MIN,
 } from '../../../src/utils/agents-panel'
 import type { ChatSessionMeta } from '../../../src/types/axecoder'
 
@@ -31,6 +34,18 @@ describe('clampAiPanelWidth', () => {
     expect(clampAiPanelWidth(100, 1200, true, 280)).toBe(min)
     expect(clampAiPanelWidth(2000, 1200, true, 280)).toBe(1200 - WC_EDITOR_MIN)
     expect(clampAiPanelWidth(600, 1200, true, 280)).toBe(600)
+  })
+})
+
+describe('clampSidebarWidth', () => {
+  it('限制左侧边栏宽度', () => {
+    expect(clampSidebarWidth(100, 1200, 600)).toBe(WC_SIDEBAR_MIN)
+    expect(clampSidebarWidth(900, 1200, 600)).toBe(560)
+    expect(clampSidebarWidth(280, 1200, 600)).toBe(280)
+  })
+
+  it('容器过窄时返回默认宽', () => {
+    expect(clampSidebarWidth(WC_SIDEBAR_DEFAULT, 0, 600)).toBe(WC_SIDEBAR_DEFAULT)
   })
 })
 
@@ -63,16 +78,16 @@ describe('isToday', () => {
 describe('groupSessionsByDay', () => {
   const now = new Date(2026, 4, 28, 12, 0, 0).getTime()
 
-  it('分为今天与更早', () => {
+  it('groups into Today and Earlier', () => {
     const sessions = [
       meta('a', new Date(2026, 4, 28, 10, 0, 0).getTime()),
       meta('b', new Date(2026, 4, 20, 10, 0, 0).getTime()),
     ]
     const groups = groupSessionsByDay(sessions, now)
     expect(groups).toHaveLength(2)
-    expect(groups[0].label).toBe('今天')
+    expect(groups[0].label).toBe('Today')
     expect(groups[0].items.map((s) => s.id)).toEqual(['a'])
-    expect(groups[1].label).toBe('更早')
+    expect(groups[1].label).toBe('Earlier')
     expect(groups[1].items.map((s) => s.id)).toEqual(['b'])
   })
 

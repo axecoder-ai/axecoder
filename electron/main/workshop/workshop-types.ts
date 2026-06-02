@@ -1,20 +1,43 @@
 export type WorkshopRoleId = 'manager' | 'backend' | 'frontend' | 'tester' | 'system' | 'user'
 
+export type WorkshopStepStatus = 'pending' | 'running' | 'done' | 'redo'
+
+export type WorkshopStep = {
+  id: string
+  title: string
+  assigneeUserId: string
+  status: WorkshopStepStatus
+}
+
 export type WorkshopPhase =
   | 'idle'
+  | 'planning'
+  | 'step_running'
+  | 'step_verify'
+  | 'waiting_user'
+  | 'done'
+  /** @deprecated 旧会话；新编排不再写入 */
   | 'manager'
   | 'backend'
   | 'frontend'
   | 'tester'
-  | 'waiting_user'
-  | 'done'
+
+export type WorkshopMessageKind = 'chat' | 'reasoning'
 
 export type WorkshopMessage = {
   id: string
   roleId: WorkshopRoleId
+  /** 实际发言人（users.json id），用于步骤执行人展示 */
+  speakerUserId?: string
   text: string
   relatedFiles?: string[]
   createdAt: number
+  /** 可折叠思考快照，展示在正文 text 下方 */
+  reasoningContent?: string
+  /** 发往 LLM 的 API 角色填充，不在 UI 展示 */
+  hidden?: boolean
+  /** @deprecated 读取时合并进 reasoningContent；新写入不再使用 */
+  kind?: WorkshopMessageKind
 }
 
 export type WorkshopSessionMeta = {
@@ -30,6 +53,8 @@ export type WorkshopSession = WorkshopSessionMeta & {
   phase: WorkshopPhase
   pendingQuestion?: string
   mountedFiles: string[]
+  stepPlan?: WorkshopStep[]
+  currentStepIndex?: number
 }
 
 export type WorkshopProgressPayload = {
@@ -38,14 +63,27 @@ export type WorkshopProgressPayload = {
   status: 'thinking' | 'speaking' | 'done'
 }
 
+export type RoleSpeakMode = 'plan' | 'execute' | 'verify'
+
 export type RoleSpeakInput = {
   roleId: Exclude<WorkshopRoleId, 'system' | 'user'>
   userBrief: string
   priorSummary: string
+  speakMode?: RoleSpeakMode
+  step?: WorkshopStep
+  assigneeUser?: import('../users-types').UserEntry
+  stepOutput?: string
+  users?: import('../users-types').UserEntry[]
+  /** 计划 JSON 解析失败时要求模型只输出 JSON */
+  forcePlanJson?: boolean
 }
 
 export type RoleSpeakOutput = {
   summary: string
+  /** 供 parseManagerStepPlan 使用，通常为模型完整 report */
+  planSource?: string
+  /** 可折叠思考；群聊正文仅展示 summary */
+  reasoningContent?: string
   needsUser?: boolean
   userQuestion?: string
   relatedFiles?: string[]

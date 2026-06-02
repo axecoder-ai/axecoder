@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { AppSettings } from '../../types/axecoder'
+import SwitchToggle from './SwitchToggle.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -30,26 +31,26 @@ const onSave = () => {
 <template>
   <div v-if="visible" class="modal-backdrop" @click.self="emit('close')">
     <div class="modal">
-      <h3>设置</h3>
-      <label class="row">
-        <input v-model="local.autoSave" type="checkbox" />
-        自动保存
+      <h3>Settings</h3>
+      <label class="row row-switch">
+        <span>Auto-save</span>
+        <SwitchToggle v-model="local.autoSave" />
       </label>
       <label class="row">
-        自动保存延迟（毫秒）
+        Auto-save delay (ms)
         <input v-model.number="local.autoSaveDelay" type="number" min="200" step="100" />
       </label>
       <label class="row">
-        编辑器字号
+        Editor font size
         <input v-model.number="local.fontSize" type="number" min="10" max="24" />
       </label>
-      <label class="row row-check">
-        <input v-model="local.agentAutoApplyWrites" type="checkbox" />
-        Agent 自动应用文件变更与命令（无需逐项确认）
+      <label class="row row-switch">
+        <span>Agent auto-applies file changes and commands (no per-item confirm)</span>
+        <SwitchToggle v-model="local.agentAutoApplyWrites" />
       </label>
       <div class="actions">
-        <button type="button" @click="emit('close')">取消</button>
-        <button type="button" class="primary" @click="onSave">保存</button>
+        <button type="button" @click="emit('close')">Cancel</button>
+        <button type="button" class="primary" @click="onSave">Save</button>
       </div>
     </div>
   </div>
@@ -95,10 +96,16 @@ const onSave = () => {
   color: var(--wc-text);
 }
 
-.row-check {
+.row-switch {
   flex-direction: row;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.row-switch span {
+  flex: 1;
+  min-width: 0;
 }
 
 .actions {

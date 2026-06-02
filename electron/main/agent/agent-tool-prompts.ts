@@ -149,6 +149,8 @@ The sub-agent completes the task fully but without gold-plating. Respond to the 
 /** Claude Code §14 — AskUserQuestion tool API description */
 const ASK_USER_QUESTION_DESCRIPTION = `Ask the user structured multiple-choice questions when you need clarification or decisions you cannot infer from the codebase.
 
+Alias: you may also call this tool as \`AskQuestion\` (same behavior).
+
 Usage:
 - Provide one or more questions. Each question needs id, prompt (question text), and at least two options (id + label).
 - allow_multiple: when true, the user may select more than one option for that question.

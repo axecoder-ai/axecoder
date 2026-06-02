@@ -1,5 +1,6 @@
 import type { ModelEntry } from '../models-types'
 import type { AgentLoopMessage, AgentToolCall, AgentToolDef } from '../agent/agent-types'
+import { resolveAgentToolName } from '../agent/agent-tool-aliases'
 import { AGENT_TOOLS } from '../agent/agent-tool-defs'
 import { buildOpenAiChatUrl } from './providers/openai'
 import { buildAnthropicMessagesUrl } from './providers/anthropic'
@@ -49,11 +50,17 @@ const parseOpenAiToolCalls = (message: Record<string, unknown>): AgentToolCall[]
     }
     out.push({
       id: String(row.id ?? ''),
-      name: fn.name as AgentToolCall['name'],
+      name: (resolveAgentToolName(fn.name) ?? fn.name) as AgentToolCall['name'],
       arguments: args,
     })
   }
   return out
+}
+
+const mergeAbortSignal = (userSignal?: AbortSignal) => {
+  const timeout = AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS)
+  if (!userSignal) return timeout
+  return AbortSignal.any([timeout, userSignal])
 }
 
 export const chatOpenAiWithTools = async (
@@ -62,6 +69,8 @@ export const chatOpenAiWithTools = async (
   messages: AgentLoopMessage[],
   onDelta?: (delta: OpenAiStreamDelta) => void,
   tools: readonly AgentToolDef[] = AGENT_TOOLS,
+  abortSignal?: AbortSignal,
+  apiModelId?: string,
 ): Promise<ChatWithToolsResult> => {
   const url = buildOpenAiChatUrl(model.baseUrl)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -72,13 +81,13 @@ export const chatOpenAiWithTools = async (
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: model.modelId,
+        model: (apiModelId?.trim() || model.modelId).trim(),
         messages: agentLoopToOpenAiWire(messages),
         tools: openAiTools(tools),
         tool_choice: 'auto',
         stream: useStream,
       }),
-      signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+      signal: mergeAbortSignal(abortSignal),
     })
     if (!res.ok) {
       const errText = await res.text()
@@ -175,6 +184,8 @@ export const chatAnthropicWithTools = async (
   apiKey: string,
   messages: AgentLoopMessage[],
   tools: readonly AgentToolDef[] = AGENT_TOOLS,
+  abortSignal?: AbortSignal,
+  apiModelId?: string,
 ): Promise<ChatWithToolsResult> => {
   if (!apiKey.trim()) return { ok: false, error: 'Anthropic 需要 API Key' }
   const system = messages.find((m) => m.role === 'system')?.content ?? ''
@@ -188,13 +199,13 @@ export const chatAnthropicWithTools = async (
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: model.modelId,
+        model: (apiModelId?.trim() || model.modelId).trim(),
         max_tokens: 4096,
         system,
         messages: toAnthropicMessages(messages),
         tools: anthropicTools(tools),
       }),
-      signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+      signal: mergeAbortSignal(abortSignal),
     })
     if (!res.ok) {
       const errText = await res.text()
@@ -211,7 +222,7 @@ export const chatAnthropicWithTools = async (
       if (b.type === 'tool_use' && b.id && b.name) {
         toolCalls.push({
           id: b.id,
-          name: b.name as AgentToolCall['name'],
+          name: (resolveAgentToolName(b.name) ?? b.name) as AgentToolCall['name'],
           arguments: b.input ?? {},
         })
       }
@@ -228,12 +239,14 @@ export const chatWithToolsForModel = async (
   messages: AgentLoopMessage[],
   onDelta?: (delta: OpenAiStreamDelta) => void,
   tools: readonly AgentToolDef[] = AGENT_TOOLS,
+  abortSignal?: AbortSignal,
+  apiModelId?: string,
 ): Promise<ChatWithToolsResult> => {
   if (model.provider === 'ollama' || model.provider === 'openai') {
     if (model.provider === 'openai' && !apiKey.trim()) {
       return { ok: false, error: 'OpenAI 格式需要 API Key' }
     }
-    return chatOpenAiWithTools(model, apiKey, messages, onDelta, tools)
+    return chatOpenAiWithTools(model, apiKey, messages, onDelta, tools, abortSignal, apiModelId)
   }
-  return chatAnthropicWithTools(model, apiKey, messages, tools)
+  return chatAnthropicWithTools(model, apiKey, messages, tools, abortSignal, apiModelId)
 }

@@ -85,41 +85,41 @@ defineExpose({
 <template>
   <div v-if="visible" class="modal-backdrop" @click.self="emit('close')">
     <div class="modal">
-      <h3>{{ editing ? '编辑用户' : '添加用户' }}</h3>
+      <h3>{{ editing ? 'Edit user' : 'Add user' }}</h3>
       <div class="avatar-row">
         <div class="avatar-preview">
           <img v-if="avatarPreview" :src="avatarPreview" alt="" />
           <span v-else class="avatar-fallback">{{ avatarFallback }}</span>
         </div>
-        <button type="button" class="secondary-btn" @click="onPickAvatar">选择头像</button>
+        <button type="button" class="secondary-btn" @click="onPickAvatar">Choose avatar</button>
       </div>
       <label class="row">
-        姓名
-        <input v-model="displayName" type="text" placeholder="显示名称" />
+        Name
+        <input v-model="displayName" type="text" placeholder="Display name" />
       </label>
       <label class="row">
-        角色
+        Role
         <input
           v-model="role"
           type="text"
-          placeholder="如：后端工程师"
+          placeholder="e.g. Backend engineer"
           :disabled="isBuiltinManager"
         />
-        <span v-if="isBuiltinManager" class="hint">内置技术经理角色不可修改</span>
+        <span v-if="isBuiltinManager" class="hint">Built-in tech lead role cannot be changed</span>
       </label>
       <label class="row">
-        擅长领域
+        Expertise
         <textarea
           v-model="expertise"
           rows="2"
-          placeholder="如：API 设计、性能优化"
+          placeholder="e.g. API design, performance"
           :disabled="isBuiltinManager"
         />
-        <span v-if="isBuiltinManager" class="hint">内置技术经理擅长领域不可修改</span>
+        <span v-if="isBuiltinManager" class="hint">Built-in tech lead expertise cannot be changed</span>
       </label>
       <div class="actions">
-        <button type="button" class="secondary-btn" @click="emit('close')">取消</button>
-        <button type="button" class="primary-btn" @click="onSave">保存</button>
+        <button type="button" class="secondary-btn" @click="emit('close')">Cancel</button>
+        <button type="button" class="primary-btn" @click="onSave">Save</button>
       </div>
     </div>
   </div>

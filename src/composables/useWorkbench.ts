@@ -28,6 +28,9 @@ export const useWorkbench = () => {
     theme: 'vscode',
     agentAutoApplyWrites: false,
     agentOutputStyle: 'default',
+    agentCompletionSoundEnabled: false,
+    agentCompletionSoundPath: '',
+    agentCompletionSoundDisplayName: '',
   })
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null

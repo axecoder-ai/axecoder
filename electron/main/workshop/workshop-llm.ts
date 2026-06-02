@@ -1,6 +1,8 @@
 import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 import { chatWithProvider } from '../ai/chat-with-provider'
+import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
+import { modelTaskKindForWorkshopRole } from '../ai/model-resolve'
 import type { RoleSpeaker } from './workshop-types'
 import { roleDefById } from './workshop-roles'
 import { buildWorkshopStreamId } from './workshop-stream'
@@ -61,6 +63,8 @@ export const buildLlmRoleSpeaker = (
             if (text) onStreamDelta(streamId, text)
           }
         : undefined
+    const taskKind = modelTaskKindForWorkshopRole(input.roleId, input.speakMode)
+    const apiModelId = await resolveApiModelIdForTask(model, taskKind, user)
     const res = await chatWithProvider(
       model,
       apiKey,
@@ -69,6 +73,7 @@ export const buildLlmRoleSpeaker = (
         { role: 'user', content: user },
       ],
       onDelta,
+      apiModelId,
     )
     if (!res.ok) throw new Error(res.error)
     let needsUser = false

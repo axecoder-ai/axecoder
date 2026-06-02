@@ -26,6 +26,34 @@ export const clearOldToolResults = (
   return cleared
 }
 
+/** 去掉没有对应 assistant.tool_calls 的 tool 消息，避免 OpenAI 400 */
+export const dropOrphanToolMessages = (messages: AgentLoopMessage[]): AgentLoopMessage[] => {
+  const out: AgentLoopMessage[] = []
+  let pendingToolIds: Set<string> | null = null
+  for (const m of messages) {
+    if (m.role === 'system' || m.role === 'user') {
+      out.push(m)
+      continue
+    }
+    if (m.role === 'assistant') {
+      out.push(m)
+      pendingToolIds =
+        m.toolCalls?.length && m.toolCalls.some((tc) => tc.id)
+          ? new Set(m.toolCalls.map((tc) => tc.id).filter(Boolean))
+          : null
+      continue
+    }
+    if (m.role === 'tool') {
+      if (pendingToolIds?.has(m.toolCallId)) {
+        out.push(m)
+        pendingToolIds.delete(m.toolCallId)
+        if (pendingToolIds.size === 0) pendingToolIds = null
+      }
+    }
+  }
+  return out
+}
+
 export const estimateContextChars = (messages: AgentLoopMessage[]) => {
   let n = 0
   for (const m of messages) {

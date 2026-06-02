@@ -226,7 +226,7 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
   },
   {
     name: 'memory',
-    description: '查看或写入 ~/.aex-coder/memory.md',
+    description: '查看或写入 ~/.axecoder/memory.md',
     run: async (_ctx, args) => {
       const text = args.trim()
       if (!text) {
@@ -244,7 +244,7 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
       return {
         ok: true,
         message:
-          '用法：/memory 查看；/memory set <正文> 覆盖写入 ~/.aex-coder/memory.md',
+          '用法：/memory 查看；/memory set <正文> 覆盖写入 ~/.axecoder/memory.md',
       }
     },
   },

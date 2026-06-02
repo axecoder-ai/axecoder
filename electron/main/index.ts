@@ -4,11 +4,13 @@ import { registerMarkdownExportIpc } from './markdown-export-ipc'
 import { registerGitIpc } from './git-ipc'
 import { registerTerminalIpc } from './terminal-ipc'
 import { registerChatIpc } from './chat-store'
+import { registerSessionIpc } from './session/session-ipc'
 import { registerWorkshopIpc } from './workshop-ipc'
 import { registerAiIpc } from './ai-ipc'
 import { registerAgentIpc } from './agent-ipc'
 import { registerModelsIpc } from './models-ipc'
 import { registerUsersIpc } from './users-ipc'
+import { registerRulesIpc } from './rules/rules-ipc'
 import { runMigrate } from './migrate-axecoder'
 import Store from 'electron-store'
 import { createRequire } from 'node:module'
@@ -280,8 +282,10 @@ app.whenReady().then(async () => {
   registerGitIpc()
   registerTerminalIpc(() => win)
   registerChatIpc()
+  registerSessionIpc()
   registerModelsIpc()
   registerUsersIpc(() => win)
+  registerRulesIpc()
   registerAiIpc()
   registerAgentIpc(() => win)
   registerWorkshopIpc(() => win)

@@ -36,4 +36,13 @@ describe('config-store', () => {
     expect(c.fontSize).toBe(16)
     expect(c.autoSave).toBe(true)
   })
+
+  it('可更新个人资料', async () => {
+    const c = await setConfig({
+      profileDisplayName: '小明',
+      profileAvatarPath: 'profile-avatars/profile.png',
+    })
+    expect(c.profileDisplayName).toBe('小明')
+    expect(c.profileAvatarPath).toBe('profile-avatars/profile.png')
+  })
 })

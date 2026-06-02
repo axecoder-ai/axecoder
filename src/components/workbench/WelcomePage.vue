@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import SwitchToggle from './SwitchToggle.vue'
 
 const props = defineProps<{
   recentProjects: string[]
@@ -129,7 +130,7 @@ const fileName = (p: string) => {
       </div>
     </div>
     <label class="welcome-footer">
-      <input v-model="localShowOnStartup" type="checkbox" @change="onShowOnStartupChange" />
+      <SwitchToggle v-model="localShowOnStartup" @change="onShowOnStartupChange" />
       启动时显示欢迎页
     </label>
   </section>
@@ -307,7 +308,4 @@ const fileName = (p: string) => {
   user-select: none;
 }
 
-.welcome-footer input {
-  accent-color: var(--wc-accent);
-}
 </style>

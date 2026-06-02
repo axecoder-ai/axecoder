@@ -26,6 +26,8 @@ import {
 import { runSlashCommand } from '../../slash-commands/run'
 import { refreshSlashCommandRegistry } from '../../slash-commands/registry'
 import type { SlashContext } from '../../slash-commands/types'
+import { playAgentCompletionSound } from '../../utils/play-completion-sound'
+import SwitchToggle from './SwitchToggle.vue'
 
 const md = new MarkdownIt()
 
@@ -35,7 +37,38 @@ const props = defineProps<{
   contextFilePath?: string | null
   agentsSidebarVisible: boolean
   agentAutoApplyWrites: boolean
+  agentCompletionSoundEnabled?: boolean
+  agentCompletionSoundPath?: string
+  profileDisplayName?: string
+  profileAvatarPath?: string
 }>()
+
+const profileAvatarUrl = ref('')
+
+const profileHeaderVisible = computed(() => {
+  const name = props.profileDisplayName?.trim() ?? ''
+  const path = props.profileAvatarPath?.trim() ?? ''
+  return !!name && !!path
+})
+
+const profileNickname = computed(() => props.profileDisplayName?.trim() ?? '')
+
+const loadProfileAvatar = async () => {
+  if (!profileHeaderVisible.value) {
+    profileAvatarUrl.value = ''
+    return
+  }
+  const res = await window.axecoder.getUserAvatarDataUrl(props.profileAvatarPath!.trim())
+  profileAvatarUrl.value = res.ok && res.dataUrl ? res.dataUrl : ''
+}
+
+watch(
+  () => [props.profileDisplayName, props.profileAvatarPath] as const,
+  () => {
+    void loadProfileAvatar()
+  },
+  { immediate: true },
+)
 
 const emit = defineEmits<{
   close: []
@@ -75,6 +108,7 @@ let idleHintTimer: ReturnType<typeof setInterval> | null = null
 let progressUnsub: (() => void) | null = null
 let aiStreamUnsub: (() => void) | null = null
 const agentProgressActive = ref(false)
+const runningAgentSessionId = ref('')
 
 const agentMode = computed(() => {
   const m = activeModel.value
@@ -111,7 +145,7 @@ const tabTitleFor = (id: string) => {
   if (id === activeId.value && activeSession.value) return activeSession.value.title
   const cached = sessionCache.value[id]
   if (cached) return cached.title
-  return sessionMetas.value.find((m) => m.id === id)?.title ?? '对话'
+  return sessionMetas.value.find((m) => m.id === id)?.title ?? 'Chat'
 }
 
 const openTabs = computed(() => openTabIds.value.map((id) => ({ id, title: tabTitleFor(id) })))
@@ -128,7 +162,29 @@ const syncMetaFromActive = () => {
   )
 }
 
-const persist = async () => {
+let titleSuggestInFlight = false
+
+const maybeRefreshSessionTitle = async () => {
+  if (titleSuggestInFlight || !hasProject.value || !activeSession.value) return
+  const modelId = modelsFile.value.activeModelId
+  if (!modelId) return
+  const s = activeSession.value
+  const payload = s.messages
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => ({ role: m.role as 'user' | 'assistant', text: m.text }))
+  titleSuggestInFlight = true
+  try {
+    const res = await window.axecoder.suggestChatSessionTitle(modelId, payload, s.title)
+    if (!res.ok || !res.title || res.title === s.title) return
+    s.title = res.title
+    s.updatedAt = Date.now()
+    await persist({ skipTitleSuggest: true })
+  } finally {
+    titleSuggestInFlight = false
+  }
+}
+
+const persist = async (opts?: { skipTitleSuggest?: boolean }) => {
   if (!hasProject.value || !activeSession.value) return
   const s = activeSession.value
   const res = await window.axecoder.saveChatSession(props.projectRoot, {
@@ -148,6 +204,7 @@ const persist = async () => {
   if (activeSession.value) cacheSession(activeSession.value)
   syncMetaFromActive()
   emit('sessionsChanged')
+  if (!opts?.skipTitleSuggest) void maybeRefreshSessionTitle()
 }
 
 const reset = () => {
@@ -390,13 +447,15 @@ const unbindAgentProgress = () => {
   progressUnsub = null
 }
 
-const bindAgentProgress = () => {
+const bindAgentProgress = (initialSessionId?: string) => {
   unbindAgentProgress()
   progressSteps.value = []
   streamText.value = ''
+  runningAgentSessionId.value = initialSessionId ?? ''
   agentProgressActive.value = true
   progressUnsub = window.axecoder.onAgentProgress((payload) => {
     if (!agentProgressActive.value) return
+    if (payload.sessionId) runningAgentSessionId.value = payload.sessionId
     if (payload.kind === 'delta') {
       streamText.value += payload.delta
     } else if (payload.kind === 'subagent') {
@@ -426,9 +485,32 @@ const clearProgressUi = () => {
   progressSteps.value = []
   streamText.value = ''
   subagentTasks.value = new Map()
+  runningAgentSessionId.value = ''
+}
+
+const showAgentStop = computed(
+  () =>
+    agentMode.value &&
+    (loading.value || pendingBusy.value) &&
+    !!runningAgentSessionId.value,
+)
+
+const stopAgentRun = async () => {
+  const sid = runningAgentSessionId.value
+  if (!sid) return
+  await window.axecoder.agentStop(sid)
 }
 
 const formatToolLog = (_log: AgentToolLogEntry[]) => ''
+
+const maybePlayAgentDoneSound = (res: { ok: boolean; status: string; assistantText?: string }) => {
+  if (!res.ok || res.status !== 'done') return
+  if (res.assistantText?.includes('（已停止）')) return
+  void playAgentCompletionSound({
+    enabled: props.agentCompletionSoundEnabled,
+    path: props.agentCompletionSoundPath,
+  })
+}
 
 const pushAssistantFromAgent = (res: AgentSendResult | AgentContinueResult) => {
   if (!activeSession.value) return
@@ -445,6 +527,7 @@ const pushAssistantFromAgent = (res: AgentSendResult | AgentContinueResult) => {
       ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
       ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
     })
+    maybePlayAgentDoneSound(res)
     emit('filesChanged')
     return
   }
@@ -482,6 +565,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     msg.pendingBashes = undefined
     msg.pendingAsks = undefined
     msg.text = (res.assistantText + suffix).trim() || msg.text
+    maybePlayAgentDoneSound(res)
     emit('filesChanged')
   }
 }
@@ -489,7 +573,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
 const onConfirmPending = async (msg: ChatMessage, pendingId: string) => {
   if (!msg.agentSessionId || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress()
+  bindAgentProgress(msg.agentSessionId)
   try {
     const res = await window.axecoder.agentConfirmWrite(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
@@ -504,7 +588,7 @@ const onConfirmPending = async (msg: ChatMessage, pendingId: string) => {
 const onRejectPending = async (msg: ChatMessage, pendingId: string) => {
   if (!msg.agentSessionId || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress()
+  bindAgentProgress(msg.agentSessionId)
   try {
     const res = await window.axecoder.agentRejectWrite(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
@@ -519,7 +603,7 @@ const onRejectPending = async (msg: ChatMessage, pendingId: string) => {
 const onConfirmBashPending = async (msg: ChatMessage, pendingId: string) => {
   if (!msg.agentSessionId || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress()
+  bindAgentProgress(msg.agentSessionId)
   try {
     const res = await window.axecoder.agentConfirmBash(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
@@ -534,7 +618,7 @@ const onConfirmBashPending = async (msg: ChatMessage, pendingId: string) => {
 const onRejectBashPending = async (msg: ChatMessage, pendingId: string) => {
   if (!msg.agentSessionId || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress()
+  bindAgentProgress(msg.agentSessionId)
   try {
     const res = await window.axecoder.agentRejectBash(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
@@ -553,7 +637,7 @@ const onAnswerPending = async (
 ) => {
   if (!msg.agentSessionId || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress()
+  bindAgentProgress(msg.agentSessionId)
   try {
     const res = await window.axecoder.agentAnswerQuestions(
       msg.agentSessionId,
@@ -631,7 +715,7 @@ const onConfirmAllPending = async () => {
   const { sessionIds, msgBySession } = sessionPendingState.value
   if (!sessionIds.length || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress()
+  bindAgentProgress(sessionIds[0])
   try {
     for (const sessionId of sessionIds) {
       const msg = msgBySession.get(sessionId)
@@ -652,7 +736,7 @@ const onRejectAllPending = async () => {
   const { sessionIds, msgBySession } = sessionPendingState.value
   if (!sessionIds.length || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress()
+  bindAgentProgress(sessionIds[0])
   try {
     for (const sessionId of sessionIds) {
       const msg = msgBySession.get(sessionId)
@@ -669,8 +753,7 @@ const onRejectAllPending = async () => {
   }
 }
 
-const onAgentAutoApplyChange = async (e: Event) => {
-  const checked = (e.target as HTMLInputElement).checked
+const onAgentAutoApplyChange = async (checked: boolean) => {
   emit('update:agentAutoApplyWrites', checked)
   if (checked && sessionPendingState.value.count > 0) {
     await onConfirmAllPending()
@@ -1036,13 +1119,12 @@ defineExpose({
           ×
         </button>
       </div>
-      <button type="button" class="new-tab" title="New Agent" @click="newChat">+</button>
       <div class="tabs-spacer" />
       <button
         v-if="!agentsSidebarVisible"
         type="button"
         class="agents-expand"
-        title="显示 Agents 历史"
+        title="Show session history"
         @click="emit('showAgentsSidebar')"
       >
         <svg class="sidebar-toggle-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1068,10 +1150,34 @@ defineExpose({
           </li>
         </ul>
       </div>
-      <div v-else-if="!hasProject" class="empty-hint">请先打开项目，再开始 AI 对话</div>
-      <div v-else-if="!messages.length" class="empty-hint">发送第一条消息，或从右侧选择历史会话</div>
-      <div v-for="(msg, i) in messages" :key="i" class="message" :class="msg.role">
-        <div v-if="msg.role === 'user'" class="user-bubble">
+      <div v-else-if="!hasProject" class="empty-hint">Open a project to start chatting</div>
+      <div v-else-if="!messages.length" class="empty-hint">Send your first message, or pick a session from the right</div>
+      <div
+        v-for="(msg, i) in messages"
+        :key="i"
+        class="message"
+        :class="[msg.role, msg.role === 'user' && profileHeaderVisible ? 'message-user--profile' : '']"
+      >
+        <div v-if="msg.role === 'user' && profileHeaderVisible" class="user-message user-message--profile">
+          <div class="user-message-body">
+            <div class="user-message-meta">
+              <span class="user-message-nickname">{{ profileNickname }}</span>
+            </div>
+            <div class="user-bubble">
+              <div v-if="msg.filePaths?.length" class="msg-file-tags">
+                <span v-for="fp in msg.filePaths" :key="fp" class="msg-file-tag" :title="fp">
+                  {{ relativeToProject(projectRoot, fp) }}
+                </span>
+              </div>
+              {{ msg.text }}
+            </div>
+          </div>
+          <div class="user-message-avatar" :title="profileNickname">
+            <img v-if="profileAvatarUrl" :src="profileAvatarUrl" alt="" />
+            <span v-else>{{ profileNickname.slice(0, 1) }}</span>
+          </div>
+        </div>
+        <div v-else-if="msg.role === 'user'" class="user-bubble">
           <div v-if="msg.filePaths?.length" class="msg-file-tags">
             <span v-for="fp in msg.filePaths" :key="fp" class="msg-file-tag" :title="fp">
               {{ relativeToProject(projectRoot, fp) }}
@@ -1168,10 +1274,9 @@ defineExpose({
           {{ sessionPendingState.count }} 项待确认（文件变更 / 命令）
         </span>
         <label class="pending-auto-apply" title="开启后 Write / Edit / Delete / Move / Bash 将直接执行，不再弹出确认">
-          <input
-            type="checkbox"
-            :checked="agentAutoApplyWrites"
-            @change="onAgentAutoApplyChange"
+          <SwitchToggle
+            :model-value="!!agentAutoApplyWrites"
+            @update:model-value="onAgentAutoApplyChange"
           />
           自动应用，无需确认
         </label>
@@ -1272,14 +1377,25 @@ defineExpose({
               class="auto-apply-toggle"
               title="开启后 Agent 的文件变更与 Bash 命令将直接应用，不再显示「应用 / 拒绝」"
             >
-              <input
-                type="checkbox"
-                :checked="agentAutoApplyWrites"
-                @change="onAgentAutoApplyChange"
-              />
+              <SwitchToggle
+            :model-value="!!agentAutoApplyWrites"
+            @update:model-value="onAgentAutoApplyChange"
+          />
               Auto Run
             </label>
             <button
+              v-if="showAgentStop"
+              type="button"
+              class="stop-btn"
+              title="停止 Agent"
+              @click="stopAgentRun"
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" />
+              </svg>
+            </button>
+            <button
+              v-else
               type="button"
               class="send-btn"
               :class="{ active: canSend }"
@@ -1411,28 +1527,37 @@ defineExpose({
 .chat-tabs {
   height: 35px;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   background: var(--wc-bg-dark);
-  border-bottom: 1px solid var(--wc-border);
-  padding: 0 8px;
-  gap: 4px;
+  padding: 0;
+  gap: 0;
   flex-shrink: 0;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.chat-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tabs-spacer {
   flex: 1;
+  align-self: stretch;
+  border-bottom: 1px solid var(--wc-border);
 }
 
 .agents-expand {
+  align-self: flex-end;
   width: 28px;
-  height: 28px;
+  height: 32px;
+  margin-right: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
+  border-bottom: 1px solid var(--wc-border);
   color: var(--wc-text-muted);
   flex-shrink: 0;
 }
@@ -1454,18 +1579,37 @@ defineExpose({
   min-width: 0;
   flex: 0 1 auto;
   max-width: min(220px, 100%);
-  padding: 6px 8px 6px 12px;
+  align-self: flex-end;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 8px 0 12px;
   font-size: 12px;
   background: transparent;
-  border-radius: 4px 4px 0 0;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--wc-border);
   overflow: hidden;
   cursor: pointer;
   color: var(--wc-text-muted);
 }
 
 .chat-tab.active {
+  align-self: stretch;
+  height: auto;
   background: var(--wc-panel);
   color: var(--wc-text);
+  border: none;
+  border-top: 1px solid var(--wc-border);
+  border-left: 1px solid var(--wc-border);
+  border-right: 1px solid var(--wc-border);
+  margin-bottom: -1px;
+  padding-bottom: 1px;
+  position: relative;
+  z-index: 1;
+}
+
+.chat-tabs > .chat-tab:first-of-type.active {
+  border-left-color: transparent;
 }
 
 .tab-close {
@@ -1491,20 +1635,6 @@ defineExpose({
   white-space: nowrap;
 }
 
-.new-tab {
-  width: 28px;
-  height: 28px;
-  border-radius: 4px;
-  color: var(--wc-text-muted);
-  font-size: 18px;
-  line-height: 1;
-}
-
-.new-tab:hover {
-  background: var(--wc-hover);
-  color: var(--wc-text);
-}
-
 .chat-messages {
   flex: 1;
   overflow: auto;
@@ -1521,8 +1651,66 @@ defineExpose({
   margin-top: 40px;
 }
 
+.message.user.message-user--profile {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.user-message--profile {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: max-content;
+  max-width: 60%;
+}
+
+.user-message-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  max-width: calc(100% - 46px);
+}
+
+.user-message--profile .user-bubble {
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.user-message-meta {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.user-message-nickname {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wc-text);
+}
+
+.user-message-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--wc-hover);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wc-text);
+}
+
+.user-message-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .user-bubble {
-  align-self: flex-end;
   max-width: 85%;
   padding: 10px 14px;
   background: var(--wc-input-bg);
@@ -1553,6 +1741,8 @@ defineExpose({
   max-width: 100%;
   padding: 0;
   background: transparent;
+  border-radius: 0;
+  overflow: visible;
 }
 
 .reply-actions {
@@ -1831,6 +2021,23 @@ defineExpose({
 
 .send-btn.active:hover:not(:disabled) {
   background: var(--wc-send-active-hover);
+}
+
+.stop-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: #c45c5c;
+  color: #fff;
+  transition: background 0.15s;
+}
+
+.stop-btn:hover {
+  background: #a84848;
 }
 
 .assistant-text :deep(p) {

@@ -3,9 +3,53 @@ import {
   ensureProjectWorkshopsDir,
   normalizeProjectRoot,
   projectWorkshopFilePath,
-  projectWorkshopsIndexPath,
 } from '../project-axecoder-dir'
-import type { WorkshopSession, WorkshopSessionMeta } from './workshop-types'
+import {
+  listRegistryByKind,
+  readRegistry,
+  removeLegacyWorkshopIndexEntry,
+  removeRegistryEntry,
+  upsertRegistryEntry,
+  writeRegistry,
+} from '../session/session-registry'
+import type { SessionRegistryEntry } from '../session/session-types'
+import type { WorkshopMessage, WorkshopSession, WorkshopSessionMeta } from './workshop-types'
+
+/** 将旧版 kind:reasoning 独立条合并进同角色正文消息 */
+export const normalizeWorkshopMessages = (messages: WorkshopMessage[]): WorkshopMessage[] => {
+  const out: WorkshopMessage[] = []
+  let i = 0
+  while (i < messages.length) {
+    const m = messages[i]
+    if (m.kind === 'reasoning') {
+      const next = messages[i + 1]
+      if (next && next.roleId === m.roleId && !next.hidden && next.kind !== 'reasoning') {
+        out.push({
+          ...next,
+          reasoningContent: m.text || next.reasoningContent,
+          kind: undefined,
+        })
+        i += 2
+        continue
+      }
+      out.push({
+        ...m,
+        kind: undefined,
+        reasoningContent: m.text,
+        text: '（无结论）',
+      })
+      i++
+      continue
+    }
+    if (m.reasoningContent || !m.kind) {
+      out.push(m.kind ? { ...m, kind: undefined } : m)
+    } else {
+      out.push({ ...m, kind: undefined })
+    }
+    i++
+  }
+  return out
+}
 
 type StoreResult = { ok: true } | { ok: false; error: string }
 
@@ -15,25 +59,13 @@ const writeFileAtomic = async (filePath: string, content: string) => {
   await fs.rename(tmp, filePath)
 }
 
-const readIndex = async (projectRoot: string): Promise<WorkshopSessionMeta[]> => {
-  try {
-    const raw = await fs.readFile(projectWorkshopsIndexPath(projectRoot), 'utf-8')
-    const list = JSON.parse(raw) as WorkshopSessionMeta[]
-    return Array.isArray(list) ? list : []
-  } catch {
-    return []
-  }
-}
+const registryToWorkshopMeta = (list: SessionRegistryEntry[]): WorkshopSessionMeta[] =>
+  list
+    .filter((s) => s.kind === 'workshop')
+    .map(({ id, title, updatedAt }) => ({ id, title, updatedAt }))
 
-const writeIndex = async (projectRoot: string, list: WorkshopSessionMeta[]) => {
-  await ensureProjectWorkshopsDir(projectRoot)
-  await writeFileAtomic(projectWorkshopsIndexPath(projectRoot), JSON.stringify(list))
-}
-
-const upsertMeta = (list: WorkshopSessionMeta[], session: WorkshopSessionMeta) => {
-  const rest = list.filter((s) => s.id !== session.id)
-  return [session, ...rest].sort((a, b) => b.updatedAt - a.updatedAt)
-}
+const readIndex = async (projectRoot: string): Promise<WorkshopSessionMeta[]> =>
+  registryToWorkshopMeta(await listRegistryByKind(projectRoot, 'workshop'))
 
 export const createWorkshopId = () =>
   `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -73,6 +105,7 @@ export const getWorkshopSession = async (projectRoot: string, workshopId: string
     const raw = await fs.readFile(projectWorkshopFilePath(root, workshopId), 'utf-8')
     const session = JSON.parse(raw) as WorkshopSession
     if (!session?.id || !Array.isArray(session.messages)) return { session: null }
+    session.messages = normalizeWorkshopMessages(session.messages)
     return { session }
   } catch {
     return { session: null }
@@ -88,14 +121,15 @@ export const saveWorkshopSession = async (
   if (!session?.id?.trim()) return { ok: false, error: 'workshop id 无效' }
   try {
     await ensureProjectWorkshopsDir(root)
-    const meta: WorkshopSessionMeta = {
+    const meta: SessionRegistryEntry = {
       id: session.id,
       title: session.title,
       updatedAt: session.updatedAt,
+      kind: 'workshop',
     }
-    const index = upsertMeta(await readIndex(root), meta)
+    const index = upsertRegistryEntry(await readRegistry(root), meta)
     await writeFileAtomic(projectWorkshopFilePath(root, session.id), JSON.stringify(session))
-    await writeIndex(root, index)
+    await writeRegistry(root, index)
     return { ok: true }
   } catch (e) {
     const msg = e instanceof Error ? e.message : '保存失败'
@@ -110,8 +144,9 @@ export const deleteWorkshopSession = async (
   const root = await normalizeProjectRoot(projectRoot)
   if (!root) return { ok: false, error: '未打开项目' }
   try {
-    const index = (await readIndex(root)).filter((s) => s.id !== workshopId)
-    await writeIndex(root, index)
+    const index = removeRegistryEntry(await readRegistry(root), workshopId, 'workshop')
+    await writeRegistry(root, index)
+    await removeLegacyWorkshopIndexEntry(root, workshopId)
     await fs.rm(projectWorkshopFilePath(root, workshopId), { force: true })
     return { ok: true }
   } catch (e) {

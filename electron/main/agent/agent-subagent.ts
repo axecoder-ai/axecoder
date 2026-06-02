@@ -1,6 +1,8 @@
 import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
+import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
 import { chatWithToolsForModel } from '../ai/chat-with-tools'
+import { modelTaskKindForSubagentType } from '../ai/model-resolve'
 import type { OpenAiStreamDelta } from '../ai/providers/openai'
 import type { AgentToolDef } from './agent-types'
 import { buildDefaultSubAgentSystemPrompt } from './agent-tool-defs'
@@ -117,10 +119,21 @@ export const runSubAgentTask = async (
     MAX_SUB_TURNS_CAP,
   )
 
+  const taskKind = modelTaskKindForSubagentType(subagentType)
+  const apiModelId = await resolveApiModelIdForTask(model, taskKind, prompt)
+
   let turn = 0
   while (turn < maxTurns) {
     turn += 1
-    const res = await chatWithToolsForModel(model, apiKey, messages, options?.onDelta, tools)
+    const res = await chatWithToolsForModel(
+      model,
+      apiKey,
+      messages,
+      options?.onDelta,
+      tools,
+      undefined,
+      apiModelId,
+    )
     if (!res.ok) return { ok: false, error: res.error }
 
     if (res.toolCalls.length) {

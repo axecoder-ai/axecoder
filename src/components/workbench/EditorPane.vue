@@ -124,7 +124,6 @@ defineExpose({ revealLine, focusEditor })
   display: flex;
   align-items: stretch;
   background: var(--wc-bg-dark);
-  border-bottom: 1px solid var(--wc-border);
   flex-shrink: 0;
 }
 

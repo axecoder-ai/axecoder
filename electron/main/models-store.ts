@@ -12,16 +12,36 @@ const emptyModels = (): ModelsFile => ({
   models: [],
 })
 
+/** 旧版全局 fastModelId（条目 id）→ 当前 active 条目的 fastApiModelId */
+const migrateLegacyFastModelId = (
+  file: ModelsFile,
+  raw: ModelsFile & { fastModelId?: string },
+) => {
+  const legacyFast = raw.fastModelId?.trim() ?? ''
+  if (!legacyFast) return
+  const active = file.models.find((m) => m.id === file.activeModelId)
+  const fastEntry = file.models.find((m) => m.id === legacyFast)
+  if (!active || !fastEntry || active.fastApiModelId?.trim()) return
+  active.fastApiModelId = fastEntry.modelId.trim()
+}
+
 const readModelsFile = async (): Promise<ModelsFile> => {
   try {
     const raw = await fs.readFile(modelsPath(), 'utf-8')
     const data = JSON.parse(raw) as ModelsFile
     if (!data || data.schemaVersion !== 1 || !Array.isArray(data.models)) return emptyModels()
-    return {
-      schemaVersion: 1,
+    const models = (data.models ?? []).map((m) => ({
+      ...m,
+      fastApiModelId: m.fastApiModelId?.trim() || undefined,
+      enabled: m.enabled !== false,
+    }))
+    const file = {
+      schemaVersion: 1 as const,
       activeModelId: data.activeModelId ?? '',
-      models: data.models,
+      models,
     }
+    migrateLegacyFastModelId(file, data as ModelsFile & { fastModelId?: string })
+    return file
   } catch {
     return emptyModels()
   }
@@ -44,11 +64,13 @@ export const saveModel = async (input: ModelSaveInput): Promise<ModelsFile> => {
     throw new Error('baseUrl 必须是 http 或 https')
   }
   const data = await readModelsFile()
+  const fastApi = input.fastApiModelId?.trim() ?? ''
   const entry: ModelEntry = {
     id: input.id,
     name: input.name.trim(),
     provider: input.provider,
     modelId: input.modelId.trim(),
+    ...(fastApi ? { fastApiModelId: fastApi } : {}),
     baseUrl: input.baseUrl.trim().replace(/\/+$/, ''),
     enabled: input.enabled,
   }

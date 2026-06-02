@@ -8,11 +8,11 @@ import {
   saveWorkshopSession,
   deleteWorkshopSession,
   newWorkshopSession,
+  normalizeWorkshopMessages,
 } from '../../../electron/main/workshop/workshop-store'
 import {
-  projectWorkshopsDir,
   projectWorkshopFilePath,
-  projectWorkshopsIndexPath,
+  projectSessionsIndexPath,
 } from '../../../electron/main/project-axecoder-dir'
 
 let projectRoot = ''
@@ -42,9 +42,10 @@ describe('workshop-store', () => {
     const saved = await saveWorkshopSession(projectRoot, session)
     expect(saved.ok).toBe(true)
 
-    const indexRaw = await fs.readFile(projectWorkshopsIndexPath(projectRoot), 'utf-8')
-    const index = JSON.parse(indexRaw) as { id: string }[]
+    const indexRaw = await fs.readFile(projectSessionsIndexPath(projectRoot), 'utf-8')
+    const index = JSON.parse(indexRaw) as { id: string; kind: string }[]
     expect(index).toHaveLength(1)
+    expect(index[0].kind).toBe('workshop')
 
     const fileRaw = await fs.readFile(
       projectWorkshopFilePath(projectRoot, session.id),
@@ -59,6 +60,28 @@ describe('workshop-store', () => {
     await saveWorkshopSession(projectRoot, session)
     const got = await getWorkshopSession(projectRoot, session.id)
     expect(got.session?.id).toBe(session.id)
+  })
+
+  it('normalizeWorkshopMessages 合并 legacy reasoning 条', () => {
+    const merged = normalizeWorkshopMessages([
+      { id: '1', roleId: 'manager', text: '思考', kind: 'reasoning', createdAt: 1 },
+      { id: '2', roleId: 'manager', text: '结论', createdAt: 2 },
+    ])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].text).toBe('结论')
+    expect(merged[0].reasoningContent).toBe('思考')
+  })
+
+  it('getWorkshopSession 读取时自动 normalize', async () => {
+    const session = newWorkshopSession(projectRoot, '任务', 'm1')
+    session.messages = [
+      { id: '1', roleId: 'manager', text: '想', kind: 'reasoning', createdAt: 1 },
+      { id: '2', roleId: 'manager', text: '答', createdAt: 2 },
+    ]
+    await saveWorkshopSession(projectRoot, session)
+    const got = await getWorkshopSession(projectRoot, session.id)
+    expect(got.session?.messages).toHaveLength(1)
+    expect(got.session?.messages[0].reasoningContent).toBe('想')
   })
 
   it('deleteWorkshopSession 删除文件', async () => {

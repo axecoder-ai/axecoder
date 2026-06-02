@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { loadAlwaysApplyRulesPrompt } from '../rules/rules-store'
 import {
   type AgentBuiltInOutputStyleId,
   type AgentOutputStyleConfig,
@@ -120,6 +121,66 @@ export type BuildAgentSystemPromptOptions = SessionSpecificGuidanceOptions & {
   skipProjectMemory?: boolean
   /** Claude Code `outputStyle` — default | Explanatory | Learning */
   outputStyleId?: AgentBuiltInOutputStyleId
+  /** 会话 scratchpad 绝对路径（Chat Agent） */
+  scratchpadDir?: string
+  /** FRC 保留最近 tool 条数，用于 `getFunctionResultClearingSection` */
+  agentFrcKeepToolMessages?: number
+}
+
+/** Claude Code `EXPLORE_AGENT_MIN_QUERIES` */
+export const EXPLORE_AGENT_MIN_QUERIES = 3
+
+/** Claude Code §7 — TodoWrite / Task 管理段 */
+export const getTodoManagementSection = (
+  enabledToolNames: readonly string[] | Set<string>,
+): string | null => {
+  const enabled = enabledToolNames instanceof Set ? enabledToolNames : new Set(enabledToolNames)
+  if (!enabled.has('TodoWrite')) return null
+  return `# Task tracking
+Break down and manage your work with the TodoWrite tool. These tools help you plan and let the user track progress. Mark each task as completed as soon as you are done with it — do not batch up multiple tasks before marking them completed. Use TodoWrite for multi-step work; skip it for trivial single-step tasks.`
+}
+
+/** Claude Code `getAgentToolSection` + Explore 委派（§8 动态段子集） */
+export const getAgentDelegationSection = (
+  enabledToolNames: readonly string[] | Set<string>,
+): string | null => {
+  const enabled = enabledToolNames instanceof Set ? enabledToolNames : new Set(enabledToolNames)
+  if (!enabled.has('Agent')) return null
+  const searchTools =
+    enabled.has('Glob') && enabled.has('Grep')
+      ? 'Glob or Grep'
+      : enabled.has('Glob')
+        ? 'Glob'
+        : enabled.has('Grep')
+          ? 'Grep'
+          : null
+  const exploreLine = searchTools
+    ? `For simple, directed codebase searches use ${searchTools} directly. For broader exploration or when you expect more than ${EXPLORE_AGENT_MIN_QUERIES} search/read steps, use the Agent tool with subagent_type "explore" instead of many repeated searches yourself.`
+    : `For broad codebase exploration, use the Agent tool with subagent_type "explore".`
+  return `# Sub-agents
+Use the Agent tool to delegate isolated subtasks. Avoid duplicating work that sub-agents already did — if you delegate research to an explore sub-agent, do not run the same searches yourself. ${exploreLine}`
+}
+
+/** Claude Code `getFunctionResultClearingSection`（简化，无 GrowthBook） */
+export const getFunctionResultClearingSection = (keepRecent: number): string | null => {
+  if (keepRecent <= 0) return null
+  return `# Function result clearing
+
+Older tool results may be cleared from context to save space. The ${keepRecent} most recent tool results are kept.
+
+${SUMMARIZE_TOOL_RESULTS_SECTION}`
+}
+
+/** Claude Code `getScratchpadInstructions` */
+export const getScratchpadInstructionsSection = (scratchpadDir?: string): string | null => {
+  const dir = scratchpadDir?.trim()
+  if (!dir) return null
+  return `# Scratchpad directory
+
+IMPORTANT: Use this session scratchpad for temporary notes and explore summaries instead of \`/tmp\`:
+\`${dir}\`
+
+Use it for intermediate exploration notes and sub-agent explore reports (e.g. explore-summary.md). The directory is session-specific and isolated from the user's project.`
 }
 
 const MEMORY_FILES = ['AGENTS.md', 'CLAUDE.md'] as const
@@ -256,6 +317,20 @@ export const buildDefaultSubAgentSystemPrompt = async (
   return parts.join('\n\n')
 }
 
+const AGENT_TOOL_NAMES_FOR_PROMPT = [
+  'Read',
+  'Edit',
+  'Write',
+  'Glob',
+  'Grep',
+  'Delete',
+  'Move',
+  'Bash',
+  'Agent',
+  'AskUserQuestion',
+  'TodoWrite',
+] as const
+
 /** AxeCoder 工具路径规则（原 AGENT_DOING_TASKS_SECTION） */
 export const getAgentToolPathRulesSection = (): string =>
   `- Use Read before Edit on the same file.
@@ -276,6 +351,7 @@ export const buildAgentSystemPrompt = async (
   if (memory === undefined && !options.skipProjectMemory) {
     memory = await loadProjectMemoryPrompt(root)
   }
+  const workspaceRules = await loadAlwaysApplyRulesPrompt(root)
   const envInfo = await computeSimpleEnvInfo(root, options.modelId)
   const language =
     getLanguageSection(options.languagePreference ?? '中文') ?? null
@@ -295,15 +371,21 @@ export const buildAgentSystemPrompt = async (
   ].filter((part): part is string => part !== null && part !== '')
 
   const mcpInstructions = await getMcpInstructionsSection()
+  const enabled = new Set(options.enabledToolNames ?? AGENT_TOOL_NAMES_FOR_PROMPT)
+  const frcKeep = options.agentFrcKeepToolMessages ?? 8
 
   const dynamicParts = [
     sessionGuidance,
+    getTodoManagementSection(enabled),
+    getAgentDelegationSection(enabled),
     memory ?? null,
+    workspaceRules,
     envInfo,
     language,
     outputStyleSection,
     mcpInstructions,
-    SUMMARIZE_TOOL_RESULTS_SECTION,
+    getScratchpadInstructionsSection(options.scratchpadDir),
+    getFunctionResultClearingSection(frcKeep),
     getAgentToolPathRulesSection(),
     `- Project root (only files under here are accessible): ${root}`,
   ].filter((part): part is string => part !== null && part !== '')

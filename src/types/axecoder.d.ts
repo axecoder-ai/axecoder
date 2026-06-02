@@ -26,7 +26,28 @@ export type AppSettings = {
   theme: AppTheme
   agentAutoApplyWrites: boolean
   agentOutputStyle: AgentOutputStyleId
+  agentCompletionSoundEnabled?: boolean
+  agentCompletionSoundPath?: string
+  /** 仅 UI 展示：选择文件时的原始文件名 */
+  agentCompletionSoundDisplayName?: string
+  rulesIncludeThirdPartyPlugins?: boolean
+  profileDisplayName?: string
+  profileAvatarPath?: string
 }
+
+export type PickProfileAvatarResult =
+  | { ok: true; cancelled: true }
+  | { ok: true; cancelled: false; avatarPath: string; dataUrl: string }
+  | { ok: false; error: string }
+
+export type PickCompletionSoundResult =
+  | { ok: true; cancelled: true }
+  | { ok: true; cancelled: false; path: string; displayName: string }
+  | { ok: false; error: string }
+
+export type CompletionSoundDataUrlResult =
+  | { ok: true; dataUrl: string | null }
+  | { ok: false; error: string }
 
 export type ModelProvider = 'openai' | 'ollama' | 'anthropic'
 
@@ -35,6 +56,7 @@ export type ModelEntry = {
   name: string
   provider: ModelProvider
   modelId: string
+  fastApiModelId?: string
   baseUrl: string
   enabled: boolean
 }
@@ -89,6 +111,44 @@ export type UsersPickAvatarResult =
 
 export type UsersAvatarDataUrlResult =
   | { ok: true; dataUrl: string }
+  | { ok: false; error: string }
+
+export type RuleScope = 'user' | 'project'
+
+export type RuleListItem = {
+  scope: RuleScope
+  fileName: string
+  description: string
+  alwaysApply: boolean
+  globs?: string
+}
+
+export type RuleDetail = RuleListItem & {
+  body: string
+}
+
+export type RulesListResult = {
+  rules: RuleListItem[]
+  projectRoot: string | null
+}
+
+export type RuleSaveInput = {
+  scope: RuleScope
+  fileName: string
+  description: string
+  alwaysApply: boolean
+  globs?: string
+  body: string
+  projectRoot?: string
+  isNew?: boolean
+}
+
+export type RulesMutationResult =
+  | { ok: true; data: RulesListResult }
+  | { ok: false; error: string }
+
+export type RulesReadResult =
+  | { ok: true; data: RuleDetail }
   | { ok: false; error: string }
 
 export type AiChatMessage = {
@@ -190,21 +250,40 @@ export type AgentContinueResult = AgentSendResult
 
 export type WorkshopRoleId = 'manager' | 'backend' | 'frontend' | 'tester' | 'system' | 'user'
 
+export type WorkshopStepStatus = 'pending' | 'running' | 'done' | 'redo'
+
+export type WorkshopStep = {
+  id: string
+  title: string
+  assigneeUserId: string
+  status: WorkshopStepStatus
+}
+
 export type WorkshopPhase =
   | 'idle'
+  | 'planning'
+  | 'step_running'
+  | 'step_verify'
+  | 'waiting_user'
+  | 'done'
   | 'manager'
   | 'backend'
   | 'frontend'
   | 'tester'
-  | 'waiting_user'
-  | 'done'
+
+export type WorkshopMessageKind = 'chat' | 'reasoning'
 
 export type WorkshopMessage = {
   id: string
   roleId: WorkshopRoleId
+  speakerUserId?: string
   text: string
   relatedFiles?: string[]
   createdAt: number
+  reasoningContent?: string
+  hidden?: boolean
+  /** @deprecated 读取时已合并进 reasoningContent */
+  kind?: WorkshopMessageKind
 }
 
 export type WorkshopSessionMeta = {
@@ -220,6 +299,8 @@ export type WorkshopSession = WorkshopSessionMeta & {
   phase: WorkshopPhase
   pendingQuestion?: string
   mountedFiles: string[]
+  stepPlan?: WorkshopStep[]
+  currentStepIndex?: number
 }
 
 export type WorkshopProgressPayload = {
@@ -253,6 +334,16 @@ export type ChatMessage = {
   /** 待用户确认执行的 Bash 命令 */
   pendingBashes?: AgentPendingBash[]
   agentSessionId?: string
+}
+
+export type SessionKind = 'agent' | 'workshop'
+
+/** 统一会话列表项（Agents 侧栏） */
+export type SessionListItem = {
+  id: string
+  title: string
+  updatedAt: number
+  kind: SessionKind
 }
 
 export type ChatSessionMeta = {
@@ -331,6 +422,9 @@ export type AxeCoderFs = {
   watchStop: () => Promise<{ ok: true }>
   getSettings: () => Promise<AppSettings>
   setSettings: (partial: Partial<AppSettings>) => Promise<AppSettings>
+  pickCompletionSound: () => Promise<PickCompletionSoundResult>
+  getCompletionSoundDataUrl: () => Promise<CompletionSoundDataUrlResult>
+  pickProfileAvatar: () => Promise<PickProfileAvatarResult>
   listModels: () => Promise<ModelsFile>
   saveModel: (input: ModelSaveInput) => Promise<ModelsMutationResult>
   deleteModel: (id: string) => Promise<ModelsMutationResult>
@@ -342,6 +436,12 @@ export type AxeCoderFs = {
   deleteUser: (id: string) => Promise<UsersMutationResult>
   getUserAvatarDataUrl: (avatarPath: string) => Promise<UsersAvatarDataUrlResult>
   pickUserAvatar: (userId: string) => Promise<UsersPickAvatarResult>
+  listRules: (projectRoot?: string | null) => Promise<RulesMutationResult>
+  readRule: (scope: RuleScope, fileName: string, projectRoot?: string) => Promise<RulesReadResult>
+  saveRule: (input: RuleSaveInput) => Promise<RulesMutationResult>
+  deleteRule: (scope: RuleScope, fileName: string, projectRoot?: string) => Promise<RulesMutationResult>
+  getRulesThirdPartyImport: () => Promise<{ ok: true; enabled: boolean } | { ok: false; error: string }>
+  setRulesThirdPartyImport: (enabled: boolean) => Promise<{ ok: true } | { ok: false; error: string }>
   expandChatUserWithFiles: (
     projectRoot: string,
     text: string,
@@ -354,6 +454,7 @@ export type AxeCoderFs = {
     modelId: string,
     messages: AiChatMessage[],
   ) => Promise<AgentSendResult>
+  agentStop: (sessionId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   agentRunUserShell: (
     projectRoot: string,
     command: string,
@@ -468,6 +569,12 @@ export type AxeCoderFs = {
   terminalInterrupt: () => Promise<{ ok: boolean }>
   terminalStop: () => Promise<{ ok: true }>
   onTerminalData: (callback: (text: string) => void) => () => void
+  listAllSessions: (projectRoot: string) => Promise<{ sessions: SessionListItem[] }>
+  suggestChatSessionTitle: (
+    modelId: string,
+    messages: { role: 'user' | 'assistant'; text: string }[],
+    currentTitle: string,
+  ) => Promise<{ ok: true; title: string } | { ok: false; error: string }>
   getChatSessions: (projectRoot: string) => Promise<{ sessions: ChatSessionMeta[] }>
   getChatSession: (
     projectRoot: string,

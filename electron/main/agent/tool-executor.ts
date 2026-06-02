@@ -27,6 +27,9 @@ import {
 } from './agent-subagent-tasks'
 import { buildSubAgentToolList } from './agent-tool-registry'
 import { trackCheckpointFileCtx } from './agent-checkpoint'
+import { writeScratchpadNote } from './agent-scratchpad'
+import { modelTaskKindForSubagentType, resolveModelIdForTask } from '../ai/model-resolve'
+import { normalizeAgentToolCall } from './agent-tool-aliases'
 export type AgentContext = {
   projectRoot: string
   readCache: Set<string>
@@ -121,7 +124,8 @@ export const executeAgentTool = async (
   ctx: AgentContext,
   call: AgentToolCall,
 ): Promise<ToolRunResult> => {
-  const { name, arguments: args } = call
+  const normalized = normalizeAgentToolCall(call)
+  const { name, arguments: args } = normalized
 
   if (ctx.planMode && PLAN_BLOCKED.has(name)) {
     return {
@@ -401,6 +405,7 @@ export const executeAgentTool = async (
     const subagentType = str(args.subagent_type) || 'generalPurpose'
     const runInBackground = args.run_in_background === true
     const { runSubAgentTask, formatAgentToolSummary } = await import('./agent-subagent')
+    const subModelId = await resolveModelIdForTask(modelTaskKindForSubagentType(subagentType))
 
     if (runInBackground && ctx.sessionId) {
       const taskId = createBackgroundRunId()
@@ -412,7 +417,7 @@ export const executeAgentTool = async (
         startedAt: Date.now(),
         sessionId: ctx.sessionId,
       })
-      void runSubAgentTask(ctx.projectRoot, ctx.modelId, taskPrompt, {
+      void runSubAgentTask(ctx.projectRoot, subModelId, taskPrompt, {
         subagentType,
         tools: buildSubAgentToolList(subagentType),
       }).then((sub) => {
@@ -430,7 +435,7 @@ export const executeAgentTool = async (
       }
     }
 
-    const sub = await runSubAgentTask(ctx.projectRoot, ctx.modelId, taskPrompt, {
+    const sub = await runSubAgentTask(ctx.projectRoot, subModelId, taskPrompt, {
       subagentType,
       tools: buildSubAgentToolList(subagentType),
     })
@@ -440,6 +445,9 @@ export const executeAgentTool = async (
         content: `Error: ${sub.error}`,
         log: { name, summary: formatAgentToolSummary(args), ok: false },
       }
+    }
+    if (subagentType === 'explore' && ctx.sessionId?.trim()) {
+      await writeScratchpadNote(ctx.sessionId, 'explore-summary.md', sub.report)
     }
     return {
       kind: 'immediate',

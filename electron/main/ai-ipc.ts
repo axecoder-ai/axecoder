@@ -4,6 +4,7 @@ import type { AiChatMessage } from './models-types'
 import { getModelById } from './models-store'
 import { getSecret } from './secrets-store'
 import { chatWithProvider } from './ai/chat-with-provider'
+import { resolveApiModelIdForTask } from './ai/api-model-resolve'
 import { resolvePathInProject } from './agent/agent-path'
 import { buildUserMessageWithFiles } from '../../src/utils/chat-file-context'
 import { emitAiStream } from './ai-stream-emit'
@@ -56,7 +57,10 @@ export const registerAiIpc = () => {
           : `ai-${Date.now()}-${++aiStreamSeq}`
       const onDelta =
         model.provider === 'openai' ? openAiStreamHandler(event, streamId) : undefined
-      return chatWithProvider(model, apiKey, messages, onDelta)
+      const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+      const userText = typeof lastUser?.content === 'string' ? lastUser.content : ''
+      const apiModelId = await resolveApiModelIdForTask(model, 'main', userText)
+      return chatWithProvider(model, apiKey, messages, onDelta, apiModelId)
     },
   )
 }

@@ -14,6 +14,9 @@ import {
   IGNORED_DIR_NAMES,
 } from './fs-utils'
 import { getSettings, setSettings } from './settings-store'
+import { copyCompletionSoundFrom, getCompletionSoundDataUrl } from './completion-sound'
+import { copyProfileAvatarFrom } from './profile-avatar'
+import { getUserAvatarDataUrl } from './users-store'
 export type FileNode = {
   name: string
   path: string
@@ -380,5 +383,67 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
 
   ipcMain.handle('fs:getSettings', async () => getSettings())
   ipcMain.handle('fs:setSettings', async (_, partial) => setSettings(partial))
+
+  ipcMain.handle('fs:pickCompletionSound', async () => {
+    try {
+      const win = getMainWindow()
+      const result = await dialog.showOpenDialog(win ?? undefined, {
+        title: 'Choose completion sound',
+        properties: ['openFile'],
+        filters: [
+          {
+            name: 'Audio',
+            extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'webm'],
+          },
+        ],
+      })
+      if (result.canceled || !result.filePaths[0]) {
+        return { ok: true as const, cancelled: true as const }
+      }
+      const src = result.filePaths[0]
+      const rel = await copyCompletionSoundFrom(src)
+      const displayName = path.basename(src)
+      await setSettings({
+        agentCompletionSoundPath: rel,
+        agentCompletionSoundDisplayName: displayName,
+      })
+      return { ok: true as const, cancelled: false as const, path: rel, displayName }
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('fs:getCompletionSoundDataUrl', async () => {
+    try {
+      const cfg = await getSettings()
+      const rel = cfg.agentCompletionSoundPath?.trim() ?? ''
+      if (!rel) return { ok: true as const, dataUrl: null as string | null }
+      const dataUrl = await getCompletionSoundDataUrl(rel)
+      if (!dataUrl) return { ok: false as const, error: 'Could not read completion sound file' }
+      return { ok: true as const, dataUrl }
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('fs:pickProfileAvatar', async () => {
+    try {
+      const win = getMainWindow()
+      const result = await dialog.showOpenDialog(win ?? undefined, {
+        title: '选择头像',
+        properties: ['openFile'],
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+      })
+      if (result.canceled || !result.filePaths[0]) {
+        return { ok: true as const, cancelled: true as const }
+      }
+      const avatarPath = await copyProfileAvatarFrom(result.filePaths[0])
+      await setSettings({ profileAvatarPath: avatarPath })
+      const dataUrl = await getUserAvatarDataUrl(avatarPath)
+      return { ok: true as const, cancelled: false as const, avatarPath, dataUrl }
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
 
 }

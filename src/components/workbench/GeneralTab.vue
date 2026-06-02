@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AgentOutputStyleId, AppSettings, AppTheme } from '../../types/axecoder'
+import SwitchToggle from './SwitchToggle.vue'
 
 const props = defineProps<{
   settings: AppSettings
@@ -10,9 +11,9 @@ const emit = defineEmits<{
 }>()
 
 const themes: { id: AppTheme; label: string; desc: string }[] = [
-  { id: 'vscode', label: 'VS Code 深色', desc: '经典编辑器深色' },
-  { id: 'aura-light', label: 'Aura 浅色', desc: '柔和浅灰背景' },
-  { id: 'aura-dark', label: 'Aura 深色', desc: '低对比深色界面' },
+  { id: 'vscode', label: 'VS Code Dark', desc: 'Classic editor dark theme' },
+  { id: 'aura-light', label: 'Aura Light', desc: 'Soft light gray background' },
+  { id: 'aura-dark', label: 'Aura Dark', desc: 'Low-contrast dark interface' },
 ]
 
 const pickTheme = (id: AppTheme) => {
@@ -20,8 +21,8 @@ const pickTheme = (id: AppTheme) => {
   emit('save', { theme: id })
 }
 
-const onAutoSave = (e: Event) => {
-  emit('save', { autoSave: (e.target as HTMLInputElement).checked })
+const onAutoSave = (v: boolean) => {
+  emit('save', { autoSave: v })
 }
 
 const onDelay = (e: Event) => {
@@ -34,20 +35,60 @@ const onFontSize = (e: Event) => {
   if (n >= 10 && n <= 24) emit('save', { fontSize: n })
 }
 
-const onAgentAutoApply = (e: Event) => {
-  emit('save', { agentAutoApplyWrites: (e.target as HTMLInputElement).checked })
+const onAgentAutoApply = (v: boolean) => {
+  emit('save', { agentAutoApplyWrites: v })
 }
 
 const outputStyles: { id: AgentOutputStyleId; label: string; desc: string }[] = [
-  { id: 'default', label: '默认', desc: '标准软件工程助手' },
-  { id: 'Explanatory', label: '讲解', desc: '完成任务时附带代码库洞察' },
-  { id: 'Learning', label: '学习', desc: '协作式动手练习与 Insights' },
+  { id: 'default', label: 'Default', desc: 'Standard software engineering assistant' },
+  { id: 'Explanatory', label: 'Explanatory', desc: 'Adds codebase insights when finishing tasks' },
+  { id: 'Learning', label: 'Learning', desc: 'Collaborative hands-on practice with insights' },
 ]
 
 const onOutputStyle = (e: Event) => {
   const v = (e.target as HTMLSelectElement).value as AgentOutputStyleId
   if (v === props.settings.agentOutputStyle) return
   emit('save', { agentOutputStyle: v })
+}
+
+const onCompletionSoundEnabled = (v: boolean) => {
+  emit('save', { agentCompletionSoundEnabled: v })
+}
+
+const soundLabel = () =>
+  props.settings.agentCompletionSoundDisplayName?.trim() ||
+  props.settings.agentCompletionSoundPath?.trim() ||
+  ''
+
+const browseCompletionSound = async () => {
+  const res = await window.axecoder.pickCompletionSound()
+  if (!res.ok) return
+  if (res.cancelled) return
+  const { clearCompletionSoundCache } = await import('../../utils/play-completion-sound')
+  clearCompletionSoundCache()
+  emit('save', {
+    agentCompletionSoundPath: res.path,
+    agentCompletionSoundDisplayName: res.displayName,
+    agentCompletionSoundEnabled: true,
+  })
+}
+
+const previewCompletionSound = async () => {
+  const { playAgentCompletionSound } = await import('../../utils/play-completion-sound')
+  await playAgentCompletionSound({
+    enabled: true,
+    path: props.settings.agentCompletionSoundPath,
+  })
+}
+
+const clearCompletionSound = () => {
+  void import('../../utils/play-completion-sound').then(({ clearCompletionSoundCache }) => {
+    clearCompletionSoundCache()
+  })
+  emit('save', {
+    agentCompletionSoundPath: '',
+    agentCompletionSoundDisplayName: '',
+  })
 }
 </script>
 
@@ -56,8 +97,8 @@ const onOutputStyle = (e: Event) => {
     <h2>General</h2>
 
     <section class="section">
-      <h3 class="section-title">配色方案</h3>
-      <p class="section-desc">选择界面主题，立即生效</p>
+      <h3 class="section-title">Color theme</h3>
+      <p class="section-desc">Choose the interface theme; applies immediately</p>
       <div class="theme-grid">
         <button
           v-for="t in themes"
@@ -76,24 +117,23 @@ const onOutputStyle = (e: Event) => {
 
     <section class="section">
       <h3 class="section-title">Agent</h3>
-      <p class="section-desc">对话中 Agent 修改项目文件时的确认行为</p>
+      <p class="section-desc">How Agent confirms changes to project files during a chat</p>
       <div class="pref-item">
         <div class="pref-info">
-          <span class="pref-label">自动应用写盘变更</span>
-          <p class="pref-hint">开启后 Write / Edit / Delete / Move 将直接写入磁盘，不再显示「应用 / 拒绝」</p>
+          <span class="pref-label">Auto-apply disk writes</span>
+          <p class="pref-hint">When enabled, Write / Edit / Delete / Move apply directly without Apply / Reject prompts</p>
         </div>
         <div class="pref-control">
-          <input
-            type="checkbox"
-            :checked="settings.agentAutoApplyWrites"
-            @change="onAgentAutoApply"
+          <SwitchToggle
+            :model-value="!!settings.agentAutoApplyWrites"
+            @update:model-value="onAgentAutoApply"
           />
         </div>
       </div>
       <div class="pref-item">
         <div class="pref-info">
-          <span class="pref-label">输出风格</span>
-          <p class="pref-hint">影响新发起的 Agent 会话系统提示。自定义风格可放入 ~/.aex-coder/output-styles、~/.claude/output-styles 或项目 .axecoder/output-styles（*.md）；聊天中可用 /style 切换。</p>
+          <span class="pref-label">Output style</span>
+          <p class="pref-hint">Affects system prompts for new Agent sessions. Custom styles: ~/.axecoder/output-styles, ~/.claude/output-styles, or project .axecoder/output-styles (*.md). Use /style in chat to switch.</p>
         </div>
         <div class="pref-control pref-control--wide">
           <select
@@ -107,25 +147,48 @@ const onOutputStyle = (e: Event) => {
           </select>
         </div>
       </div>
+      <div class="pref-item pref-item--stack">
+        <div class="pref-info">
+          <span class="pref-label">Completion sound</span>
+          <p class="pref-hint">Play the selected audio when Agent finishes responding successfully</p>
+        </div>
+        <div class="pref-control">
+          <SwitchToggle
+            :model-value="!!settings.agentCompletionSoundEnabled"
+            @update:model-value="onCompletionSoundEnabled"
+          />
+        </div>
+        <div v-if="settings.agentCompletionSoundEnabled" class="sound-row">
+          <button type="button" class="sound-btn" @click="browseCompletionSound">Browse…</button>
+          <button
+            type="button"
+            class="sound-btn"
+            :disabled="!settings.agentCompletionSoundPath"
+            @click="previewCompletionSound"
+          >
+            Preview
+          </button>
+          <span v-if="soundLabel()" class="sound-file">
+            {{ soundLabel() }}
+            <button type="button" class="sound-clear" title="Clear" @click="clearCompletionSound">×</button>
+          </span>
+        </div>
+      </div>
     </section>
 
     <section class="section">
-      <h3 class="section-title">编辑器</h3>
+      <h3 class="section-title">Editor</h3>
       <div class="pref-item">
         <div class="pref-info">
-          <span class="pref-label">自动保存</span>
+          <span class="pref-label">Auto-save</span>
         </div>
         <div class="pref-control">
-          <input
-            type="checkbox"
-            :checked="settings.autoSave"
-            @change="onAutoSave"
-          />
+          <SwitchToggle :model-value="!!settings.autoSave" @update:model-value="onAutoSave" />
         </div>
       </div>
       <div class="pref-item">
         <div class="pref-info">
-          <span class="pref-label">自动保存延迟（毫秒）</span>
+          <span class="pref-label">Auto-save delay (ms)</span>
         </div>
         <div class="pref-control">
           <input
@@ -140,7 +203,7 @@ const onOutputStyle = (e: Event) => {
       </div>
       <div class="pref-item">
         <div class="pref-info">
-          <span class="pref-label">编辑器字号</span>
+          <span class="pref-label">Editor font size</span>
         </div>
         <div class="pref-control">
           <input
@@ -159,8 +222,9 @@ const onOutputStyle = (e: Event) => {
 
 <style scoped>
 .general-tab {
+  box-sizing: border-box;
+  width: 100%;
   padding: 24px 32px;
-  max-width: 720px;
 }
 
 h2 {
@@ -217,7 +281,9 @@ h2 {
 }
 
 .pref-control--wide {
-  width: 240px;
+  flex: 1;
+  min-width: 240px;
+  max-width: 480px;
 }
 
 .theme-grid {
@@ -302,5 +368,59 @@ h2 {
   border-radius: 6px;
   color: var(--wc-text);
   font-size: 12px;
+}
+
+.pref-item--stack {
+  flex-wrap: wrap;
+}
+
+.sound-row {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px 0;
+}
+
+.sound-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid var(--wc-border);
+  border-radius: 6px;
+  background: var(--wc-input-bg);
+  color: var(--wc-text);
+}
+
+.sound-btn:hover:not(:disabled) {
+  background: var(--wc-hover);
+}
+
+.sound-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sound-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--wc-text-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sound-clear {
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--wc-text-dim);
+}
+
+.sound-clear:hover {
+  color: var(--wc-text);
 }
 </style>

@@ -2,20 +2,20 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import type {
   ModelEntry,
+  UserEntry,
   WorkshopMessage,
-  WorkshopSession,
-  WorkshopSessionMeta,
   WorkshopProgressPayload,
+  WorkshopRoleId,
+  WorkshopSession,
+  WorkshopStep,
 } from '../../types/axecoder'
 import WorkshopMessageItem from './WorkshopMessageItem.vue'
 import WorkbenchChatInput from './WorkbenchChatInput.vue'
-import AgentProgressStream from './AgentProgressStream.vue'
 import { applyProgressPayload, type AgentProgressStep } from '../../utils/agent-progress'
-import { parseWorkshopStreamId } from '../../utils/workshop-stream'
+import { parseWorkshopStreamRole } from '../../utils/workshop-stream'
 import type { ChatFileRef } from '../../utils/chat-file-context'
 import { workshopRoleUi, type WorkshopRoleUiId } from '../../utils/workshop-roles'
-import { findUserForWorkshopRole } from '../../utils/workshop-user-bind'
-import type { WorkshopRoleId } from '../../types/axecoder'
+import { findUserById, findUserForWorkshopRole, inferWorkshopRoleId } from '../../utils/workshop-user-bind'
 
 const props = defineProps<{
   projectRoot: string
@@ -25,10 +25,11 @@ const emit = defineEmits<{
   close: []
   openFile: [path: string]
   openModelsSettings: []
+  sessionsChanged: []
 }>()
 
-const sessions = ref<WorkshopSessionMeta[]>([])
 const active = ref<WorkshopSession | null>(null)
+let activePersisted = false
 const briefInput = ref('')
 const answerInput = ref('')
 const attachedFiles = ref<ChatFileRef[]>([])
@@ -43,6 +44,8 @@ const roleAvatarUrls = ref<Partial<Record<WorkshopRoleId, string>>>({})
 const roleIdentity = ref<Partial<Record<WorkshopRoleId, { nickname: string; roleTitle: string }>>>(
   {},
 )
+const usersList = ref<UserEntry[]>([])
+const userAvatarUrls = ref<Record<string, string>>({})
 
 let offProgress: (() => void) | undefined
 let offAgentProgress: (() => void) | undefined
@@ -73,9 +76,17 @@ const bindWorkshopAgentProgress = () => {
     if (!agentProgressActive.value) return
     const prefix = workshopAgentPrefix()
     if (!prefix || !payload.sessionId.startsWith(prefix)) return
-    const parsed = parseWorkshopStreamId(payload.sessionId)
-    if (parsed?.roleId) {
-      streamRoleId.value = parsed.roleId as WorkshopRoleId
+    const roleKey = active.value
+      ? parseWorkshopStreamRole(payload.sessionId, active.value.id)
+      : null
+    if (roleKey) {
+      if (roleKey.startsWith('u-')) {
+        const uid = roleKey.slice(2)
+        const u = findUserById(usersList.value, uid)
+        streamRoleId.value = u ? inferWorkshopRoleId(u) : 'backend'
+      } else {
+        streamRoleId.value = roleKey as WorkshopRoleId
+      }
       thinkingRole.value = null
     }
     if (payload.kind === 'delta') {
@@ -90,10 +101,27 @@ const bindWorkshopAgentProgress = () => {
 const hasProject = computed(() => !!props.projectRoot?.trim())
 const pendingQuestion = computed(() => active.value?.pendingQuestion ?? '')
 const mountedFiles = computed(() => active.value?.mountedFiles ?? [])
-const messages = computed(() => active.value?.messages ?? [])
+const messages = computed(
+  () => active.value?.messages.filter((m) => !m.hidden) ?? [],
+)
 const showStartComposer = computed(
   () => !active.value || active.value.phase === 'idle' || active.value.phase === 'done',
 )
+const stepPlan = computed(() => active.value?.stepPlan ?? [])
+const currentStepIndex = computed(() => active.value?.currentStepIndex ?? 0)
+const stepBarVisible = computed(() => stepPlan.value.length > 0)
+
+const assigneeLabel = (userId: string) => {
+  const u = findUserById(usersList.value, userId)
+  return u ? `${u.displayName} · ${u.role}` : userId
+}
+
+const stepItemClass = (step: WorkshopStep, index: number) => {
+  const cur = currentStepIndex.value
+  if (step.status === 'done') return 'ws-step--done'
+  if (index === cur || step.status === 'running' || step.status === 'redo') return 'ws-step--active'
+  return 'ws-step--pending'
+}
 
 const expandWithFiles = async (text: string, filePaths: string[]) => {
   if (!filePaths.length) return text
@@ -121,7 +149,7 @@ const pushOptimisticUser = (text: string): string => {
       userBrief: text,
       modelId: modelId.value,
       messages: [userMsg],
-      phase: 'manager',
+      phase: 'planning',
       mountedFiles: [],
     }
     return id
@@ -129,7 +157,7 @@ const pushOptimisticUser = (text: string): string => {
   active.value = {
     ...active.value,
     messages: [...active.value.messages, userMsg],
-    phase: 'manager',
+    phase: 'planning',
     pendingQuestion: undefined,
     updatedAt: now,
   }
@@ -142,7 +170,7 @@ const rollbackOptimisticUser = () => {
   const last = msgs[msgs.length - 1]
   if (!last?.id.startsWith('opt-user-')) return
   const rest = msgs.slice(0, -1)
-  const unsaved = !sessions.value.some((s) => s.id === active.value!.id)
+  const unsaved = !activePersisted
   if (unsaved && rest.length === 0) {
     active.value = null
     return
@@ -154,11 +182,34 @@ const rollbackOptimisticUser = () => {
   }
 }
 
-const roleProps = (roleId: WorkshopRoleId) => ({
-  avatarUrl: roleAvatarUrls.value[roleId],
-  nickname: roleIdentity.value[roleId]?.nickname,
-  roleTitle: roleIdentity.value[roleId]?.roleTitle,
-})
+const employeeRoles: WorkshopRoleId[] = ['manager', 'backend', 'frontend', 'tester']
+
+const roleProps = (roleId: WorkshopRoleId) => {
+  const id = roleIdentity.value[roleId]
+  const isEmployee = employeeRoles.includes(roleId)
+  const unbound = isEmployee && !id
+  return {
+    avatarUrl: roleAvatarUrls.value[roleId],
+    nickname: id?.nickname,
+    roleTitle: id?.roleTitle,
+    unbound,
+  }
+}
+
+const messageRoleProps = (msg: WorkshopMessage) => {
+  if (msg.speakerUserId) {
+    const u = findUserById(usersList.value, msg.speakerUserId)
+    if (u) {
+      return {
+        avatarUrl: userAvatarUrls.value[u.id],
+        nickname: u.displayName,
+        roleTitle: u.role,
+        unbound: false,
+      }
+    }
+  }
+  return roleProps(msg.roleId)
+}
 
 const userComposerUi = computed(() => {
   const p = roleProps('user')
@@ -174,32 +225,38 @@ const userComposerUi = computed(() => {
 
 const loadWorkshopUsers = async () => {
   const data = await window.axecoder.listUsers()
+  usersList.value = data.users
   const avatars: Partial<Record<WorkshopRoleId, string>> = {}
   const names: Partial<Record<WorkshopRoleId, { nickname: string; roleTitle: string }>> = {}
+  const byUser: Record<string, string> = {}
   const roles: WorkshopRoleUiId[] = ['manager', 'backend', 'frontend', 'tester', 'user']
   for (const roleId of roles) {
     const u = findUserForWorkshopRole(data.users, roleId)
     if (!u) continue
     names[roleId] = {
-      nickname: u.displayName.trim() || workshopRoleUi(roleId).nickname,
-      roleTitle: u.role.trim() || workshopRoleUi(roleId).roleTitle,
+      nickname: u.displayName.trim(),
+      roleTitle: u.role.trim(),
     }
     if (u.avatarPath) {
       const res = await window.axecoder.getUserAvatarDataUrl(u.avatarPath)
-      if (res.ok && res.dataUrl) avatars[roleId] = res.dataUrl
+      if (res.ok && res.dataUrl) {
+        avatars[roleId] = res.dataUrl
+        byUser[u.id] = res.dataUrl
+      }
     }
+  }
+  for (const u of data.users) {
+    if (byUser[u.id] || !u.avatarPath) continue
+    const res = await window.axecoder.getUserAvatarDataUrl(u.avatarPath)
+    if (res.ok && res.dataUrl) byUser[u.id] = res.dataUrl
   }
   roleAvatarUrls.value = avatars
   roleIdentity.value = names
+  userAvatarUrls.value = byUser
 }
 
-const loadList = async () => {
-  if (!hasProject.value) {
-    sessions.value = []
-    return
-  }
-  const res = await window.axecoder.getWorkshopSessions(props.projectRoot)
-  sessions.value = res.sessions
+const notifySessionsChanged = () => {
+  emit('sessionsChanged')
 }
 
 const loadModels = async () => {
@@ -223,7 +280,8 @@ const onModelPick = async (id: string) => {
 const persist = async () => {
   if (!active.value || !hasProject.value) return
   await window.axecoder.saveWorkshopSession(props.projectRoot, active.value)
-  await loadList()
+  activePersisted = true
+  notifySessionsChanged()
 }
 
 const scrollBottom = async () => {
@@ -235,14 +293,25 @@ const scrollBottom = async () => {
 const selectSession = async (id: string) => {
   const res = await window.axecoder.getWorkshopSession(props.projectRoot, id)
   active.value = res.session
+  activePersisted = !!res.session
   await scrollBottom()
 }
 
 const newSession = () => {
   active.value = null
+  activePersisted = false
   briefInput.value = ''
   answerInput.value = ''
   attachedFiles.value = []
+}
+
+const deleteSession = async (id: string) => {
+  await window.axecoder.deleteWorkshopSession(props.projectRoot, id)
+  if (active.value?.id === id) {
+    active.value = null
+    activePersisted = false
+  }
+  notifySessionsChanged()
 }
 
 const startRun = async () => {
@@ -273,8 +342,9 @@ const startRun = async () => {
       return
     }
     active.value = res.session
+    activePersisted = true
     await scrollBottom()
-    await loadList()
+    notifySessionsChanged()
   } finally {
     loading.value = false
     thinkingRole.value = null
@@ -330,16 +400,15 @@ const openMountedFile = (rel: string) => {
 
 watch(
   () => props.projectRoot,
-  async () => {
+  () => {
     active.value = null
-    await loadList()
+    activePersisted = false
   },
 )
 
 onMounted(async () => {
   await loadModels()
   await loadWorkshopUsers()
-  await loadList()
   offProgress = window.axecoder.onWorkshopProgress((p) => {
     if (!active.value || p.workshopId !== active.value.id) return
     if (p.status === 'thinking') {
@@ -364,33 +433,30 @@ onUnmounted(() => {
   unbindWorkshopAgentProgress()
 })
 
-defineExpose({ loadModels, loadWorkshopUsers })
+defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteSession })
 </script>
 
 <template>
   <div class="workshop-pane">
-    <aside class="workshop-list">
-      <div class="workshop-list-head">
-        <span class="workshop-brand">Collab Workshop</span>
-        <span class="workshop-hint" title="与主 Chat Agent 相同：Read/Write/Grep 等工具 + 流式进度">Agent</span>
-        <button type="button" class="btn-ghost" title="关闭" @click="emit('close')">×</button>
-      </div>
-      <button type="button" class="btn-new" :disabled="!hasProject" @click="newSession">
-        新建协作
-      </button>
-      <ul class="session-items">
-        <li
-          v-for="s in sessions"
-          :key="s.id"
-          class="session-item"
-          :class="{ active: active?.id === s.id }"
-          @click="selectSession(s.id)"
-        >
-          {{ s.title }}
-        </li>
-      </ul>
-    </aside>
+    <header class="workshop-toolbar">
+      <span class="workshop-brand">Collab Workshop</span>
+      <span class="workshop-hint" title="与主 Chat Agent 相同：Read/Write/Grep 等工具 + 流式进度">Agent</span>
+      <button type="button" class="btn-ghost" title="关闭" @click="emit('close')">×</button>
+    </header>
     <main class="workshop-main">
+      <div v-if="stepBarVisible" class="ws-step-bar">
+        <div
+          v-for="(step, index) in stepPlan"
+          :key="step.id"
+          class="ws-step"
+          :class="stepItemClass(step, index)"
+          :title="assigneeLabel(step.assigneeUserId)"
+        >
+          <span class="ws-step-idx">{{ index + 1 }}</span>
+          <span class="ws-step-title">{{ step.title }}</span>
+          <span class="ws-step-who">{{ assigneeLabel(step.assigneeUserId) }}</span>
+        </div>
+      </div>
       <div v-if="mountedFiles.length" class="file-chips">
         <button
           v-for="f in mountedFiles"
@@ -409,36 +475,37 @@ defineExpose({ loadModels, loadWorkshopUsers })
           :key="msg.id"
           :role-id="msg.roleId"
           :text="msg.text"
+          :reasoning-content="msg.reasoningContent"
+          :message-kind="msg.kind"
           :related-files="msg.relatedFiles"
-          v-bind="roleProps(msg.roleId)"
+          v-bind="messageRoleProps(msg)"
           @open-file="openMountedFile"
         />
         <WorkshopMessageItem
-          v-if="streamRoleId && streamText"
+          v-if="
+            loading &&
+            streamRoleId &&
+            streamRoleId !== 'system' &&
+            streamRoleId !== 'user' &&
+            agentProgressActive
+          "
           :role-id="streamRoleId"
           :text="streamText"
           streaming
+          :live-progress="{ steps: progressSteps, streamText }"
           v-bind="roleProps(streamRoleId)"
         />
         <WorkshopMessageItem
-          v-else-if="thinkingRole && thinkingRole !== 'system' && thinkingRole !== 'user'"
+          v-else-if="
+            thinkingRole &&
+            thinkingRole !== 'system' &&
+            thinkingRole !== 'user'
+          "
           :role-id="thinkingRole"
           text=""
           thinking
           v-bind="roleProps(thinkingRole)"
         />
-        <div
-          v-if="loading && (streamText || progressSteps.length || thinkingRole)"
-          class="ws-agent-progress"
-        >
-          <AgentProgressStream
-            :steps="progressSteps"
-            :stream-text="streamText"
-            :subagent-tasks="[]"
-            :agent-mode="true"
-            fallback-headline="协作进行中…"
-          />
-        </div>
       </div>
       <div v-if="hasProject" class="composer">
         <template v-if="pendingQuestion">
@@ -494,24 +561,23 @@ defineExpose({ loadModels, loadWorkshopUsers })
 <style scoped>
 .workshop-pane {
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
   min-height: 0;
   background: var(--wc-bg);
 }
-.workshop-list {
-  width: 200px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--wc-border);
-  display: flex;
-  flex-direction: column;
-  padding: 8px;
-  gap: 8px;
-}
-.workshop-list-head {
+.workshop-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--wc-border);
+}
+
+.workshop-toolbar .btn-ghost {
+  margin-left: auto;
 }
 .workshop-brand {
   font-size: 12px;
@@ -535,42 +601,56 @@ defineExpose({ loadModels, loadWorkshopUsers })
 .btn-ghost:hover {
   background: var(--wc-hover);
 }
-.btn-new {
-  padding: 6px 10px;
-  font-size: 12px;
-  border-radius: 6px;
-  background: var(--wc-accent);
-  color: #fff;
-}
-.btn-new:disabled {
-  opacity: 0.5;
-}
-.session-items {
-  list-style: none;
-  overflow-y: auto;
-  flex: 1;
-}
-.session-item {
-  padding: 6px 8px;
-  font-size: 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  color: var(--wc-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.session-item:hover,
-.session-item.active {
-  background: var(--wc-hover);
-  color: var(--wc-text);
-}
 .workshop-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+.ws-step-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--wc-border);
+  max-height: 140px;
+  overflow-y: auto;
+}
+.ws-step {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--wc-muted);
+}
+.ws-step--active {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--wc-text);
+  font-weight: 500;
+}
+.ws-step--done {
+  opacity: 0.65;
+}
+.ws-step--done .ws-step-title {
+  text-decoration: line-through;
+}
+.ws-step-idx {
+  flex-shrink: 0;
+  width: 1.2em;
+  font-weight: 600;
+}
+.ws-step-title {
+  flex: 1;
+  min-width: 0;
+}
+.ws-step-who {
+  flex-shrink: 0;
+  font-size: 10px;
+  opacity: 0.85;
 }
 .file-chips {
   display: flex;
@@ -601,13 +681,6 @@ defineExpose({ loadModels, loadWorkshopUsers })
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-.ws-agent-progress {
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: var(--wc-chat-box-bg);
-  border: 1px solid var(--wc-chat-box-border);
-  font-size: 13px;
 }
 .composer {
   border-top: 1px solid var(--wc-border);

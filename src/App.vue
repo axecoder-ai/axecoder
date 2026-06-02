@@ -18,13 +18,16 @@ import { useWorkbench } from './composables/useWorkbench'
 import {
   clampAgentsWidth,
   clampAiPanelWidth,
+  clampSidebarWidth,
+  minAiPanelWidth,
   WC_AGENTS_DEFAULT,
   WC_AGENTS_MIN,
   WC_AI_PANEL_DEFAULT,
   WC_CHAT_MIN,
   WC_EDITOR_MIN,
+  WC_SIDEBAR_DEFAULT,
 } from './utils/agents-panel'
-import type { SearchHit, WindowLayout } from './types/axecoder'
+import type { SearchHit, SessionKind, WindowLayout } from './types/axecoder'
 import { languageLabelForPath } from './utils/editor-language'
 
 const wb = useWorkbench()
@@ -44,6 +47,7 @@ const aiPanelVisible = ref(false)
 const workshopVisible = ref(false)
 const agentsSidebarVisible = ref(true)
 const activeChatSessionId = ref('')
+const activeSessionKind = ref<SessionKind>('agent')
 const primarySidebarVisible = ref(true)
 const terminalVisible = ref(false)
 const editorMode = ref<'markdown' | 'preview'>('markdown')
@@ -73,23 +77,93 @@ const bottomPanelRef = ref<InstanceType<typeof BottomPanel> | null>(null)
 const workbenchBodyRef = ref<HTMLElement | null>(null)
 const aiSidePanelRef = ref<HTMLElement | null>(null)
 
+const sidebarWidth = ref(WC_SIDEBAR_DEFAULT)
 const aiPanelWidth = ref(WC_AI_PANEL_DEFAULT)
 const agentsWidth = ref(WC_AGENTS_DEFAULT)
 const aiPanelSplitDragging = ref(false)
 const agentsSplitDragging = ref(false)
+const primarySplitDragging = ref(false)
 
 let offOpenProject: (() => void) | null = null
-let aiPanelSplitStartX = 0
-let aiPanelSplitStartWidth = WC_AI_PANEL_DEFAULT
-let agentsSplitStartX = 0
-let agentsSplitStartWidth = WC_AGENTS_DEFAULT
+
+const trackColumnDrag = (
+  e: PointerEvent,
+  onMove: (ev: PointerEvent) => void,
+  onEnd: () => void,
+) => {
+  e.preventDefault()
+  const move = (ev: PointerEvent) => onMove(ev)
+  const end = () => {
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+    window.removeEventListener('pointercancel', up)
+    onEnd()
+  }
+  const up = () => end()
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
+  window.addEventListener('pointercancel', up)
+}
+
+const hasOpenEditorTabs = computed(() => openFiles.value.length > 0)
+/** 仅在有打开的文件标签时显示编辑区；无文件时 AI 面板可占满中间区域 */
+const showEditorArea = computed(() => hasOpenEditorTabs.value)
+/** Collab Workshop 占满中央工作区 */
+const showWorkshopCenter = computed(
+  () => workshopVisible.value && !showEditorArea.value,
+)
+/** 右侧 Chat 列（Workshop 占中央时不显示 Chat） */
+const showChatAside = computed(
+  () => aiPanelVisible.value && !workshopVisible.value,
+)
+/** 统一会话列表：Chat 侧栏或 Workshop 中央时均保留 Agents 列 */
+const showAgentsAside = computed(
+  () => agentsSidebarVisible.value && (showChatAside.value || showWorkshopCenter.value),
+)
+const showSessionAside = computed(
+  () => showChatAside.value || showAgentsAside.value,
+)
+const agentsOnlyAside = computed(
+  () => showWorkshopCenter.value && showAgentsAside.value && !showChatAside.value,
+)
+/** 欢迎页仅在没有打开项目时显示 */
+const showWelcomePage = computed(
+  () =>
+    !projectRoot.value &&
+    welcomeOnStartup.value &&
+    !showEditorArea.value &&
+    !aiPanelVisible.value &&
+    !workshopVisible.value,
+)
+const aiPanelFillsCenter = computed(
+  () => showChatAside.value && !showWelcomePage.value && !showEditorArea.value,
+)
+const aiPanelUsesFixedWidth = computed(
+  () => showChatAside.value && (showWelcomePage.value || showEditorArea.value),
+)
+
+const minCenterWorkbenchWidth = () => {
+  if (showEditorArea.value) {
+    const aiMin = showSessionAside.value
+      ? minAiPanelWidth(agentsSidebarVisible.value, agentsWidth.value)
+      : 0
+    return WC_EDITOR_MIN + aiMin
+  }
+  if (showSessionAside.value) {
+    return minAiPanelWidth(agentsSidebarVisible.value, agentsWidth.value)
+  }
+  return WC_EDITOR_MIN
+}
 
 const clampLayoutWidths = () => {
   const body = workbenchBodyRef.value
   if (body) {
+    const bodyW = body.getBoundingClientRect().width
+    const centerMin = minCenterWorkbenchWidth()
+    sidebarWidth.value = clampSidebarWidth(sidebarWidth.value, bodyW, centerMin)
     aiPanelWidth.value = clampAiPanelWidth(
       aiPanelWidth.value,
-      body.getBoundingClientRect().width,
+      bodyW,
       agentsSidebarVisible.value,
       agentsWidth.value,
       WC_EDITOR_MIN,
@@ -106,101 +180,79 @@ const clampLayoutWidths = () => {
   }
 }
 
-const onAiPanelSplitPointerDown = (e: PointerEvent) => {
-  aiPanelSplitDragging.value = true
-  aiPanelSplitStartX = e.clientX
-  aiPanelSplitStartWidth = aiPanelWidth.value
-  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-}
-
-const onAiPanelSplitPointerMove = (e: PointerEvent) => {
-  if (!aiPanelSplitDragging.value) return
+const onPrimarySplitPointerDown = (e: PointerEvent) => {
   const body = workbenchBodyRef.value
   if (!body) return
-  const delta = e.clientX - aiPanelSplitStartX
-  aiPanelWidth.value = clampAiPanelWidth(
-    aiPanelSplitStartWidth - delta,
-    body.getBoundingClientRect().width,
-    agentsSidebarVisible.value,
-    agentsWidth.value,
-    WC_EDITOR_MIN,
+  primarySplitDragging.value = true
+  const startX = e.clientX
+  const startW = sidebarWidth.value
+  trackColumnDrag(
+    e,
+    (ev) => {
+      const delta = ev.clientX - startX
+      sidebarWidth.value = clampSidebarWidth(
+        startW + delta,
+        body.getBoundingClientRect().width,
+        minCenterWorkbenchWidth(),
+      )
+    },
+    () => {
+      primarySplitDragging.value = false
+    },
   )
-  clampLayoutWidths()
 }
 
-const onAiPanelSplitPointerUp = (e: PointerEvent) => {
-  if (!aiPanelSplitDragging.value) return
-  aiPanelSplitDragging.value = false
-  try {
-    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
-  } catch {
-    /* already released */
-  }
+const onAiPanelSplitPointerDown = (e: PointerEvent) => {
+  const body = workbenchBodyRef.value
+  if (!body) return
+  aiPanelSplitDragging.value = true
+  const startX = e.clientX
+  const startW = aiPanelWidth.value
+  trackColumnDrag(
+    e,
+    (ev) => {
+      const delta = ev.clientX - startX
+      aiPanelWidth.value = clampAiPanelWidth(
+        startW - delta,
+        body.getBoundingClientRect().width,
+        agentsSidebarVisible.value,
+        agentsWidth.value,
+        WC_EDITOR_MIN,
+      )
+      clampLayoutWidths()
+    },
+    () => {
+      aiPanelSplitDragging.value = false
+    },
+  )
 }
 
 const onAgentsSplitPointerDown = (e: PointerEvent) => {
   if (!agentsSidebarVisible.value) return
-  agentsSplitDragging.value = true
-  agentsSplitStartX = e.clientX
-  agentsSplitStartWidth = agentsWidth.value
-  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-}
-
-const onAgentsSplitPointerMove = (e: PointerEvent) => {
-  if (!agentsSplitDragging.value) return
   const el = aiSidePanelRef.value
   if (!el) return
-  const delta = e.clientX - agentsSplitStartX
-  agentsWidth.value = clampAgentsWidth(
-    agentsSplitStartWidth + delta,
-    el.getBoundingClientRect().width,
-    WC_CHAT_MIN,
-    WC_AGENTS_MIN,
+  agentsSplitDragging.value = true
+  const startX = e.clientX
+  const startW = agentsWidth.value
+  trackColumnDrag(
+    e,
+    (ev) => {
+      const delta = ev.clientX - startX
+      agentsWidth.value = clampAgentsWidth(
+        startW - delta,
+        el.getBoundingClientRect().width,
+        WC_CHAT_MIN,
+        WC_AGENTS_MIN,
+      )
+    },
+    () => {
+      agentsSplitDragging.value = false
+    },
   )
 }
 
-const onAgentsSplitPointerUp = (e: PointerEvent) => {
-  if (!agentsSplitDragging.value) return
-  agentsSplitDragging.value = false
-  try {
-    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
-  } catch {
-    /* already released */
-  }
-}
-
-const hasOpenEditorTabs = computed(() => openFiles.value.length > 0)
-/** 仅在有打开的文件标签时显示编辑区；无文件时 AI 面板可占满中间区域 */
-const showEditorArea = computed(() => hasOpenEditorTabs.value)
-/** Collab Workshop 占满中央工作区 */
-const showWorkshopCenter = computed(
-  () => workshopVisible.value && !showEditorArea.value,
-)
-/** 有打开的文件时不显示右侧 AI 面板 */
-const showAiSidePanel = computed(
-  () => aiPanelVisible.value && !showEditorArea.value && !workshopVisible.value,
-)
-/** 欢迎页仅在没有打开项目时显示 */
-const showWelcomePage = computed(
-  () =>
-    !projectRoot.value &&
-    welcomeOnStartup.value &&
-    !showEditorArea.value &&
-    !aiPanelVisible.value &&
-    !workshopVisible.value,
-)
-const aiPanelFillsCenter = computed(
-  () => showAiSidePanel.value && !showWelcomePage.value,
-)
-const aiPanelUsesFixedWidth = computed(
-  () => showAiSidePanel.value && showWelcomePage.value,
-)
-
 watch(hasOpenEditorTabs, (has) => {
-  if (has) {
-    aiPanelVisible.value = false
-    workshopVisible.value = false
-  }
+  if (has) workshopVisible.value = false
 })
 
 const toggleWorkshop = () => {
@@ -213,15 +265,22 @@ const toggleWorkshop = () => {
     return
   }
   workshopVisible.value = true
-  aiPanelVisible.value = false
+}
+
+type SettingsTabId = 'general' | 'models' | 'users' | 'rules'
+
+const openSettingsPanel = async (tab: SettingsTabId = 'general') => {
+  await wb.loadSettings()
+  settingsPanelVisible.value = true
+  await nextTick()
+  settingsPanelRef.value?.openTab(tab)
+  if (tab === 'models') void settingsPanelRef.value?.reloadModels()
+  if (tab === 'users') void settingsPanelRef.value?.reloadUsers()
+  if (tab === 'rules') void settingsPanelRef.value?.reloadRules()
 }
 
 const openModelsSettings = () => {
-  settingsPanelVisible.value = true
-  void nextTick(() => {
-    settingsPanelRef.value?.openTab('models')
-    void settingsPanelRef.value?.reloadModels()
-  })
+  void openSettingsPanel('models')
 }
 
 const onSettingsModelsChanged = async () => {
@@ -243,7 +302,7 @@ const paletteCommands = [
   { id: 'toggleChat', label: '显示/隐藏 AI 面板' },
   { id: 'toggleAgents', label: '显示/隐藏 AI 面板' },
   { id: 'toggleTerminal', label: '显示/隐藏终端' },
-  { id: 'settings', label: '设置' },
+  { id: 'settings', label: 'Settings' },
 ]
 
 const loadRecent = async () => {
@@ -288,10 +347,6 @@ const onActivitySelect = (id: string) => {
 }
 
 const toggleAiPanel = () => {
-  if (showEditorArea.value) {
-    aiPanelVisible.value = false
-    return
-  }
   aiPanelVisible.value = !aiPanelVisible.value
 }
 
@@ -341,7 +396,7 @@ const onProjectOpened = async (rootPath: string) => {
   void agentsPanelRef.value?.load()
 }
 
-/** 中间不能全空：无标签且 AI 已关时，有欢迎页则靠欢迎页，否则自动打开 AI 面板 */
+/** 未打开项目且无欢迎页时，中间不能全空，自动打开 AI 面板（已打开项目时允许用户手动关闭） */
 watch(
   () =>
     [
@@ -351,8 +406,8 @@ watch(
       welcomeOnStartup.value,
     ] as const,
   ([root, tabCount, aiVisible, welcome]) => {
-    if (tabCount > 0 || aiVisible) return
-    if (!root && welcome) return
+    if (tabCount > 0 || aiVisible || root) return
+    if (welcome) return
     aiPanelVisible.value = true
   },
   { immediate: true },
@@ -403,31 +458,72 @@ const onPaletteRun = (id: string) => {
   else if (id === 'findInFiles') onFindInFiles()
   else if (id === 'toggleChat' || id === 'toggleAgents') toggleAiPanel()
   else if (id === 'toggleTerminal') toggleTerminal()
-  else if (id === 'settings') settingsVisible.value = true
+  else if (id === 'settings') void openSettingsPanel('general')
 }
 
 const onNewAgentSession = async () => {
+  workshopVisible.value = false
   aiPanelVisible.value = true
+  activeSessionKind.value = 'agent'
   await chatPaneRef.value?.newChat()
   if (chatPaneRef.value?.activeId) activeChatSessionId.value = chatPaneRef.value.activeId
   await agentsPanelRef.value?.load()
 }
 
-const onSelectAgentSession = async (id: string) => {
-  aiPanelVisible.value = true
-  await nextTick()
-  const ok = await chatPaneRef.value?.selectSession(id)
-  if (ok) activeChatSessionId.value = chatPaneRef.value?.activeId ?? id
+const onNewWorkshopSession = async () => {
+  if (showEditorArea.value) {
+    window.alert('请先关闭已打开的文件标签，以在中央打开 Collab Workshop')
+    return
+  }
+  workshopVisible.value = true
+  activeSessionKind.value = 'workshop'
+  activeChatSessionId.value = ''
+  workshopPaneRef.value?.newSession()
+  await agentsPanelRef.value?.load()
 }
 
-const onDeleteAgentSession = async (id: string) => {
-  await chatPaneRef.value?.deleteSession(id)
-  activeChatSessionId.value = chatPaneRef.value?.activeId ?? ''
+const onSelectSession = async (payload: { id: string; kind: SessionKind }) => {
+  if (payload.kind === 'workshop') {
+    if (showEditorArea.value) {
+      window.alert('请先关闭已打开的文件标签，以在中央打开 Collab Workshop')
+      return
+    }
+    workshopVisible.value = true
+    activeSessionKind.value = 'workshop'
+    activeChatSessionId.value = payload.id
+    await nextTick()
+    await workshopPaneRef.value?.selectSession(payload.id)
+    return
+  }
+  workshopVisible.value = false
+  aiPanelVisible.value = true
+  activeSessionKind.value = 'agent'
+  await nextTick()
+  const ok = await chatPaneRef.value?.selectSession(payload.id)
+  if (ok) activeChatSessionId.value = chatPaneRef.value?.activeId ?? payload.id
+}
+
+const onDeleteSession = async (payload: { id: string; kind: SessionKind }) => {
+  if (payload.kind === 'workshop') {
+    await window.axecoder.deleteWorkshopSession(projectRoot.value, payload.id)
+    if (activeSessionKind.value === 'workshop' && activeChatSessionId.value === payload.id) {
+      activeChatSessionId.value = ''
+      workshopPaneRef.value?.newSession()
+    }
+  } else {
+    await chatPaneRef.value?.deleteSession(payload.id)
+    activeChatSessionId.value = chatPaneRef.value?.activeId ?? ''
+  }
   await agentsPanelRef.value?.load()
 }
 
 const onChatActiveChange = (id: string) => {
   activeChatSessionId.value = id
+  activeSessionKind.value = 'agent'
+}
+
+const onWorkshopSessionsChanged = async () => {
+  await agentsPanelRef.value?.load()
 }
 
 const onChatSessionsChanged = async () => {
@@ -474,7 +570,7 @@ onUnmounted(() => {
   <div class="workbench">
     <TitleBar
       :primary-sidebar-visible="primarySidebarVisible"
-      :ai-panel-visible="showAiSidePanel"
+      :ai-panel-visible="aiPanelVisible"
       :workshop-visible="showWorkshopCenter"
       :project-name="projectName"
       :window-layout="windowLayout"
@@ -486,7 +582,11 @@ onUnmounted(() => {
     />
     <div class="workbench-main">
       <div ref="workbenchBodyRef" class="workbench-body">
-        <div v-show="primarySidebarVisible" class="primary-side">
+        <div
+          v-show="primarySidebarVisible"
+          class="primary-side"
+          :style="{ width: `${sidebarWidth}px` }"
+        >
           <SidebarViewBar :active="activeActivity" @select="onActivitySelect" />
           <div class="sidebar-panels">
             <FileExplorer
@@ -509,6 +609,12 @@ onUnmounted(() => {
             />
           </div>
         </div>
+        <div
+          v-show="primarySidebarVisible"
+          class="primary-split-handle"
+          :class="{ dragging: primarySplitDragging }"
+          @pointerdown="onPrimarySplitPointerDown"
+        />
         <WorkshopPane
           ref="workshopPaneRef"
           v-show="showWorkshopCenter"
@@ -516,6 +622,7 @@ onUnmounted(() => {
           @close="workshopVisible = false"
           @open-file="onOpenFile"
           @open-models-settings="openModelsSettings"
+          @sessions-changed="onWorkshopSessionsChanged"
         />
         <WelcomePage
           v-show="showWelcomePage"
@@ -546,27 +653,38 @@ onUnmounted(() => {
           @cursor-change="(l, c) => { cursorLine = l; cursorCol = c }"
         />
         <div
-          v-show="aiPanelUsesFixedWidth"
+          v-show="aiPanelUsesFixedWidth || agentsOnlyAside"
           class="editor-ai-split-handle"
           :class="{ dragging: aiPanelSplitDragging }"
           @pointerdown="onAiPanelSplitPointerDown"
-          @pointermove="onAiPanelSplitPointerMove"
-          @pointerup="onAiPanelSplitPointerUp"
-          @pointercancel="onAiPanelSplitPointerUp"
         />
         <aside
-          v-show="showAiSidePanel"
+          v-show="showSessionAside"
           ref="aiSidePanelRef"
           class="ai-side-panel"
-          :class="{ 'ai-side-panel--fill': aiPanelFillsCenter }"
-          :style="aiPanelUsesFixedWidth ? { width: `${aiPanelWidth}px` } : undefined"
+          :class="{
+            'ai-side-panel--fill': aiPanelFillsCenter,
+            'ai-side-panel--agents-only': agentsOnlyAside,
+          }"
+          :style="
+            agentsOnlyAside
+              ? { width: `${agentsWidth}px` }
+              : aiPanelUsesFixedWidth
+                ? { width: `${aiPanelWidth}px` }
+                : undefined
+          "
         >
           <ChatPane
+            v-show="showChatAside"
             ref="chatPaneRef"
             :project-root="projectRoot"
             :context-file-path="activePath"
             :agents-sidebar-visible="agentsSidebarVisible"
             :agent-auto-apply-writes="settings.agentAutoApplyWrites"
+            :agent-completion-sound-enabled="settings.agentCompletionSoundEnabled"
+            :agent-completion-sound-path="settings.agentCompletionSoundPath"
+            :profile-display-name="settings.profileDisplayName"
+            :profile-avatar-path="settings.profileAvatarPath"
             @update:agent-auto-apply-writes="
               onSettingsSave({ agentAutoApplyWrites: $event })
             "
@@ -578,24 +696,23 @@ onUnmounted(() => {
             @files-changed="fileExplorerRef?.refresh?.()"
           />
           <div
-            v-show="agentsSidebarVisible"
+            v-show="showChatAside && showAgentsAside"
             class="agents-split-handle"
             :class="{ dragging: agentsSplitDragging }"
             @pointerdown="onAgentsSplitPointerDown"
-            @pointermove="onAgentsSplitPointerMove"
-            @pointerup="onAgentsSplitPointerUp"
-            @pointercancel="onAgentsSplitPointerUp"
           />
           <AgentsPanel
             ref="agentsPanelRef"
-            :visible="agentsSidebarVisible"
+            :visible="showAgentsAside"
             :width="agentsWidth"
             :project-root="projectRoot"
             :active-session-id="activeChatSessionId"
+            :active-session-kind="activeSessionKind"
             @toggle="toggleAgentsSidebar"
             @new-session="onNewAgentSession"
-            @select-session="onSelectAgentSession"
-            @delete-session="onDeleteAgentSession"
+            @new-workshop="onNewWorkshopSession"
+            @select-session="onSelectSession"
+            @delete-session="onDeleteSession"
           />
         </aside>
       </div>
@@ -661,7 +778,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  width: var(--wc-sidebar-w);
   min-height: 0;
   background: var(--wc-sidebar);
 }
@@ -680,6 +796,7 @@ onUnmounted(() => {
   width: 100%;
 }
 
+.primary-split-handle,
 .editor-ai-split-handle,
 .agents-split-handle {
   flex-shrink: 0;
@@ -693,6 +810,7 @@ onUnmounted(() => {
   background: transparent;
 }
 
+.primary-split-handle::before,
 .editor-ai-split-handle::before,
 .agents-split-handle::before {
   content: '';
@@ -704,6 +822,8 @@ onUnmounted(() => {
   background: var(--wc-border);
 }
 
+.primary-split-handle:hover::before,
+.primary-split-handle.dragging::before,
 .editor-ai-split-handle:hover::before,
 .editor-ai-split-handle.dragging::before,
 .agents-split-handle:hover::before,
@@ -724,5 +844,9 @@ onUnmounted(() => {
   flex: 1;
   width: auto;
   min-width: calc(var(--wc-chat-min) + var(--wc-agents-min));
+}
+
+.ai-side-panel--agents-only {
+  flex-shrink: 0;
 }
 </style>

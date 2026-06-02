@@ -4,7 +4,7 @@ const WORKSHOP_STREAM_PREFIX = 'workshop-'
 
 export const buildWorkshopStreamId = (
   workshopId: string,
-  roleId: Exclude<WorkshopRoleId, 'system' | 'user'>,
+  roleId: string,
 ): string => `${WORKSHOP_STREAM_PREFIX}${workshopId.trim()}-${roleId}`
 
 export const parseWorkshopStreamId = (

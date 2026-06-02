@@ -4,6 +4,8 @@ import type { AppSettings } from '../../types/axecoder'
 import GeneralTab from './GeneralTab.vue'
 import ModelsTab from './ModelsTab.vue'
 import UsersTab from './UsersTab.vue'
+import RulesSkillsTab from './RulesSkillsTab.vue'
+import SettingsProfileCard from './SettingsProfileCard.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -16,11 +18,12 @@ const emit = defineEmits<{
   save: [partial: Partial<AppSettings>]
 }>()
 
-export type SettingsTabId = 'general' | 'models' | 'users'
+export type SettingsTabId = 'general' | 'models' | 'users' | 'rules'
 
 const activeTab = ref<SettingsTabId>('general')
 const modelsTabRef = ref<InstanceType<typeof ModelsTab> | null>(null)
 const usersTabRef = ref<InstanceType<typeof UsersTab> | null>(null)
+const rulesTabRef = ref<InstanceType<typeof RulesSkillsTab> | null>(null)
 
 const openTab = (tab: SettingsTabId) => {
   activeTab.value = tab
@@ -38,24 +41,26 @@ defineExpose({
   openTab,
   reloadModels: () => modelsTabRef.value?.reload(),
   reloadUsers: () => usersTabRef.value?.reload(),
+  reloadRules: () => rulesTabRef.value?.reload(),
 })
 </script>
 
 <template>
   <div v-if="visible" class="settings-panel">
     <header class="settings-header">
-      <span class="settings-title">设置</span>
-      <button type="button" class="close-btn" title="关闭" @click="emit('close')">×</button>
+      <span class="settings-title">Settings</span>
+      <button type="button" class="close-btn" title="Close" @click="emit('close')">×</button>
     </header>
     <div class="settings-body">
       <nav class="settings-nav">
+        <SettingsProfileCard :settings="settings" @save="onGeneralSave" />
         <button
           type="button"
           class="nav-item"
           :class="{ active: activeTab === 'general' }"
           @click="activeTab = 'general'"
         >
-          通用
+          General
         </button>
         <button
           type="button"
@@ -63,7 +68,7 @@ defineExpose({
           :class="{ active: activeTab === 'models' }"
           @click="activeTab = 'models'"
         >
-          模型
+          Models
         </button>
         <button
           type="button"
@@ -71,7 +76,15 @@ defineExpose({
           :class="{ active: activeTab === 'users' }"
           @click="activeTab = 'users'"
         >
-          用户
+          Users
+        </button>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ active: activeTab === 'rules' }"
+          @click="activeTab = 'rules'"
+        >
+          Rules, Skills, Subagents
         </button>
       </nav>
       <main class="settings-content">
@@ -82,6 +95,7 @@ defineExpose({
         />
         <ModelsTab v-show="activeTab === 'models'" ref="modelsTabRef" @changed="onChanged" />
         <UsersTab v-show="activeTab === 'users'" ref="usersTabRef" @changed="onChanged" />
+        <RulesSkillsTab v-show="activeTab === 'rules'" ref="rulesTabRef" @changed="onChanged" />
       </main>
     </div>
   </div>
@@ -134,7 +148,7 @@ defineExpose({
 }
 
 .settings-nav {
-  width: 200px;
+  width: 220px;
   flex-shrink: 0;
   border-right: 1px solid var(--wc-border);
   padding: 12px 8px;
@@ -163,6 +177,8 @@ defineExpose({
 
 .settings-content {
   flex: 1;
+  min-width: 0;
+  width: 100%;
   overflow: auto;
   background: var(--wc-panel);
 }

@@ -87,7 +87,14 @@ export const executeExtendedAgentTool = async (
       })
     }
     const list = mergeTodos(sessionId, items)
-    return immediate(name, 'TodoWrite', JSON.stringify({ todos: list }, null, 2), true)
+    const lines = list.map((t, i) => `${i + 1}. [${t.status}] ${t.content}`).join('\n')
+    const body = [
+      'Todos have been modified successfully. Continue using the todo list to track progress. Proceed with current tasks if applicable.',
+      lines ? `\nCurrent list:\n${lines}` : '',
+    ]
+      .filter(Boolean)
+      .join('')
+    return immediate(name, 'TodoWrite', body, true)
   }
 
   if (name === 'TaskCreate') {

@@ -31,6 +31,8 @@ export type StoredAgentSession = {
   proactiveTick: number
   scratchpadDir: string
   compactedOnce: boolean
+  /** 用户请求停止 Agent 循环 */
+  abortRequested?: boolean
 }
 
 const sessions = new Map<string, StoredAgentSession>()

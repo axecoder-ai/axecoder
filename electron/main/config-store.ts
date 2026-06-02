@@ -18,6 +18,13 @@ const defaults: AppConfig = {
   agentTokenBudget: 0,
   agentProactiveEnabled: false,
   agentHooksEnabled: true,
+  agentModelTierRoutingEnabled: true,
+  agentCompletionSoundEnabled: false,
+  agentCompletionSoundPath: '',
+  agentCompletionSoundDisplayName: '',
+  rulesIncludeThirdPartyPlugins: false,
+  profileDisplayName: '',
+  profileAvatarPath: '',
 }
 
 const configPath = () => axecoderPath('config.json')
@@ -58,6 +65,18 @@ export const getConfig = async (): Promise<AppConfig> => {
     agentTokenBudget: raw.agentTokenBudget ?? defaults.agentTokenBudget,
     agentProactiveEnabled: raw.agentProactiveEnabled ?? defaults.agentProactiveEnabled,
     agentHooksEnabled: raw.agentHooksEnabled ?? defaults.agentHooksEnabled,
+    agentModelTierRoutingEnabled:
+      raw.agentModelTierRoutingEnabled ?? defaults.agentModelTierRoutingEnabled,
+    agentCompletionSoundEnabled:
+      raw.agentCompletionSoundEnabled ?? defaults.agentCompletionSoundEnabled,
+    agentCompletionSoundPath:
+      raw.agentCompletionSoundPath ?? defaults.agentCompletionSoundPath,
+    agentCompletionSoundDisplayName:
+      raw.agentCompletionSoundDisplayName ?? defaults.agentCompletionSoundDisplayName,
+    rulesIncludeThirdPartyPlugins:
+      raw.rulesIncludeThirdPartyPlugins ?? defaults.rulesIncludeThirdPartyPlugins,
+    profileDisplayName: raw.profileDisplayName ?? defaults.profileDisplayName,
+    profileAvatarPath: raw.profileAvatarPath ?? defaults.profileAvatarPath,
   }
 }
 
@@ -88,6 +107,32 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
     agentTokenBudget: partial.agentTokenBudget ?? cur.agentTokenBudget,
     agentProactiveEnabled: partial.agentProactiveEnabled ?? cur.agentProactiveEnabled,
     agentHooksEnabled: partial.agentHooksEnabled ?? cur.agentHooksEnabled,
+    agentModelTierRoutingEnabled:
+      partial.agentModelTierRoutingEnabled ?? cur.agentModelTierRoutingEnabled,
+    agentCompletionSoundEnabled:
+      partial.agentCompletionSoundEnabled !== undefined
+        ? partial.agentCompletionSoundEnabled
+        : cur.agentCompletionSoundEnabled,
+    agentCompletionSoundPath:
+      partial.agentCompletionSoundPath !== undefined
+        ? partial.agentCompletionSoundPath
+        : cur.agentCompletionSoundPath,
+    agentCompletionSoundDisplayName:
+      partial.agentCompletionSoundDisplayName !== undefined
+        ? partial.agentCompletionSoundDisplayName
+        : cur.agentCompletionSoundDisplayName,
+    rulesIncludeThirdPartyPlugins:
+      partial.rulesIncludeThirdPartyPlugins !== undefined
+        ? partial.rulesIncludeThirdPartyPlugins
+        : cur.rulesIncludeThirdPartyPlugins,
+    profileDisplayName:
+      partial.profileDisplayName !== undefined
+        ? partial.profileDisplayName
+        : cur.profileDisplayName,
+    profileAvatarPath:
+      partial.profileAvatarPath !== undefined
+        ? partial.profileAvatarPath
+        : cur.profileAvatarPath,
   }
   await fs.writeFile(configPath(), JSON.stringify(next, null, 2), 'utf-8')
   return next

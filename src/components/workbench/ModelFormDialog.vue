@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import type { ModelEntry, ModelProvider } from '../../types/axecoder'
+import SwitchToggle from './SwitchToggle.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -14,7 +15,8 @@ const emit = defineEmits<{
 
 const name = ref('')
 const provider = ref<ModelProvider>('openai')
-const modelId = ref('')
+const deepModelId = ref('')
+const fastModelId = ref('')
 const baseUrl = ref('https://api.openai.com/v1')
 const apiKey = ref('')
 const enabled = ref(true)
@@ -34,14 +36,16 @@ watch(
     if (props.editing) {
       name.value = props.editing.name
       provider.value = props.editing.provider
-      modelId.value = props.editing.modelId
+      deepModelId.value = props.editing.modelId
+      fastModelId.value = props.editing.fastApiModelId ?? ''
       baseUrl.value = props.editing.baseUrl
       enabled.value = props.editing.enabled
       apiKey.value = ''
     } else {
       name.value = ''
       provider.value = 'openai'
-      modelId.value = ''
+      deepModelId.value = ''
+      fastModelId.value = ''
       baseUrl.value = defaultUrl('openai')
       apiKey.value = ''
       enabled.value = true
@@ -55,12 +59,15 @@ watch(provider, (p) => {
 
 const onSave = () => {
   const id = props.editing?.id ?? `model-${Date.now()}`
+  const deep = deepModelId.value.trim()
+  const fast = fastModelId.value.trim()
   emit('save', {
     entry: {
       id,
-      name: name.value.trim() || modelId.value.trim(),
+      name: name.value.trim() || deep,
       provider: provider.value,
-      modelId: modelId.value.trim(),
+      modelId: deep,
+      ...(fast && fast !== deep ? { fastApiModelId: fast } : {}),
       baseUrl: baseUrl.value.trim(),
       enabled: enabled.value,
     },
@@ -73,13 +80,13 @@ const onSave = () => {
 <template>
   <div v-if="visible" class="modal-backdrop" @click.self="emit('close')">
     <div class="modal">
-      <h3>{{ editing ? '编辑模型' : '添加模型' }}</h3>
+      <h3>{{ editing ? 'Edit model' : 'Add model' }}</h3>
       <label class="row">
-        显示名称
+        Display name
         <input v-model="name" type="text" placeholder="DeepSeek" />
       </label>
       <label class="row">
-        协议格式
+        Provider
         <select v-model="provider">
           <option value="openai">OpenAI</option>
           <option value="ollama">Ollama</option>
@@ -91,25 +98,29 @@ const onSave = () => {
         <input v-model="baseUrl" type="text" />
       </label>
       <label class="row">
-        模型 ID
-        <input v-model="modelId" type="text" placeholder="deepseek-chat" />
+        Fast model ID (simple Q&A)
+        <input v-model="fastModelId" type="text" placeholder="deepseek-chat (optional, same as deep)" />
+      </label>
+      <label class="row">
+        Deep model ID (complex tasks)
+        <input v-model="deepModelId" type="text" placeholder="deepseek-reasoner" />
       </label>
       <label v-if="needsKey" class="row">
         API Key
-        <input v-model="apiKey" type="password" :placeholder="editing ? '留空则不修改' : 'sk-...'" autocomplete="off" />
+        <input v-model="apiKey" type="password" :placeholder="editing ? 'Leave blank to keep unchanged' : 'sk-...'" autocomplete="off" />
       </label>
       <label v-else class="row">
-        API Key（可选）
-        <input v-model="apiKey" type="password" placeholder="可选" autocomplete="off" />
+        API Key (optional)
+        <input v-model="apiKey" type="password" placeholder="Optional" autocomplete="off" />
       </label>
-      <label class="row check">
-        <input v-model="enabled" type="checkbox" />
-        启用
+      <label class="row row-switch">
+        <span>Enabled</span>
+        <SwitchToggle v-model="enabled" />
       </label>
       <div class="actions">
-        <button type="button" @click="emit('close')">取消</button>
-        <button type="button" class="primary" :disabled="!modelId.trim() || !baseUrl.trim()" @click="onSave">
-          保存
+        <button type="button" @click="emit('close')">Cancel</button>
+        <button type="button" class="primary" :disabled="!deepModelId.trim() || !baseUrl.trim()" @click="onSave">
+          Save
         </button>
       </div>
     </div>
@@ -149,10 +160,11 @@ const onSave = () => {
   font-size: 13px;
 }
 
-.row.check {
+.row-switch {
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .row input,
