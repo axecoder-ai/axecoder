@@ -32,6 +32,10 @@ import { playAgentCompletionSound } from '../../utils/play-completion-sound'
 import SwitchToggle from './SwitchToggle.vue'
 import WorkshopChatSection from './WorkshopChatSection.vue'
 import type { SessionKind } from '../../types/axecoder'
+import {
+  useChatAttachedImages,
+  type AttachedImageView,
+} from '../../composables/useChatAttachedImages'
 
 const md = new MarkdownIt()
 
@@ -232,6 +236,17 @@ const messagesEl = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const modelsFile = ref<ModelsFile>({ schemaVersion: 1, activeModelId: '', models: [] })
 const attachedFiles = ref<ChatFileRef[]>([])
+const chatSessionId = computed(
+  () => activeSession.value?.id ?? `draft-${Date.now()}`,
+)
+const {
+  attachedImages,
+  onPasteImage,
+  removeAttachedImage,
+  clearAttachedImages,
+  resolveImageRefsForApi,
+  imageRefsForPersist,
+} = useChatAttachedImages(chatSessionId)
 const includeContextFile = ref(false)
 const dropActive = ref(false)
 const pendingBusy = ref(false)
@@ -317,6 +332,10 @@ const persist = async (opts?: { skipTitleSuggest?: boolean }) => {
       role: m.role,
       text: m.text,
       ...(m.filePaths?.length ? { filePaths: [...m.filePaths] } : {}),
+      ...(m.imageRefs?.length
+        ? { imageRefs: JSON.parse(JSON.stringify(m.imageRefs)) }
+        : {}),
+      ...(m.imagePreviews?.length ? { imagePreviews: [...m.imagePreviews] } : {}),
       ...(m.apiContent ? { apiContent: m.apiContent } : {}),
       ...(m.slashInvoke ? { slashInvoke: m.slashInvoke } : {}),
       ...(m.slashOnly ? { slashOnly: true } : {}),
@@ -403,6 +422,7 @@ const selectSession = async (id: string): Promise<boolean> => {
     session = res.session
   }
   cacheSession(session)
+  await hydrateMessageImagePreviews(session.messages)
   addUnifiedTab(id, 'agent')
   activeSession.value = session
   activeId.value = id
@@ -593,14 +613,22 @@ const userBubbleSlashMinimal = (msg: ChatMessage) => {
   return !!(msg.slashOnly && parts && !parts.body)
 }
 
-const toApiMessages = (msgs: ChatMessage[]): AiChatMessage[] => {
+const buildApiMessages = async (msgs: ChatMessage[]): Promise<AiChatMessage[]> => {
   const api: AiChatMessage[] = []
   for (const m of msgs) {
     if (m.role === 'user') {
       const content = (m.apiContent ?? m.text ?? '').trim()
       if (m.slashOnly && !m.apiContent) continue
-      if (!content) continue
-      api.push({ role: 'user', content })
+      let images = m.apiImages
+      if (!images?.length && m.imageRefs?.length) {
+        images = await resolveImageRefsForApi(m.imageRefs)
+      }
+      if (!content && !images?.length) continue
+      api.push({
+        role: 'user',
+        content,
+        ...(images?.length ? { images } : {}),
+      })
     } else {
       const content = (m.assistantContent ?? m.text ?? '').trim()
       if (!content) continue
@@ -612,6 +640,18 @@ const toApiMessages = (msgs: ChatMessage[]): AiChatMessage[] => {
     }
   }
   return api
+}
+
+const hydrateMessageImagePreviews = async (msgs: ChatMessage[]) => {
+  for (const m of msgs) {
+    if (!m.imageRefs?.length || m.imagePreviews?.length) continue
+    const urls: string[] = []
+    for (const ref of m.imageRefs) {
+      const res = await window.axecoder.getChatImagePreview(ref)
+      if (res.ok) urls.push(res.dataUrl)
+    }
+    if (urls.length) m.imagePreviews = urls
+  }
 }
 
 const stopIdleHintTimer = () => {
@@ -1000,9 +1040,17 @@ const buildSlashContext = (): SlashContext => ({
   },
 })
 
+const ensureChatSession = async (): Promise<boolean> => {
+  if (activeSession.value) return true
+  await newChat()
+  return !!activeSession.value
+}
+
 const send = async () => {
   const text = input.value.trim()
-  if (!hasProject.value || !text || !activeSession.value) return
+  const hasPendingImages = attachedImages.value.length > 0
+  if (!hasProject.value || (!text && !hasPendingImages)) return
+  if (!(await ensureChatSession())) return
 
   if (text.startsWith('!')) {
     if (loading.value || pendingBusy.value) {
@@ -1101,7 +1149,7 @@ const send = async () => {
       else startIdleHintTimer()
       try {
         await persist()
-        const apiMessages = toApiMessages(activeSession.value.messages)
+        const apiMessages = await buildApiMessages(activeSession.value.messages)
         if (agentMode.value) {
           const res = await window.axecoder.agentSend(props.projectRoot, modelId, apiMessages)
           pushAssistantFromAgent(res)
@@ -1133,23 +1181,40 @@ const send = async () => {
     await persist()
     return
   }
-  input.value = ''
-  await nextTick()
-  resizeInput()
+  const imageRefs = imageRefsForPersist()
+  const imagePreviews = attachedImages.value.map((x: AttachedImageView) => x.previewUrl)
   const filePaths = sendFilePaths.value.length ? [...sendFilePaths.value] : undefined
-  const userMsg: ChatMessage = { role: 'user', text, ...(filePaths ? { filePaths } : {}) }
-  activeSession.value.messages.push(userMsg)
-  attachedFiles.value = []
-  includeContextFile.value = false
-  if (activeSession.value.title === 'New Agent' || activeSession.value.title === '新对话') {
-    activeSession.value.title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
-  }
-  activeSession.value.updatedAt = Date.now()
+  const displayText = text || '（图片）'
 
   loading.value = true
   if (agentMode.value) bindAgentProgress()
   else startIdleHintTimer()
   try {
+    const plainImageRefs = imageRefs.length
+      ? (JSON.parse(JSON.stringify(imageRefs)) as import('../../types/axecoder').ChatImageRef[])
+      : []
+    input.value = ''
+    await nextTick()
+    resizeInput()
+    const userMsg: ChatMessage = {
+      role: 'user',
+      text: displayText,
+      ...(filePaths ? { filePaths } : {}),
+      ...(plainImageRefs.length ? { imageRefs: plainImageRefs, imagePreviews } : {}),
+    }
+    activeSession.value!.messages.push(userMsg)
+    attachedFiles.value = []
+    clearAttachedImages()
+    includeContextFile.value = false
+    if (
+      activeSession.value!.title === 'New Agent' ||
+      activeSession.value!.title === '新对话'
+    ) {
+      activeSession.value!.title =
+        displayText.slice(0, 24) + (displayText.length > 24 ? '…' : '')
+    }
+    activeSession.value!.updatedAt = Date.now()
+
     if (filePaths?.length) {
       userMsg.apiContent = await window.axecoder.expandChatUserWithFiles(
         props.projectRoot,
@@ -1158,19 +1223,19 @@ const send = async () => {
       )
     }
     await persist()
-    const historyMsgs = activeSession.value.messages.slice(0, -1)
-    const apiMessages = toApiMessages([...historyMsgs, userMsg])
+    const historyMsgs = activeSession.value!.messages.slice(0, -1)
+    const apiMessages = await buildApiMessages([...historyMsgs, userMsg])
     if (agentMode.value) {
       const res = await window.axecoder.agentSend(props.projectRoot, modelId, apiMessages)
       pushAssistantFromAgent(res)
     } else {
       await runPlainChat(model, modelId, apiMessages)
     }
-    activeSession.value.updatedAt = Date.now()
+    activeSession.value!.updatedAt = Date.now()
   } catch (e) {
     const msg = e instanceof Error ? e.message : '请求异常'
-    activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${msg}` })
-    activeSession.value.updatedAt = Date.now()
+    activeSession.value?.messages.push({ role: 'assistant', text: `请求失败：${msg}` })
+    if (activeSession.value) activeSession.value.updatedAt = Date.now()
   } finally {
     loading.value = false
     clearProgressUi()
@@ -1181,9 +1246,10 @@ const send = async () => {
 const canSend = computed(() => {
   const text = input.value.trim()
   const slash = text.startsWith('/')
+  const hasImages = attachedImages.value.length > 0
   return (
     hasProject.value &&
-    !!text &&
+    (!!text || hasImages) &&
     !loading.value &&
     (enabledModels.value.length > 0 || slash)
   )
@@ -1230,7 +1296,7 @@ const regenerateLastReply = async () => {
   if (agentMode.value) bindAgentProgress()
   else startIdleHintTimer()
   try {
-    const apiMessages = toApiMessages(msgs.slice(0, userIdx + 1))
+    const apiMessages = await buildApiMessages(msgs.slice(0, userIdx + 1))
     if (agentMode.value) {
       const res = await window.axecoder.agentSend(props.projectRoot, modelId, apiMessages)
       pushAssistantFromAgent(res)
@@ -1299,6 +1365,7 @@ const onInputEnter = () => {
     picker.pickActive()
     return
   }
+  if (!canSend.value) return
   void send()
 }
 
@@ -1480,6 +1547,15 @@ defineExpose({
                   {{ relativeToProject(projectRoot, fp) }}
                 </span>
               </div>
+              <div v-if="msg.imagePreviews?.length" class="msg-image-row">
+                <img
+                  v-for="(url, j) in msg.imagePreviews"
+                  :key="j"
+                  :src="url"
+                  alt=""
+                  class="msg-image-thumb"
+                />
+              </div>
               <template v-if="slashMessageParts(msg)">
                 <div v-if="slashMessageParts(msg)!.body" class="slash-cmd-flow">
                   <span class="slash-cmd-tag">{{ slashMessageParts(msg)!.invoke }}</span
@@ -1504,6 +1580,15 @@ defineExpose({
             <span v-for="fp in msg.filePaths" :key="fp" class="msg-file-tag" :title="fp">
               {{ relativeToProject(projectRoot, fp) }}
             </span>
+          </div>
+          <div v-if="msg.imagePreviews?.length" class="msg-image-row">
+            <img
+              v-for="(url, j) in msg.imagePreviews"
+              :key="j"
+              :src="url"
+              alt=""
+              class="msg-image-thumb"
+            />
           </div>
           <template v-if="slashMessageParts(msg)">
             <div v-if="slashMessageParts(msg)!.body" class="slash-cmd-flow">
@@ -1644,7 +1729,10 @@ defineExpose({
         @dragleave="onChatDragLeave"
         @drop="onChatDrop"
       >
-        <div v-if="attachedFiles.length || pendingContextFile" class="file-refs">
+        <div
+          v-if="attachedFiles.length || attachedImages.length || pendingContextFile"
+          class="file-refs"
+        >
           <span
             v-for="f in attachedFiles"
             :key="f.path"
@@ -1653,6 +1741,17 @@ defineExpose({
           >
             {{ f.name }}
             <button type="button" class="chip-remove" @click="removeAttached(f.path)">×</button>
+          </span>
+          <span
+            v-for="img in attachedImages"
+            :key="img.ref.id"
+            class="file-ref-chip image-chip"
+            title="粘贴的图片"
+          >
+            <img :src="img.previewUrl" alt="" class="image-chip-thumb" />
+            <button type="button" class="chip-remove" @click="removeAttachedImage(img.ref.id)">
+              ×
+            </button>
           </span>
           <span
             v-if="pendingContextFile"
@@ -1683,6 +1782,7 @@ defineExpose({
             @input="onInputField"
             @keydown="onInputKeydown"
             @keydown.enter.exact.prevent="onInputEnter"
+            @paste="onPasteImage"
           />
         </div>
         <div class="chat-input-footer">
@@ -1743,8 +1843,8 @@ defineExpose({
               class="send-btn"
               :class="{ active: canSend }"
               title="发送"
-              :disabled="loading || !enabledModels.length"
-              @click="send"
+              :disabled="!canSend"
+              @click="() => canSend && send()"
             >
               <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
                 <path
@@ -2275,6 +2375,34 @@ defineExpose({
   color: var(--wc-text-muted);
   border: 1px dashed var(--wc-muted-border);
   background: transparent;
+}
+
+.file-ref-chip.image-chip {
+  padding: 2px 4px 2px 2px;
+  gap: 2px;
+}
+
+.image-chip-thumb {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+}
+
+.msg-image-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.msg-image-thumb {
+  max-width: 200px;
+  max-height: 160px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--wc-muted-surface);
 }
 
 .chip-remove {

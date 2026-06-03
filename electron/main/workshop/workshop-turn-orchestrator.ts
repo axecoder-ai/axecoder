@@ -154,9 +154,11 @@ export const sendWorkshopMessage = async (
   routerLlm: RouterLLM,
   onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
   displayText?: string,
+  userImages?: import('../models-types').AiChatImagePart[],
 ): Promise<WorkshopRunResult> => {
   const trimmed = text.trim()
-  if (!trimmed) return { ok: false, error: '消息不能为空' }
+  if (!trimmed && !userImages?.length) return { ok: false, error: '消息不能为空' }
+  if (userImages?.length) session.pendingUserImages = userImages
   const userDisplay = displayText?.trim() || trimmed
 
   const usersFile = await listUsers()

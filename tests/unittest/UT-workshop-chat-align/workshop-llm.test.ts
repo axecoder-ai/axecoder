@@ -34,7 +34,7 @@ describe('buildLlmRoleSpeaker', () => {
     })
     const { buildLlmRoleSpeaker } = await import('../../../electron/main/workshop/workshop-llm')
     const deltas: string[] = []
-    const speaker = buildLlmRoleSpeaker('m1', 'ws-1', (_s, d) => deltas.push(d))
+    const speaker = buildLlmRoleSpeaker('m1', 'ws-1', () => undefined, (_s, d) => deltas.push(d))
     const out = await speaker({
       roleId: 'manager',
       userBrief: '任务',

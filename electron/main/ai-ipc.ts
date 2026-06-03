@@ -7,6 +7,12 @@ import { chatWithProvider } from './ai/chat-with-provider'
 import { resolveApiModelIdForTask } from './ai/api-model-resolve'
 import { resolvePathInProject } from './agent/agent-path'
 import { buildUserMessageWithFiles } from '../../src/utils/chat-file-context'
+import {
+  saveChatPastedImage,
+  resolveChatImageRefs,
+  chatImageRefPreviewDataUrl,
+  type ChatImageRef,
+} from './chat-attachments'
 import { emitAiStream } from './ai-stream-emit'
 import type { OpenAiStreamDelta } from './ai/providers/openai'
 
@@ -20,6 +26,38 @@ const openAiStreamHandler = (event: IpcMainInvokeEvent, streamId: string) => {
 }
 
 export const registerAiIpc = () => {
+  ipcMain.handle(
+    'chat:savePastedImage',
+    async (_, sessionId: string, base64: string, mimeType: string) => {
+      try {
+        const ref = await saveChatPastedImage(sessionId, base64, mimeType)
+        const dataUrl = await chatImageRefPreviewDataUrl(ref)
+        return { ok: true as const, ref, dataUrl }
+      } catch (e) {
+        return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+      }
+    },
+  )
+
+  ipcMain.handle('chat:imagePreview', async (_, ref: ChatImageRef) => {
+    try {
+      const dataUrl = await chatImageRefPreviewDataUrl(ref)
+      return { ok: true as const, dataUrl }
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('chat:resolveImageRefs', async (_, refs: ChatImageRef[]) => {
+    try {
+      const list = Array.isArray(refs) ? refs : []
+      const images = await resolveChatImageRefs(list)
+      return { ok: true as const, images }
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
   ipcMain.handle(
     'chat:expandUserWithFiles',
     async (

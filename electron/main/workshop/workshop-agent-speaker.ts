@@ -6,7 +6,12 @@ import { buildRoleTaskPrompt, parseSubagentReport } from './workshop-subagent-sp
 import { enrichRoleSpeakInputWithSkills } from './workshop-user-skills'
 import type { RoleSpeaker } from './workshop-types'
 
-export const buildAgentRoleSpeaker = (projectRoot: string, modelId: string, workshopId: string): RoleSpeaker => {
+export const buildAgentRoleSpeaker = (
+  projectRoot: string,
+  modelId: string,
+  workshopId: string,
+  getUserImages: () => import('../models-types').AiChatImagePart[] | undefined,
+): RoleSpeaker => {
   return async (input) => {
     const root = projectRoot.trim()
     if (!root) throw new Error('请先打开项目')
@@ -21,8 +26,10 @@ export const buildAgentRoleSpeaker = (projectRoot: string, modelId: string, work
     const roleModelId = await resolveModelIdForTask(
       modelTaskKindForWorkshopRole(enriched.roleId, enriched.speakMode),
     )
+    const userImages = getUserImages()
     const res = await runWorkshopRoleAgentTurn(root, roleModelId, sessionId, taskPrompt, name, {
       speakMode: enriched.speakMode,
+      userImages,
     })
     if (!res.ok) throw new Error(res.error)
     const users = enriched.users ?? []

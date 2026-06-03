@@ -1,5 +1,6 @@
 import type { AiChatMessage } from '../models-types'
 import type { AgentLoopMessage } from '../agent/agent-types'
+import { userMessageToOpenAiContent } from './ai-message-images'
 import { pickOpenAiReplyText } from './openai-reply'
 
 export type OpenAiAssistantParts = {
@@ -32,7 +33,11 @@ export const parseOpenAiAssistantParts = (
 
 export const aiChatToOpenAiWire = (messages: AiChatMessage[]): Record<string, unknown>[] =>
   messages.map((m) => {
-    const row: Record<string, unknown> = { role: m.role, content: m.content }
+    const content =
+      m.role === 'user' && m.images?.length
+        ? userMessageToOpenAiContent(m.content, m.images)
+        : m.content
+    const row: Record<string, unknown> = { role: m.role, content }
     if (m.role === 'assistant' && m.reasoningContent) {
       row.reasoning_content = m.reasoningContent
     }
@@ -42,8 +47,12 @@ export const aiChatToOpenAiWire = (messages: AiChatMessage[]): Record<string, un
 export const agentLoopToOpenAiWire = (messages: AgentLoopMessage[]): Record<string, unknown>[] => {
   const out: Record<string, unknown>[] = []
   for (const m of messages) {
-    if (m.role === 'system' || m.role === 'user') {
+    if (m.role === 'system') {
       out.push({ role: m.role, content: m.content })
+    } else if (m.role === 'user') {
+      const content =
+        m.images?.length ? userMessageToOpenAiContent(m.content, m.images) : m.content
+      out.push({ role: 'user', content })
     } else if (m.role === 'assistant') {
       const row: Record<string, unknown> = { role: 'assistant', content: m.content ?? '' }
       if (m.reasoningContent) row.reasoning_content = m.reasoningContent

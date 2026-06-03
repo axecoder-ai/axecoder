@@ -15,6 +15,7 @@ import { applyProgressPayload, type AgentProgressStep } from '../../utils/agent-
 import { parseWorkshopStreamRole } from '../../utils/workshop-stream'
 import type { ChatFileRef } from '../../utils/chat-file-context'
 import { findUserById, findUserForWorkshopRole, inferWorkshopRoleId } from '../../utils/workshop-user-bind'
+import { useChatAttachedImages } from '../../composables/useChatAttachedImages'
 
 const props = defineProps<{
   projectRoot: string
@@ -32,6 +33,19 @@ let activePersisted = false
 const briefInput = ref('')
 const answerInput = ref('')
 const attachedFiles = ref<ChatFileRef[]>([])
+const workshopSessionId = computed(
+  () => active.value?.id ?? `ws-draft-${Date.now()}`,
+)
+const {
+  attachedImages,
+  onPasteImage,
+  removeAttachedImage,
+  clearAttachedImages,
+  imageRefsForPersist,
+} = useChatAttachedImages(workshopSessionId)
+const activeModel = computed(() =>
+  enabledModels.value.find((m) => m.id === modelId.value),
+)
 const loading = ref(false)
 const thinkingRole = ref<WorkshopProgressPayload['roleId'] | null>(null)
 const streamText = ref('')
@@ -300,6 +314,7 @@ const newSession = () => {
   briefInput.value = ''
   answerInput.value = ''
   attachedFiles.value = []
+  clearAttachedImages()
 }
 
 const deleteSession = async (id: string) => {
@@ -314,12 +329,14 @@ const deleteSession = async (id: string) => {
 const startRun = async () => {
   if (!hasProject.value || loading.value) return
   const text = briefInput.value.trim()
-  if (!text) return
+  const imageRefs = imageRefsForPersist()
+  if (!text && !imageRefs.length) return
   if (!modelId.value) return
   const filePaths = attachedFiles.value.map((f) => f.path)
   briefInput.value = ''
   attachedFiles.value = []
-  const workshopId = pushOptimisticUser(text)
+  clearAttachedImages()
+  const workshopId = pushOptimisticUser(text || '（图片）')
   await scrollBottom()
   loading.value = true
   thinkingRole.value = 'manager'
@@ -327,11 +344,13 @@ const startRun = async () => {
   bindWorkshopAgentProgress()
   try {
     const payload = await expandWithFiles(text, filePaths)
-    const res = await window.axecoder.workshopStartRun(
+    const res = await window.axecoder.workshopSendMessage(
       props.projectRoot,
       workshopId,
       payload,
       modelId.value,
+      text || '（图片）',
+      imageRefs.length ? imageRefs : undefined,
     )
     if (!res.ok) {
       rollbackOptimisticUser()
@@ -357,11 +376,13 @@ const clearProgressUi = () => {
 const sendAnswer = async () => {
   if (!active.value || loading.value || !pendingQuestion.value) return
   const text = answerInput.value.trim()
-  if (!text) return
+  const imageRefs = imageRefsForPersist()
+  if (!text && !imageRefs.length) return
   const filePaths = attachedFiles.value.map((f) => f.path)
   answerInput.value = ''
   attachedFiles.value = []
-  pushOptimisticUser(text)
+  clearAttachedImages()
+  pushOptimisticUser(text || '（图片）')
   await scrollBottom()
   loading.value = true
   thinkingRole.value = 'manager'
@@ -369,10 +390,13 @@ const sendAnswer = async () => {
   bindWorkshopAgentProgress()
   try {
     const payload = await expandWithFiles(text, filePaths)
-    const res = await window.axecoder.workshopSendUserAnswer(
+    const res = await window.axecoder.workshopSendMessage(
       props.projectRoot,
       active.value.id,
       payload,
+      active.value.modelId,
+      text || '（图片）',
+      imageRefs.length ? imageRefs : undefined,
     )
     if (!res.ok) {
       rollbackOptimisticUser()
@@ -524,11 +548,14 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
             v-model="answerInput"
             :project-root="projectRoot"
             :attached-files="attachedFiles"
+            :attached-images="attachedImages"
             :loading="loading"
             :enabled-models="enabledModels"
             :active-model-id="modelId"
             placeholder="输入澄清答案…"
             @update:attached-files="attachedFiles = $event"
+            @paste="onPasteImage"
+            @remove-image="removeAttachedImage"
             @send="sendAnswer"
             @select-model="onModelPick"
             @add-models="emit('openModelsSettings')"
@@ -539,11 +566,14 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
           v-model="briefInput"
           :project-root="projectRoot"
           :attached-files="attachedFiles"
+          :attached-images="attachedImages"
           :loading="loading"
           :enabled-models="enabledModels"
           :active-model-id="modelId"
           placeholder="Plan, Build, / for commands, @ for context"
           @update:attached-files="attachedFiles = $event"
+          @paste="onPasteImage"
+          @remove-image="removeAttachedImage"
           @send="startRun"
           @select-model="onModelPick"
           @add-models="emit('openModelsSettings')"

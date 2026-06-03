@@ -18,7 +18,7 @@ describe('buildAgentRoleSpeaker', () => {
     const { buildAgentRoleSpeaker } = await import(
       '../../../electron/main/workshop/workshop-agent-speaker'
     )
-    const speaker = buildAgentRoleSpeaker('/tmp/proj', 'm1', 'ws-1')
+    const speaker = buildAgentRoleSpeaker('/tmp/proj', 'm1', 'ws-1', () => undefined)
     const out = await speaker({
       roleId: 'manager',
       userBrief: '研究 zhongzhi',

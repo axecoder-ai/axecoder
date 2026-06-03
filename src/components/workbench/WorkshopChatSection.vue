@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, toRef } from 'vue'
 import type {
   ModelEntry,
   UserEntry,
@@ -15,7 +15,7 @@ import { parseWorkshopStreamRole } from '../../utils/workshop-stream'
 import type { ChatFileRef } from '../../utils/chat-file-context'
 import { findUserById, inferWorkshopRoleId } from '../../utils/workshop-user-bind'
 import { useWorkbenchSession } from '../../composables/useWorkbenchSession'
-import { toRef } from 'vue'
+import { useChatAttachedImages } from '../../composables/useChatAttachedImages'
 
 const props = defineProps<{
   projectRoot: string
@@ -41,6 +41,19 @@ let activePersisted = false
 const briefInput = ref('')
 const answerInput = ref('')
 const attachedFiles = ref<ChatFileRef[]>([])
+const workshopSessionId = computed(
+  () => active.value?.id ?? `ws-draft-${Date.now()}`,
+)
+const {
+  attachedImages,
+  onPasteImage,
+  removeAttachedImage,
+  clearAttachedImages,
+  imageRefsForPersist,
+} = useChatAttachedImages(workshopSessionId)
+const activeModel = computed(() =>
+  enabledModels.value.find((m) => m.id === modelId.value),
+)
 const loading = ref(false)
 const thinkingRole = ref<WorkshopProgressPayload['roleId'] | null>(null)
 const streamText = ref('')
@@ -332,12 +345,14 @@ const expandWithFiles = async (text: string, filePaths: string[]) => {
 const sendText = async (raw: string, isClarify: boolean) => {
   if (!hasProject.value || loading.value) return
   const text = raw.trim()
-  if (!text || !modelId.value) return
+  const imageRefs = imageRefsForPersist()
+  if ((!text && !imageRefs.length) || !modelId.value) return
   const filePaths = attachedFiles.value.map((f) => f.path)
   if (isClarify) answerInput.value = ''
   else briefInput.value = ''
   attachedFiles.value = []
-  const workshopId = pushOptimisticUser(text)
+  clearAttachedImages()
+  const workshopId = pushOptimisticUser(text || '（图片）')
   await scrollBottom()
   loading.value = true
   thinkingRole.value = 'manager'
@@ -345,7 +360,13 @@ const sendText = async (raw: string, isClarify: boolean) => {
   bindWorkshopAgentProgress()
   try {
     const payload = await expandWithFiles(text, filePaths)
-    const res = await sendWorkshop(workshopId, payload, modelId.value, text)
+    const res = await sendWorkshop(
+      workshopId,
+      payload,
+      modelId.value,
+      text || '（图片）',
+      imageRefs.length ? imageRefs : undefined,
+    )
     if (!res.ok) {
       rollbackOptimisticUser()
       window.alert(res.error)
@@ -487,11 +508,14 @@ defineExpose({
           v-model="answerInput"
           :project-root="projectRoot"
           :attached-files="attachedFiles"
+          :attached-images="attachedImages"
           :loading="loading"
           :enabled-models="enabledModels"
           :active-model-id="modelId"
           placeholder="输入澄清答案…"
           @update:attached-files="attachedFiles = $event"
+          @paste="onPasteImage"
+          @remove-image="removeAttachedImage"
           @send="() => void sendText(answerInput, true)"
           @select-model="(id) => (modelId = id)"
           @add-models="emit('openModelsSettings')"
@@ -502,11 +526,14 @@ defineExpose({
         v-model="briefInput"
         :project-root="projectRoot"
         :attached-files="attachedFiles"
+        :attached-images="attachedImages"
         :loading="loading"
         :enabled-models="enabledModels"
         :active-model-id="modelId"
         placeholder="描述任务，开始 Workshop 群聊…"
         @update:attached-files="attachedFiles = $event"
+        @paste="onPasteImage"
+        @remove-image="removeAttachedImage"
         @send="() => void sendText(briefInput, false)"
         @select-model="(id) => (modelId = id)"
         @add-models="emit('openModelsSettings')"

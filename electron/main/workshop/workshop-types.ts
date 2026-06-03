@@ -44,6 +44,8 @@ export type WorkshopSession = WorkshopSessionMeta & {
   mountedFiles: string[]
   stepPlan?: WorkshopStep[]
   currentStepIndex?: number
+  /** 本轮用户消息附带的图片（发往 LLM 后由 orchestrator 清空） */
+  pendingUserImages?: import('../models-types').AiChatImagePart[]
 }
 
 export type WorkshopProgressPayload = {

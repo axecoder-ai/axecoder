@@ -18,6 +18,17 @@ describe('parseOpenAiAssistantParts', () => {
 })
 
 describe('aiChatToOpenAiWire', () => {
+  it('user 带 images 时 content 为多模态数组', () => {
+    const wire = aiChatToOpenAiWire([
+      {
+        role: 'user',
+        content: '图',
+        images: [{ mimeType: 'image/png', data: 'abc' }],
+      },
+    ])
+    expect(Array.isArray(wire[0].content)).toBe(true)
+  })
+
   it('assistant 带 reasoningContent 时写入 reasoning_content', () => {
     const wire = aiChatToOpenAiWire([
       { role: 'user', content: 'hi' },

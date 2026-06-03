@@ -177,6 +177,26 @@ contextBridge.exposeInMainWorld('axecoder', {
       cloneForIpc(text),
       cloneForIpc(filePaths),
     ) as Promise<string>,
+  saveChatPastedImage: (sessionId: string, base64: string, mimeType: string) =>
+    ipcRenderer.invoke(
+      'chat:savePastedImage',
+      cloneForIpc(sessionId),
+      cloneForIpc(base64),
+      cloneForIpc(mimeType),
+    ) as Promise<
+      | { ok: true; ref: import('../../src/types/axecoder').ChatImageRef; dataUrl: string }
+      | { ok: false; error: string }
+    >,
+  resolveChatImageRefs: (refs: import('../../src/types/axecoder').ChatImageRef[]) =>
+    ipcRenderer.invoke('chat:resolveImageRefs', cloneForIpc(refs)) as Promise<
+      | { ok: true; images: import('../../src/types/axecoder').AiChatImagePart[] }
+      | { ok: false; error: string }
+    >,
+  getChatImagePreview: (ref: import('../../src/types/axecoder').ChatImageRef) =>
+    ipcRenderer.invoke('chat:imagePreview', cloneForIpc(ref)) as Promise<
+      | { ok: true; dataUrl: string }
+      | { ok: false; error: string }
+    >,
   aiChat: (
     modelId: string,
     messages: import('../../src/types/axecoder').AiChatMessage[],
@@ -185,7 +205,7 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke(
       'ai:chat',
       modelId,
-      JSON.parse(JSON.stringify(messages)),
+      cloneForIpc(messages),
       streamId,
     ) as Promise<import('../../src/types/axecoder').AiChatResult>,
   onAiStream: (callback: (payload: import('../../src/types/axecoder').AiStreamPayload) => void) => {
@@ -203,7 +223,7 @@ contextBridge.exposeInMainWorld('axecoder', {
       'agent:send',
       cloneForIpc(projectRoot),
       modelId,
-      JSON.parse(JSON.stringify(messages)),
+      cloneForIpc(messages),
     ) as Promise<import('../../src/types/axecoder').AgentSendResult>,
   agentStop: (sessionId: string) =>
     ipcRenderer.invoke('agent:stop', sessionId) as Promise<
@@ -474,6 +494,7 @@ contextBridge.exposeInMainWorld('axecoder', {
     text: string,
     modelId: string,
     displayText?: string,
+    imageRefs?: import('../../src/types/axecoder').ChatImageRef[],
   ) =>
     ipcRenderer.invoke(
       'workshop:sendMessage',
@@ -483,6 +504,7 @@ contextBridge.exposeInMainWorld('axecoder', {
       cloneForIpc(modelId),
       undefined,
       cloneForIpc(displayText),
+      cloneForIpc(imageRefs),
     ) as Promise<import('../../src/types/axecoder').WorkshopRunResult>,
   workshopSendUserAnswer: (projectRoot: string, workshopId: string, answer: string) =>
     ipcRenderer.invoke(

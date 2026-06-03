@@ -65,6 +65,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
         .map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: typeof m.content === 'string' ? m.content : '',
+          ...(m.role === 'user' && m.images?.length ? { images: m.images } : {}),
           ...(m.role === 'assistant' && m.reasoningContent
             ? { reasoningContent: m.reasoningContent }
             : {}),

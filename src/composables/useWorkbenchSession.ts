@@ -11,6 +11,7 @@ export const useWorkbenchSession = (
     text: string,
     modelId: string,
     displayText?: string,
+    imageRefs?: import('../types/axecoder').ChatImageRef[],
   ): Promise<WorkshopRunResult> => {
     if (kind.value !== 'workshop') {
       return { ok: false, error: '当前不是 Workshop 会话' }
@@ -21,6 +22,7 @@ export const useWorkbenchSession = (
       text,
       modelId,
       displayText,
+      imageRefs,
     )
   }
 

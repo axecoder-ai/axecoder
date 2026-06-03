@@ -1,4 +1,5 @@
 import type { AiChatMessage } from '../../models-types'
+import { userMessageToOllamaRow } from '../ai-message-images'
 import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from '../request-timeout'
 
 export const buildOllamaChatUrl = (baseUrl: string): string => {
@@ -22,7 +23,16 @@ export const chatOllama = async (
     const res = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ model: modelId, messages, stream: false }),
+      body: JSON.stringify({
+        model: modelId,
+        messages: messages.map((m) => {
+          if (m.role === 'user' && m.images?.length) {
+            return userMessageToOllamaRow(m.content, m.images)
+          }
+          return { role: m.role, content: m.content }
+        }),
+        stream: false,
+      }),
       signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
     })
     if (!res.ok) {

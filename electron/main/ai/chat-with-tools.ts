@@ -5,6 +5,7 @@ import { AGENT_TOOLS } from '../agent/agent-tool-defs'
 import { buildOpenAiChatUrl } from './providers/openai'
 import { buildAnthropicMessagesUrl } from './providers/anthropic'
 import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from './request-timeout'
+import { userMessageToAnthropicContent } from './ai-message-images'
 import { agentLoopToOpenAiWire, parseOpenAiAssistantParts } from './openai-messages'
 import {
   consumeOpenAiSse,
@@ -137,7 +138,11 @@ const toAnthropicMessages = (messages: AgentLoopMessage[]) => {
       continue
     }
     if (m.role === 'user') {
-      out.push({ role: 'user', content: m.content })
+      const content =
+        m.images?.length
+          ? userMessageToAnthropicContent(m.content, m.images)
+          : m.content
+      out.push({ role: 'user', content })
       i += 1
       continue
     }

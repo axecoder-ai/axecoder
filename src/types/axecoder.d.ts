@@ -59,6 +59,18 @@ export type ModelEntry = {
   fastApiModelId?: string
   baseUrl: string
   enabled: boolean
+  supportsVision?: boolean
+}
+
+export type ChatImageRef = {
+  id: string
+  mimeType: string
+  storagePath: string
+}
+
+export type AiChatImagePart = {
+  mimeType: string
+  data: string
 }
 
 export type ModelsFile = {
@@ -167,6 +179,7 @@ export type RulesReadResult =
 export type AiChatMessage = {
   role: 'user' | 'assistant' | 'system'
   content: string
+  images?: AiChatImagePart[]
   reasoningContent?: string
 }
 
@@ -326,8 +339,14 @@ export type ChatMessage = {
   thought?: string
   /** 发送时引用的项目文件（相对路径展示用绝对 path 存） */
   filePaths?: string[]
+  /** 粘贴图片引用（~/.axecoder/chat-attachments） */
+  imageRefs?: ChatImageRef[]
+  /** 用户气泡展示用 data URL（与 imageRefs 一一对应） */
+  imagePreviews?: string[]
   /** 已展开文件内容后的 API 文本，避免每轮重复读盘 */
   apiContent?: string
+  /** @deprecated 仅存 imageRefs，发送时由 buildApiMessages 解析 */
+  apiImages?: AiChatImagePart[]
   /** API 原始 assistant content（可与 reasoning 分离） */
   assistantContent?: string
   /** DeepSeek 思考模式：下一轮须回传 */
@@ -455,6 +474,23 @@ export type AxeCoderFs = {
     text: string,
     filePaths: string[],
   ) => Promise<string>
+  saveChatPastedImage: (
+    sessionId: string,
+    base64: string,
+    mimeType: string,
+  ) => Promise<
+    | { ok: true; ref: ChatImageRef; dataUrl: string }
+    | { ok: false; error: string }
+  >
+  resolveChatImageRefs: (
+    refs: ChatImageRef[],
+  ) => Promise<
+    | { ok: true; images: AiChatImagePart[] }
+    | { ok: false; error: string }
+  >
+  getChatImagePreview: (
+    ref: ChatImageRef,
+  ) => Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }>
   aiChat: (modelId: string, messages: AiChatMessage[], streamId?: string) => Promise<AiChatResult>
   onAiStream: (callback: (payload: AiStreamPayload) => void) => () => void
   agentSend: (
@@ -666,6 +702,7 @@ export type AxeCoderFs = {
     text: string,
     modelId: string,
     displayText?: string,
+    imageRefs?: ChatImageRef[],
   ) => Promise<WorkshopRunResult>
   workshopSendUserAnswer: (
     projectRoot: string,

@@ -31,6 +31,7 @@ const extractSummary = (raw: string): string => {
 export const buildLlmRoleSpeaker = (
   modelId: string,
   workshopId: string,
+  getUserImages: () => import('../models-types').AiChatImagePart[] | undefined,
   onStreamDelta?: (streamId: string, delta: string) => void,
 ): RoleSpeaker => {
   return async (input) => {
@@ -63,12 +64,13 @@ export const buildLlmRoleSpeaker = (
         : undefined
     const taskKind = modelTaskKindForWorkshopRole(input.roleId, input.speakMode)
     const apiModelId = await resolveApiModelIdForTask(model, taskKind, user)
+    const images = getUserImages()
     const res = await chatWithProvider(
       model,
       apiKey,
       [
         { role: 'system', content: system },
-        { role: 'user', content: user },
+        { role: 'user', content: user, ...(images?.length ? { images } : {}) },
       ],
       onDelta,
       apiModelId,

@@ -13,6 +13,8 @@ import { buildAgentRoleSpeaker } from './workshop/workshop-agent-speaker'
 import { bindWorkshopProgressWindow, emitWorkshopProgress } from './workshop/workshop-progress-emit'
 import type { WorkshopSession } from './workshop/workshop-types'
 import { getModelById } from './models-store'
+import { resolveChatImageRefs, type ChatImageRef } from './chat-attachments'
+import type { AiChatImagePart } from './models-types'
 import {
   scriptedMemberSpeaker,
   scriptedRouterLlm,
@@ -44,6 +46,7 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
     modelId: string,
     useScripted?: boolean,
     displayText?: string,
+    imageRefs?: ChatImageRef[],
   ) => {
     let session: WorkshopSession | null = null
     if (workshopId?.trim()) {
@@ -55,10 +58,22 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
     } else if (modelId?.trim()) {
       session.modelId = modelId
     }
+    let userImages: AiChatImagePart[] | undefined
+    const refs = Array.isArray(imageRefs) ? imageRefs : []
+    if (refs.length) {
+      userImages = await resolveChatImageRefs(refs)
+      session.pendingUserImages = userImages
+    }
+
     const speaker =
       useScripted || process.env.AXECODER_WORKSHOP_SCRIPTED === '1'
         ? scriptedMemberSpeaker
-        : buildAgentRoleSpeaker(root, session.modelId, session.id)
+        : buildAgentRoleSpeaker(
+            root,
+            session.modelId,
+            session.id,
+            () => session!.pendingUserImages,
+          )
     const routerLlm =
       useScripted || process.env.AXECODER_WORKSHOP_SCRIPTED === '1'
         ? scriptedRouterLlm({})
@@ -67,9 +82,17 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
       const model = await getModelById(session.modelId)
       if (!model) return { ok: false as const, error: '模型不存在' }
     }
-    const res = await sendWorkshopMessage(session, text, speaker, routerLlm, (roleId, status) => {
-      emitWorkshopProgress({ workshopId: session!.id, roleId, status })
-    }, displayText)
+    const res = await sendWorkshopMessage(
+      session,
+      text,
+      speaker,
+      routerLlm,
+      (roleId, status) => {
+        emitWorkshopProgress({ workshopId: session!.id, roleId, status })
+      },
+      displayText,
+      userImages,
+    )
     if (!res.ok) return res
     const saved = await saveWorkshopSession(root, res.session)
     if (!saved.ok) return { ok: false as const, error: saved.error }
@@ -86,14 +109,17 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
       modelId: string,
       useScripted?: boolean,
       displayText?: string,
-    ) => runSend(
-      typeof projectRoot === 'string' ? projectRoot : '',
-      workshopId,
-      text,
-      modelId,
-      useScripted,
-      displayText,
-    ),
+      imageRefs?: ChatImageRef[],
+    ) =>
+      runSend(
+        typeof projectRoot === 'string' ? projectRoot : '',
+        workshopId,
+        text,
+        modelId,
+        useScripted,
+        displayText,
+        imageRefs,
+      ),
   )
 
   /** @deprecated 使用 workshop:sendMessage */

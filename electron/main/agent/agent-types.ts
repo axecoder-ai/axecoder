@@ -61,7 +61,11 @@ export type AgentToolDef = {
 
 export type AgentLoopMessage =
   | { role: 'system'; content: string }
-  | { role: 'user'; content: string }
+  | {
+      role: 'user'
+      content: string
+      images?: import('../models-types').AiChatImagePart[]
+    }
   | { role: 'assistant'; content: string; reasoningContent?: string; toolCalls?: AgentToolCall[] }
   | { role: 'tool'; toolCallId: string; name: AgentToolName; content: string }
 

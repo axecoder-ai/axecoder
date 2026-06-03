@@ -513,7 +513,12 @@ export const runAgentLoopUntilDoneOrPending = async (
 export const startAgentTurn = async (
   projectRoot: string,
   modelId: string,
-  history: { role: 'user' | 'assistant'; content: string; reasoningContent?: string }[],
+  history: {
+    role: 'user' | 'assistant'
+    content: string
+    reasoningContent?: string
+    images?: import('../models-types').AiChatImagePart[]
+  }[],
 ): Promise<AgentSendResult> => {
   if (!projectRoot.trim()) return { ok: false, error: '请先打开项目' }
   const model = await getModelById(modelId)
@@ -558,7 +563,11 @@ export const startAgentTurn = async (
   ]
   for (const m of history) {
     if (m.role === 'user') {
-      messages.push({ role: 'user', content: m.content ?? '' })
+      messages.push({
+        role: 'user',
+        content: m.content ?? '',
+        ...(m.images?.length ? { images: m.images } : {}),
+      })
     } else if (m.role === 'assistant') {
       messages.push({
         role: 'assistant',
@@ -826,6 +835,7 @@ const collectWorkshopTurnReasoning = (session: StoredAgentSession): string => {
 /** Workshop 单角色：与 Chat Agent 同源循环（Read/Write/Grep…），sessionId 建议 `workshop-{id}-{role}` */
 export type WorkshopAgentTurnOptions = {
   speakMode?: 'plan' | 'execute' | 'verify' | 'member' | 'manager_chat'
+  userImages?: import('../models-types').AiChatImagePart[]
 }
 
 export const runWorkshopRoleAgentTurn = async (
@@ -848,7 +858,6 @@ export const runWorkshopRoleAgentTurn = async (
   if (!modelSupportsAgentTools(model)) {
     return { ok: false, error: '当前模型不支持 Agent 工具，请使用 OpenAI 兼容模型' }
   }
-
   const cfg = await getConfig()
   const revealedToolNames = new Set<AgentToolName>()
   const activeTools = getSessionActiveTools(buildFullAgentTools(), revealedToolNames)
@@ -901,7 +910,11 @@ export const runWorkshopRoleAgentTurn = async (
         outputStyleId: cfg.agentOutputStyle,
       }),
     },
-    { role: 'user', content: `${roleLead}${prompt}` },
+    {
+      role: 'user',
+      content: `${roleLead}${prompt}`,
+      ...(options?.userImages?.length ? { images: options.userImages } : {}),
+    },
   ]
 
   const session: StoredAgentSession = {

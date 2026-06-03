@@ -10,6 +10,14 @@ export type ModelEntry = {
   fastApiModelId?: string
   baseUrl: string
   enabled: boolean
+  /** 支持接收用户消息中的图片（多模态） */
+  supportsVision?: boolean
+}
+
+export type AiChatImagePart = {
+  mimeType: string
+  /** base64，不含 data: 前缀 */
+  data: string
 }
 
 export type ModelsFile = {
@@ -71,6 +79,8 @@ export type AppConfig = {
 export type AiChatMessage = {
   role: 'user' | 'assistant' | 'system'
   content: string
+  /** 仅 user 消息：粘贴/附件图片 */
+  images?: AiChatImagePart[]
   /** DeepSeek 等思考模式：下一轮须原样回传 */
   reasoningContent?: string
 }

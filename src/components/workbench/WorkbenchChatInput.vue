@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import type { ModelEntry } from '../../types/axecoder'
 import ModelPickerDropdown from './ModelPickerDropdown.vue'
 import { isUnderProject, relativeToProject, type ChatFileRef } from '../../utils/chat-file-context'
+import type { AttachedImageView } from '../../composables/useChatAttachedImages'
 
 const props = defineProps<{
   projectRoot: string
@@ -12,6 +13,7 @@ const props = defineProps<{
   enabledModels: ModelEntry[]
   activeModelId: string
   attachedFiles: ChatFileRef[]
+  attachedImages?: AttachedImageView[]
 }>()
 
 const emit = defineEmits<{
@@ -20,6 +22,8 @@ const emit = defineEmits<{
   send: []
   'select-model': [id: string]
   'add-models': []
+  paste: [e: ClipboardEvent]
+  'remove-image': [id: string]
 }>()
 
 const inputEl = ref<HTMLTextAreaElement | null>(null)
@@ -33,7 +37,7 @@ const text = computed({
 const canSend = computed(
   () =>
     !!props.projectRoot.trim() &&
-    !!text.value.trim() &&
+    (!!text.value.trim() || (props.attachedImages?.length ?? 0) > 0) &&
     !props.loading &&
     (props.enabledModels.length > 0 || text.value.trim().startsWith('/')),
 )
@@ -107,7 +111,7 @@ defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
       @dragleave="onDragLeave"
       @drop="onDrop"
     >
-      <div v-if="attachedFiles.length" class="file-refs">
+      <div v-if="attachedFiles.length || (attachedImages?.length ?? 0)" class="file-refs">
         <span
           v-for="f in attachedFiles"
           :key="f.path"
@@ -116,6 +120,15 @@ defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
         >
           {{ f.name }}
           <button type="button" class="chip-remove" @click="removeAttached(f.path)">×</button>
+        </span>
+        <span
+          v-for="img in attachedImages"
+          :key="img.ref.id"
+          class="file-ref-chip image-chip"
+          title="粘贴的图片"
+        >
+          <img :src="img.previewUrl" alt="" class="image-chip-thumb" />
+          <button type="button" class="chip-remove" @click="emit('remove-image', img.ref.id)">×</button>
         </span>
       </div>
       <textarea
@@ -127,6 +140,7 @@ defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
         :disabled="loading"
         @input="resizeInput"
         @keydown.enter.exact.prevent="onSend"
+        @paste="emit('paste', $event)"
       />
       <div class="chat-input-footer">
         <div class="footer-left">
@@ -219,6 +233,17 @@ defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
 .chip-remove:hover {
   background: var(--wc-muted-surface-strong);
   color: var(--wc-text);
+}
+.image-chip {
+  padding: 2px 4px 2px 2px;
+  gap: 2px;
+}
+.image-chip-thumb {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
 }
 .chat-input {
   width: 100%;

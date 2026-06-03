@@ -1,4 +1,5 @@
 import type { AiChatMessage } from '../../models-types'
+import { userMessageToAnthropicContent } from '../ai-message-images'
 import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from '../request-timeout'
 
 export const buildAnthropicMessagesUrl = (baseUrl: string): string => {
@@ -7,10 +8,14 @@ export const buildAnthropicMessagesUrl = (baseUrl: string): string => {
 }
 
 const toAnthropicMessages = (messages: AiChatMessage[]) => {
-  const out: { role: 'user' | 'assistant'; content: string }[] = []
+  const out: { role: 'user' | 'assistant'; content: string | Record<string, unknown>[] }[] = []
   for (const m of messages) {
     if (m.role === 'system') continue
-    out.push({ role: m.role, content: m.content })
+    const content =
+      m.role === 'user' && m.images?.length
+        ? userMessageToAnthropicContent(m.content, m.images)
+        : m.content
+    out.push({ role: m.role, content })
   }
   return out
 }
