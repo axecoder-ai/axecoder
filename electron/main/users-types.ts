@@ -6,6 +6,8 @@ export type UserEntry = {
   role: string
   expertise: string
   avatarPath: string
+  /** 绑定的 Skill / 自定义命令 slug 列表 */
+  skillSlugs?: string[]
   isBuiltin?: boolean
   builtinRole?: BuiltinUserRole
 }
@@ -21,4 +23,12 @@ export type UserSaveInput = {
   role: string
   expertise: string
   avatarPath?: string
+  skillSlugs?: string[]
+}
+
+export type AvailableSkillItem = {
+  slug: string
+  label: string
+  kind: 'skill' | 'command'
+  source: string
 }

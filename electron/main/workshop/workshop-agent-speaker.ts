@@ -3,32 +3,34 @@ import { modelTaskKindForWorkshopRole, resolveModelIdForTask } from '../ai/model
 import { buildWorkshopStreamId } from './workshop-stream'
 import { formatMemberChatSummary, formatWorkshopRoleDisplay } from './workshop-display'
 import { buildRoleTaskPrompt, parseSubagentReport } from './workshop-subagent-speaker'
+import { enrichRoleSpeakInputWithSkills } from './workshop-user-skills'
 import type { RoleSpeaker } from './workshop-types'
 
 export const buildAgentRoleSpeaker = (projectRoot: string, modelId: string, workshopId: string): RoleSpeaker => {
   return async (input) => {
     const root = projectRoot.trim()
     if (!root) throw new Error('请先打开项目')
-    const name = input.assigneeUser?.displayName?.trim() || input.roleId
-    const taskPrompt = buildRoleTaskPrompt(input)
+    const enriched = await enrichRoleSpeakInputWithSkills(input, root)
+    const name = enriched.assigneeUser?.displayName?.trim() || enriched.roleId
+    const taskPrompt = buildRoleTaskPrompt(enriched)
     const streamKey =
-      (input.speakMode === 'member' || input.speakMode === 'execute') && input.assigneeUser
-        ? `u-${input.assigneeUser.id}`
-        : input.roleId
+      (enriched.speakMode === 'member' || enriched.speakMode === 'execute') && enriched.assigneeUser
+        ? `u-${enriched.assigneeUser.id}`
+        : enriched.roleId
     const sessionId = buildWorkshopStreamId(workshopId, streamKey)
     const roleModelId = await resolveModelIdForTask(
-      modelTaskKindForWorkshopRole(input.roleId, input.speakMode),
+      modelTaskKindForWorkshopRole(enriched.roleId, enriched.speakMode),
     )
     const res = await runWorkshopRoleAgentTurn(root, roleModelId, sessionId, taskPrompt, name, {
-      speakMode: input.speakMode,
+      speakMode: enriched.speakMode,
     })
     if (!res.ok) throw new Error(res.error)
-    const users = input.users ?? []
-    const clarify = parseSubagentReport(res.report, input.roleId, input.userBrief)
+    const users = enriched.users ?? []
+    const clarify = parseSubagentReport(res.report, enriched.roleId, enriched.userBrief)
     const display =
-      input.speakMode === 'member'
+      enriched.speakMode === 'member'
         ? formatMemberChatSummary(res.report, clarify.relatedFiles)
-        : formatWorkshopRoleDisplay(res.report, input.speakMode, users)
+        : formatWorkshopRoleDisplay(res.report, enriched.speakMode, users)
     if ('needsUser' in res && res.needsUser) {
       return {
         summary: display.summary,

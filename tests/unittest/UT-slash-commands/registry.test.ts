@@ -4,8 +4,6 @@ import { allSlashCommands, findCommand } from '../../../src/slash-commands/regis
 describe('findCommand', () => {
   it('registry 已注册内置命令', () => {
     const names = allSlashCommands().map((c) => c.name)
-    expect(names).toContain('help')
-    expect(names).toContain('clear')
     expect(names).toContain('compact')
     expect(names).toContain('hooks')
     expect(names).toContain('mcp')
@@ -13,10 +11,16 @@ describe('findCommand', () => {
     expect(names).toContain('skills')
     expect(names).toContain('style')
     expect(names).toContain('model')
+    expect(names).toContain('research-codebase')
+    expect(names).toContain('make-proposals')
+    expect(names).toContain('create-proposals')
+    expect(names).toContain('implement')
+    expect(names).toContain('code-review')
+    expect(names).toContain('design_doc_template')
   })
 
   it('未知命令返回 undefined', () => {
     expect(findCommand('unknown-cmd')).toBeUndefined()
-    expect(findCommand('help')?.name).toBe('help')
+    expect(findCommand('compact')?.name).toBe('compact')
   })
 })

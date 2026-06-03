@@ -138,6 +138,10 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('users:pickAvatar', userId) as Promise<
       import('../../src/types/axecoder').UsersPickAvatarResult
     >,
+  listAvailableSkills: (projectRoot?: string | null) =>
+    ipcRenderer.invoke('users:listAvailableSkills', cloneForIpc(projectRoot ?? '')) as Promise<
+      import('../../src/types/axecoder').UsersAvailableSkillsResult
+    >,
   listRules: (projectRoot?: string | null) =>
     ipcRenderer.invoke('rules:list', projectRoot) as Promise<
       import('../../src/types/axecoder').RulesMutationResult
@@ -247,6 +251,34 @@ contextBridge.exposeInMainWorld('axecoder', {
     >,
   agentLoadCustomCommand: (projectRoot: string, commandName: string) =>
     ipcRenderer.invoke('agent:loadCustomCommand', cloneForIpc(projectRoot), commandName) as Promise<
+      | { ok: true; name: string; text: string; path: string }
+      | { ok: false; error: string }
+    >,
+  agentListBuiltinCommands: () =>
+    ipcRenderer.invoke('agent:listBuiltinCommands') as Promise<
+      | {
+          ok: true
+          commands: { name: string; path: string; description: string; source: string }[]
+          dir: string
+        }
+      | { ok: false; error: string }
+    >,
+  agentLoadBuiltinCommand: (commandName: string) =>
+    ipcRenderer.invoke('agent:loadBuiltinCommand', commandName) as Promise<
+      | { ok: true; name: string; text: string; path: string }
+      | { ok: false; error: string }
+    >,
+  agentListBuiltinSkills: () =>
+    ipcRenderer.invoke('agent:listBuiltinSkills') as Promise<
+      | {
+          ok: true
+          skills: { name: string; path: string; description: string; source: string }[]
+          dir: string
+        }
+      | { ok: false; error: string }
+    >,
+  agentLoadBuiltinSkill: (skillName: string) =>
+    ipcRenderer.invoke('agent:loadBuiltinSkill', skillName) as Promise<
       | { ok: true; name: string; text: string; path: string }
       | { ok: false; error: string }
     >,

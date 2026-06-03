@@ -1,11 +1,12 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
+import { discoverBuiltinSkills } from './agent-builtin-skills'
 
 export type DiscoveredSkill = {
   name: string
   path: string
-  source: 'project' | 'user'
+  source: 'project' | 'user' | 'builtin'
 }
 
 const skillNameFromPath = (skillMd: string) => {
@@ -34,16 +35,24 @@ const walkSkills = async (root: string, source: DiscoveredSkill['source'], out: 
 }
 
 export const discoverSkills = async (projectRoot: string): Promise<DiscoveredSkill[]> => {
-  const out: DiscoveredSkill[] = []
-  await walkSkills(path.join(projectRoot, '.cursor', 'skills'), 'project', out)
-  await walkSkills(path.join(os.homedir(), '.cursor', 'skills'), 'user', out)
-  const seen = new Set<string>()
-  return out.filter((s) => {
-    const key = `${s.source}:${s.name}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+  const byName = new Map<string, DiscoveredSkill>()
+  for (const s of await discoverBuiltinSkills()) {
+    byName.set(s.name.toLowerCase(), s)
+  }
+  const userOut: DiscoveredSkill[] = []
+  await walkSkills(path.join(os.homedir(), '.cursor', 'skills'), 'user', userOut)
+  for (const s of userOut) {
+    byName.set(s.name.toLowerCase(), s)
+  }
+  const root = projectRoot.trim()
+  if (root) {
+    const projectOut: DiscoveredSkill[] = []
+    await walkSkills(path.join(root, '.cursor', 'skills'), 'project', projectOut)
+    for (const s of projectOut) {
+      byName.set(s.name.toLowerCase(), s)
+    }
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export const readSkillContent = async (skillPath: string) => {

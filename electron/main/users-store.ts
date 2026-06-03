@@ -62,6 +62,7 @@ export const saveUser = async (input: UserSaveInput): Promise<UsersFile> => {
   const data = await listUsers()
   const existing = data.users.find((u) => u.id === input.id)
   let entry: UserEntry
+  const skillSlugs = (input.skillSlugs ?? existing?.skillSlugs ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean)
   if (isBuiltinManager(existing)) {
     entry = {
       ...existing!,
@@ -69,6 +70,7 @@ export const saveUser = async (input: UserSaveInput): Promise<UsersFile> => {
       avatarPath: input.avatarPath !== undefined ? input.avatarPath : existing!.avatarPath,
       role: MANAGER_ROLE,
       expertise: MANAGER_EXPERTISE,
+      skillSlugs,
     }
   } else {
     entry = {
@@ -77,6 +79,7 @@ export const saveUser = async (input: UserSaveInput): Promise<UsersFile> => {
       role: input.role.trim(),
       expertise: input.expertise.trim(),
       avatarPath: input.avatarPath ?? existing?.avatarPath ?? '',
+      skillSlugs,
     }
   }
   const idx = data.users.findIndex((u) => u.id === entry.id)

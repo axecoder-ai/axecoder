@@ -65,6 +65,7 @@ const onSaved = async (payload: { entry: UserEntry }) => {
     role: payload.entry.role,
     expertise: payload.entry.expertise,
     avatarPath: payload.entry.avatarPath,
+    skillSlugs: payload.entry.skillSlugs,
   }
   const res = await window.axecoder.saveUser(input)
   if (!res.ok) {

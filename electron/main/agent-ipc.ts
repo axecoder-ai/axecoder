@@ -36,6 +36,8 @@ import {
   findCustomCommandByName,
   readCustomCommandContent,
 } from './agent/agent-custom-commands'
+import { listBuiltinCommands, loadBuiltinCommand } from './agent/agent-builtin-commands'
+import { listBuiltinSkills, loadBuiltinSkill } from './agent/agent-builtin-skills'
 import { discoverSkills, findSkillByName, readSkillContent } from './agent/agent-skills'
 import {
   getCachedCustomOutputStyles,
@@ -143,8 +145,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
   })
 
   ipcMain.handle('agent:listSkills', async (_, projectRoot: string) => {
-    if (!projectRoot) return { ok: false as const, error: '未打开项目' }
-    const skills = await discoverSkills(projectRoot)
+    const skills = await discoverSkills(projectRoot ?? '')
     return {
       ok: true as const,
       skills: skills.map((s) => ({ name: s.name, path: s.path, source: s.source })),
@@ -152,16 +153,35 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
   })
 
   ipcMain.handle('agent:loadSkill', async (_, projectRoot: string, skillName: string) => {
-    const skill = await findSkillByName(projectRoot, skillName)
+    const skill = await findSkillByName(projectRoot ?? '', skillName)
     if (!skill) return { ok: false as const, error: `未找到 Skill：${skillName}` }
     const content = await readSkillContent(skill.path)
     if (!content.ok) return { ok: false as const, error: content.error }
     return { ok: true as const, name: skill.name, text: content.text, path: skill.path }
   })
 
+  ipcMain.handle('agent:listBuiltinSkills', async () => {
+    const skills = await listBuiltinSkills()
+    return {
+      ok: true as const,
+      skills: skills.map((s) => ({
+        name: s.name,
+        path: s.path,
+        description: s.description,
+        source: 'builtin' as const,
+      })),
+      dir: 'resources/builtin-skills',
+    }
+  })
+
+  ipcMain.handle('agent:loadBuiltinSkill', async (_, skillName: string) => {
+    const content = await loadBuiltinSkill(skillName)
+    if (!content.ok) return { ok: false as const, error: content.error }
+    return { ok: true as const, name: content.name, text: content.text, path: content.path }
+  })
+
   ipcMain.handle('agent:listCustomCommands', async (_, projectRoot: string) => {
-    if (!projectRoot) return { ok: false as const, error: '未打开项目' }
-    const commands = await discoverCustomCommands(projectRoot)
+    const commands = await discoverCustomCommands(projectRoot ?? '')
     return {
       ok: true as const,
       commands: commands.map((c) => ({
@@ -175,12 +195,31 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
   })
 
   ipcMain.handle('agent:loadCustomCommand', async (_, projectRoot: string, commandName: string) => {
-    if (!projectRoot) return { ok: false as const, error: '未打开项目' }
-    const cmd = await findCustomCommandByName(projectRoot, commandName)
+    const cmd = await findCustomCommandByName(projectRoot ?? '', commandName)
     if (!cmd) return { ok: false as const, error: `未找到命令：${commandName}` }
     const content = await readCustomCommandContent(cmd.path)
     if (!content.ok) return { ok: false as const, error: content.error }
     return { ok: true as const, name: cmd.name, text: content.text, path: cmd.path }
+  })
+
+  ipcMain.handle('agent:listBuiltinCommands', async () => {
+    const commands = await listBuiltinCommands()
+    return {
+      ok: true as const,
+      commands: commands.map((c) => ({
+        name: c.name,
+        path: c.path,
+        description: c.description,
+        source: 'builtin' as const,
+      })),
+      dir: 'resources/builtin-commands',
+    }
+  })
+
+  ipcMain.handle('agent:loadBuiltinCommand', async (_, commandName: string) => {
+    const content = await loadBuiltinCommand(commandName)
+    if (!content.ok) return { ok: false as const, error: content.error }
+    return { ok: true as const, name: content.name, text: content.text, path: content.path }
   })
 
   ipcMain.handle('agent:listOutputStyles', async (_, projectRoot?: string) => {

@@ -12,7 +12,7 @@ export type DiscoveredCustomCommand = {
 const slugFromFile = (fileName: string) =>
   fileName.replace(/\.md$/i, '').replace(/\s+/g, '-').toLowerCase()
 
-const descriptionFromMarkdown = (raw: string, fallback: string) => {
+export const descriptionFromMarkdown = (raw: string, fallback: string) => {
   let body = raw.trim()
   if (body.startsWith('---')) {
     const end = body.indexOf('---', 3)

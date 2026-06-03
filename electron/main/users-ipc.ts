@@ -1,6 +1,8 @@
-import { dialog, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
+import { dialog } from 'electron'
 import type { UserSaveInput } from './users-types'
+import { listAvailableSkills } from './users-available-skills'
 import {
   listUsers,
   saveUser,
@@ -31,6 +33,14 @@ export const registerUsersIpc = (getMainWindow: () => BrowserWindow | null) => {
   ipcMain.handle('users:getAvatarDataUrl', async (_, avatarPath: string) => {
     try {
       return { ok: true as const, dataUrl: await getUserAvatarDataUrl(avatarPath) }
+    } catch (e) {
+      return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('users:listAvailableSkills', async (_, projectRoot: string) => {
+    try {
+      return { ok: true as const, data: await listAvailableSkills(projectRoot ?? '') }
     } catch (e) {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
     }

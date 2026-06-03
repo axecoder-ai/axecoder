@@ -1,43 +1,7 @@
 import type { SlashCommandDef } from './types'
-import { allCommands as allRegistered } from './registry-core'
+import { registerWorkflowBuiltinCommands } from './workflow-builtin'
 
 export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
-  {
-    name: 'help',
-    aliases: ['h'],
-    description: '列出已注册斜杠命令',
-    run: async () => {
-      const cmds = allRegistered()
-      const lines = cmds.map((c) => {
-        const alias = c.aliases?.length ? ` (${c.aliases.map((a) => `/${a}`).join(', ')})` : ''
-        return `/${c.name}${alias} — ${c.description}`
-      })
-      return { ok: true, message: `可用命令：\n\n${lines.join('\n')}` }
-    },
-  },
-  {
-    name: 'clear',
-    aliases: ['reset'],
-    description: '清空当前会话消息',
-    run: async (ctx) => {
-      const s = ctx.getSession()
-      if (!s) return { ok: false, message: '无活动会话' }
-      s.messages = []
-      s.title = 'New Agent'
-      s.updatedAt = Date.now()
-      ctx.setSession(s)
-      await ctx.persist()
-      return { ok: true, message: '已清空当前会话。', silent: true }
-    },
-  },
-  {
-    name: 'new',
-    description: '新建对话',
-    run: async (ctx) => {
-      await ctx.newChat()
-      return { ok: true, message: '已新建对话。', silent: true }
-    },
-  },
   {
     name: 'model',
     description: '打开模型设置或切换 activeModelId',
@@ -278,4 +242,5 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
       return { ok: true, message: `已切换输出风格：${setRes.activeId}` }
     },
   },
+  ...registerWorkflowBuiltinCommands(),
 ]

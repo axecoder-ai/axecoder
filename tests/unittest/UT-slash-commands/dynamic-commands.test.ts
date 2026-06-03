@@ -3,7 +3,7 @@ import { buildCustomSlashCommands } from '../../../src/slash-commands/dynamic-co
 
 describe('buildCustomSlashCommands', () => {
   it('执行后返回 sendPrompt', async () => {
-    const reserved = new Set<string>(['help'])
+    const reserved = new Set<string>(['model'])
     const cmds = buildCustomSlashCommands(
       [{ name: 'create-proposals', path: '/x.md', description: '确认方案', source: 'user' }],
       async (_name, args) => ({

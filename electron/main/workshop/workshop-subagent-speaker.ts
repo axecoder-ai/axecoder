@@ -2,6 +2,7 @@ import { runSubAgentTask } from '../agent/agent-subagent'
 import { modelTaskKindForWorkshopRole, resolveModelIdForTask } from '../ai/model-resolve'
 import { buildSubAgentToolList } from '../agent/agent-tool-registry'
 import { buildWorkshopStreamId } from './workshop-stream'
+import { enrichRoleSpeakInputWithSkills } from './workshop-user-skills'
 import type { RoleSpeaker, RoleSpeakInput, RoleSpeakOutput } from './workshop-types'
 
 const PATH_IN_TEXT =
@@ -27,6 +28,7 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
       `【Collab Workshop · ${name}（${input.assigneeUser.role}）· 群聊发言】`,
       '必须使用 Read、Grep、Glob 等工具查看真实代码后再交付。',
       '完成后最终回复只允许：第一行「已完成。」；第二段列出修改/涉及的文件路径（每行一个 - 路径）。禁止输出思考过程、代码探索过程、代码块、长篇分析、英文。',
+      input.skillPromptBlock ?? '',
       '',
       `【用户需求】\n${input.userBrief}`,
       input.priorSummary ? `【此前讨论】\n${input.priorSummary}` : '',
@@ -75,6 +77,7 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
       `【本步任务】${input.step?.title ?? ''}`,
       '必须使用 Read、Grep、Glob 等工具查看真实代码后再交付。',
       '完成后最终回复只允许：第一行「已完成。」；第二段列出修改/涉及的文件路径（每行一个 - 路径）。禁止输出思考过程、代码探索过程、代码块、长篇分析、英文。',
+      input.skillPromptBlock ?? '',
       '',
       `【用户需求】\n${input.userBrief}`,
       input.priorSummary ? `【此前讨论】\n${input.priorSummary}` : '',
@@ -143,16 +146,17 @@ export const buildSubagentRoleSpeaker = (
   return async (input) => {
     const root = projectRoot.trim()
     if (!root) throw new Error('请先打开项目')
-    const subagentType = subagentTypeForRole(input.roleId)
+    const enriched = await enrichRoleSpeakInputWithSkills(input, root)
+    const subagentType = subagentTypeForRole(enriched.roleId)
     const tools = buildSubAgentToolList(subagentType)
-    const taskPrompt = buildRoleTaskPrompt(input)
+    const taskPrompt = buildRoleTaskPrompt(enriched)
     const streamKey =
-      input.speakMode === 'execute' && input.assigneeUser
-        ? `u-${input.assigneeUser.id}`
-        : input.roleId
+      enriched.speakMode === 'execute' && enriched.assigneeUser
+        ? `u-${enriched.assigneeUser.id}`
+        : enriched.roleId
     const streamId = buildWorkshopStreamId(workshopId, streamKey)
     const roleModelId = await resolveModelIdForTask(
-      modelTaskKindForWorkshopRole(input.roleId, input.speakMode),
+      modelTaskKindForWorkshopRole(enriched.roleId, enriched.speakMode),
     )
     const res = await runSubAgentTask(root, roleModelId, taskPrompt, {
       subagentType,
@@ -167,6 +171,6 @@ export const buildSubagentRoleSpeaker = (
         : undefined,
     })
     if (!res.ok) throw new Error(res.error)
-    return parseSubagentReport(res.report, input.roleId, input.userBrief)
+    return parseSubagentReport(res.report, enriched.roleId, enriched.userBrief)
   }
 }

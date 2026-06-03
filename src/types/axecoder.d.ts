@@ -83,8 +83,16 @@ export type UserEntry = {
   role: string
   expertise: string
   avatarPath: string
+  skillSlugs?: string[]
   isBuiltin?: boolean
   builtinRole?: 'manager'
+}
+
+export type AvailableSkillItem = {
+  slug: string
+  label: string
+  kind: 'skill' | 'command'
+  source: string
 }
 
 export type UsersFile = {
@@ -98,7 +106,12 @@ export type UserSaveInput = {
   role: string
   expertise: string
   avatarPath?: string
+  skillSlugs?: string[]
 }
+
+export type UsersAvailableSkillsResult =
+  | { ok: true; data: AvailableSkillItem[] }
+  | { ok: false; error: string }
 
 export type UsersMutationResult =
   | { ok: true; data: UsersFile }
@@ -430,6 +443,7 @@ export type AxeCoderFs = {
   deleteUser: (id: string) => Promise<UsersMutationResult>
   getUserAvatarDataUrl: (avatarPath: string) => Promise<UsersAvatarDataUrlResult>
   pickUserAvatar: (userId: string) => Promise<UsersPickAvatarResult>
+  listAvailableSkills: (projectRoot?: string | null) => Promise<UsersAvailableSkillsResult>
   listRules: (projectRoot?: string | null) => Promise<RulesMutationResult>
   readRule: (scope: RuleScope, fileName: string, projectRoot?: string) => Promise<RulesReadResult>
   saveRule: (input: RuleSaveInput) => Promise<RulesMutationResult>
@@ -484,6 +498,34 @@ export type AxeCoderFs = {
   agentLoadCustomCommand: (
     projectRoot: string,
     commandName: string,
+  ) => Promise<
+    | { ok: true; name: string; text: string; path: string }
+    | { ok: false; error: string }
+  >
+  agentListBuiltinCommands: () => Promise<
+    | {
+        ok: true
+        commands: { name: string; path: string; description: string; source: string }[]
+        dir: string
+      }
+    | { ok: false; error: string }
+  >
+  agentLoadBuiltinCommand: (
+    commandName: string,
+  ) => Promise<
+    | { ok: true; name: string; text: string; path: string }
+    | { ok: false; error: string }
+  >
+  agentListBuiltinSkills: () => Promise<
+    | {
+        ok: true
+        skills: { name: string; path: string; description: string; source: string }[]
+        dir: string
+      }
+    | { ok: false; error: string }
+  >
+  agentLoadBuiltinSkill: (
+    skillName: string,
   ) => Promise<
     | { ok: true; name: string; text: string; path: string }
     | { ok: false; error: string }

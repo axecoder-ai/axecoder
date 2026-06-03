@@ -13,17 +13,18 @@ const reservedNames = (builtins: ReturnType<typeof registerBuiltinSlashCommands>
 }
 
 export const refreshSlashCommandRegistry = async (projectRoot: string) => {
+  const root = projectRoot ?? ''
   const builtins = registerBuiltinSlashCommands()
   const reserved = reservedNames(builtins)
   let skillDynamic = [] as ReturnType<typeof buildSkillSlashCommands>
   let customDynamic = [] as ReturnType<typeof buildCustomSlashCommands>
 
-  const skillRes = await window.axecoder.agentListSkills(projectRoot)
+  const skillRes = await window.axecoder.agentListSkills(root)
   if (skillRes.ok && skillRes.skills.length) {
     skillDynamic = buildSkillSlashCommands(
       skillRes.skills,
       async (skillName) => {
-        const loaded = await window.axecoder.agentLoadSkill(projectRoot, skillName)
+        const loaded = await window.axecoder.agentLoadSkill(root, skillName)
         if (!loaded.ok) return { ok: false, message: loaded.error ?? '加载失败' }
         return {
           ok: true,
@@ -36,12 +37,12 @@ export const refreshSlashCommandRegistry = async (projectRoot: string) => {
     )
   }
 
-  const customRes = await window.axecoder.agentListCustomCommands(projectRoot)
+  const customRes = await window.axecoder.agentListCustomCommands(root)
   if (customRes.ok && customRes.commands.length) {
     customDynamic = buildCustomSlashCommands(
       customRes.commands,
       async (commandName, args) => {
-        const loaded = await window.axecoder.agentLoadCustomCommand(projectRoot, commandName)
+        const loaded = await window.axecoder.agentLoadCustomCommand(root, commandName)
         if (!loaded.ok) return { ok: false, message: loaded.error ?? '加载失败' }
         const userPart = args.trim()
         const sendPrompt = userPart

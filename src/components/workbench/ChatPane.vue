@@ -578,6 +578,21 @@ const sendFilePaths = computed(() => {
   return paths
 })
 
+type SlashDisplayParts = { invoke: string; body: string }
+
+const slashMessageParts = (msg: ChatMessage): SlashDisplayParts | null => {
+  if (!msg.slashOnly && !msg.slashInvoke) return null
+  const raw = (msg.slashInvoke || msg.text || '').trim()
+  const sp = raw.indexOf(' ')
+  if (sp < 0) return { invoke: raw, body: '' }
+  return { invoke: raw.slice(0, sp), body: raw.slice(sp + 1) }
+}
+
+const userBubbleSlashMinimal = (msg: ChatMessage) => {
+  const parts = slashMessageParts(msg)
+  return !!(msg.slashOnly && parts && !parts.body)
+}
+
 const toApiMessages = (msgs: ChatMessage[]): AiChatMessage[] => {
   const api: AiChatMessage[] = []
   for (const m of msgs) {
@@ -1299,13 +1314,13 @@ onMounted(() => {
   void loadModels()
   void load()
   void loadWsMetas()
-  if (props.projectRoot) void refreshSlashCommandRegistry(props.projectRoot)
+  void refreshSlashCommandRegistry(props.projectRoot ?? '')
 })
 
 watch(
   () => props.projectRoot,
   (root) => {
-    if (root) void refreshSlashCommandRegistry(root)
+    void refreshSlashCommandRegistry(root ?? '')
   },
 )
 
@@ -1459,18 +1474,19 @@ defineExpose({
             <div class="user-message-meta">
               <span class="user-message-nickname">{{ profileNickname }}</span>
             </div>
-            <div class="user-bubble" :class="{ 'user-bubble--slash': msg.slashOnly }">
+            <div class="user-bubble" :class="{ 'user-bubble--slash': userBubbleSlashMinimal(msg) }">
               <div v-if="msg.filePaths?.length" class="msg-file-tags">
                 <span v-for="fp in msg.filePaths" :key="fp" class="msg-file-tag" :title="fp">
                   {{ relativeToProject(projectRoot, fp) }}
                 </span>
               </div>
-              <div v-if="msg.slashOnly || msg.slashInvoke" class="slash-cmd">
-                <div class="slash-cmd-bar">
-                  <span class="slash-cmd-badge">命令</span>
-                  <span class="slash-cmd-line">{{ msg.text || msg.slashInvoke }}</span>
+              <template v-if="slashMessageParts(msg)">
+                <div v-if="slashMessageParts(msg)!.body" class="slash-cmd-flow">
+                  <span class="slash-cmd-tag">{{ slashMessageParts(msg)!.invoke }}</span
+                  ><span class="slash-cmd-body">{{ slashMessageParts(msg)!.body }}</span>
                 </div>
-              </div>
+                <span v-else class="slash-cmd-tag">{{ slashMessageParts(msg)!.invoke }}</span>
+              </template>
               <template v-else-if="msg.text">{{ msg.text }}</template>
             </div>
           </div>
@@ -1479,18 +1495,23 @@ defineExpose({
             <span v-else>{{ profileNickname.slice(0, 1) }}</span>
           </div>
         </div>
-        <div v-else-if="msg.role === 'user'" class="user-bubble" :class="{ 'user-bubble--slash': msg.slashOnly }">
+        <div
+          v-else-if="msg.role === 'user'"
+          class="user-bubble"
+          :class="{ 'user-bubble--slash': userBubbleSlashMinimal(msg) }"
+        >
           <div v-if="msg.filePaths?.length" class="msg-file-tags">
             <span v-for="fp in msg.filePaths" :key="fp" class="msg-file-tag" :title="fp">
               {{ relativeToProject(projectRoot, fp) }}
             </span>
           </div>
-          <div v-if="msg.slashOnly || msg.slashInvoke" class="slash-cmd">
-            <div class="slash-cmd-bar">
-              <span class="slash-cmd-badge">命令</span>
-              <span class="slash-cmd-line">{{ msg.text || msg.slashInvoke }}</span>
+          <template v-if="slashMessageParts(msg)">
+            <div v-if="slashMessageParts(msg)!.body" class="slash-cmd-flow">
+              <span class="slash-cmd-tag">{{ slashMessageParts(msg)!.invoke }}</span
+              ><span class="slash-cmd-body">{{ slashMessageParts(msg)!.body }}</span>
             </div>
-          </div>
+            <span v-else class="slash-cmd-tag">{{ slashMessageParts(msg)!.invoke }}</span>
+          </template>
           <template v-else-if="msg.text">{{ msg.text }}</template>
         </div>
         <template v-else>
@@ -2066,43 +2087,33 @@ defineExpose({
   background: transparent;
 }
 
-.slash-cmd {
-  border: 1px solid color-mix(in srgb, var(--wc-accent) 45%, var(--wc-border));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--wc-input-bg) 92%, var(--wc-accent) 8%);
-  overflow: hidden;
-  min-width: 120px;
+.slash-cmd-flow {
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.slash-cmd-body {
+  white-space: pre-wrap;
+}
+
+.slash-cmd-flow .slash-cmd-tag {
+  margin-right: 0.35em;
+}
+
+.slash-cmd-tag {
+  display: inline-block;
+  vertical-align: baseline;
   max-width: 100%;
-}
-
-.slash-cmd-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  font-size: 12px;
-  text-align: left;
-}
-
-.slash-cmd-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
+  padding: 1px 8px;
+  box-sizing: border-box;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--wc-accent) 25%, var(--wc-input-bg));
-  color: var(--wc-accent);
-  letter-spacing: 0.02em;
-}
-
-.slash-cmd-line {
-  flex: 1;
-  min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #c9922e;
+  background: color-mix(in srgb, #d4a84a 10%, var(--wc-input-bg));
+  border: 0.5px solid rgba(212, 168, 74, 0.45);
   white-space: nowrap;
 }
 
