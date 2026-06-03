@@ -160,7 +160,7 @@ const pushOptimisticUser = (text: string): string => {
     pendingQuestion: undefined,
     updatedAt: now,
   }
-  return active.value.id
+  return active.value!.id
 }
 
 const rollbackOptimisticUser = () => {

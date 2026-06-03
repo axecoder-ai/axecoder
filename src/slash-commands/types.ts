@@ -29,5 +29,7 @@ export type SlashRunResult =
       /** Skill 动态命令：注入会话的正文 */
       skillText?: string
       skillName?: string
+      /** 自定义命令：展开后作为用户消息发给模型 */
+      sendPrompt?: string
     }
   | { ok: false; message: string }

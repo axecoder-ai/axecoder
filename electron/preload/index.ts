@@ -236,6 +236,20 @@ contextBridge.exposeInMainWorld('axecoder', {
       | { ok: true; name: string; text: string; path: string }
       | { ok: false; error: string }
     >,
+  agentListCustomCommands: (projectRoot: string) =>
+    ipcRenderer.invoke('agent:listCustomCommands', cloneForIpc(projectRoot)) as Promise<
+      | {
+          ok: true
+          commands: { name: string; path: string; description: string; source: string }[]
+          dirs: string[]
+        }
+      | { ok: false; error: string }
+    >,
+  agentLoadCustomCommand: (projectRoot: string, commandName: string) =>
+    ipcRenderer.invoke('agent:loadCustomCommand', cloneForIpc(projectRoot), commandName) as Promise<
+      | { ok: true; name: string; text: string; path: string }
+      | { ok: false; error: string }
+    >,
   agentListOutputStyles: (projectRoot?: string) =>
     ipcRenderer.invoke('agent:listOutputStyles', projectRoot ? cloneForIpc(projectRoot) : undefined) as Promise<
       | {

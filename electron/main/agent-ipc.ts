@@ -31,6 +31,11 @@ import type { AgentLoopMessage } from './agent/agent-types'
 import { compactChatHistory } from './chat-compact'
 import { bindAgentProgressWindow } from './agent/agent-progress-emit'
 import { listMcpResources } from './agent/agent-mcp'
+import {
+  discoverCustomCommands,
+  findCustomCommandByName,
+  readCustomCommandContent,
+} from './agent/agent-custom-commands'
 import { discoverSkills, findSkillByName, readSkillContent } from './agent/agent-skills'
 import {
   getCachedCustomOutputStyles,
@@ -53,11 +58,11 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
       modelId: string,
       messages: AiChatMessage[],
     ) => {
-      const history = messages
+      const history = (Array.isArray(messages) ? messages : [])
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({
           role: m.role as 'user' | 'assistant',
-          content: m.content,
+          content: typeof m.content === 'string' ? m.content : '',
           ...(m.role === 'assistant' && m.reasoningContent
             ? { reasoningContent: m.reasoningContent }
             : {}),
@@ -152,6 +157,30 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
     const content = await readSkillContent(skill.path)
     if (!content.ok) return { ok: false as const, error: content.error }
     return { ok: true as const, name: skill.name, text: content.text, path: skill.path }
+  })
+
+  ipcMain.handle('agent:listCustomCommands', async (_, projectRoot: string) => {
+    if (!projectRoot) return { ok: false as const, error: '未打开项目' }
+    const commands = await discoverCustomCommands(projectRoot)
+    return {
+      ok: true as const,
+      commands: commands.map((c) => ({
+        name: c.name,
+        path: c.path,
+        description: c.description,
+        source: c.source,
+      })),
+      dirs: ['~/.axecoder/commands', '<project>/.axecoder/commands'],
+    }
+  })
+
+  ipcMain.handle('agent:loadCustomCommand', async (_, projectRoot: string, commandName: string) => {
+    if (!projectRoot) return { ok: false as const, error: '未打开项目' }
+    const cmd = await findCustomCommandByName(projectRoot, commandName)
+    if (!cmd) return { ok: false as const, error: `未找到命令：${commandName}` }
+    const content = await readCustomCommandContent(cmd.path)
+    if (!content.ok) return { ok: false as const, error: content.error }
+    return { ok: true as const, name: cmd.name, text: content.text, path: cmd.path }
   })
 
   ipcMain.handle('agent:listOutputStyles', async (_, projectRoot?: string) => {

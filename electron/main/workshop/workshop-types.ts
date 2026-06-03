@@ -9,7 +9,7 @@ export type WorkshopStep = {
   status: WorkshopStepStatus
 }
 
-export type WorkshopPhase = 'idle' | 'running' | 'waiting_user' | 'done'
+export type WorkshopPhase = 'idle' | 'planning' | 'running' | 'waiting_user' | 'done'
 
 export type WorkshopMessageKind = 'chat' | 'reasoning'
 

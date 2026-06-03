@@ -14,6 +14,7 @@ import type {
   WorkshopSessionMeta,
 } from '../../types/axecoder'
 import ModelPickerDropdown from './ModelPickerDropdown.vue'
+import SlashCommandPicker from './SlashCommandPicker.vue'
 import ChatDiffCard from './ChatDiffCard.vue'
 import ChatAskUserCard from './ChatAskUserCard.vue'
 import ChatBashCard from './ChatBashCard.vue'
@@ -25,7 +26,7 @@ import {
   type AgentProgressStep,
 } from '../../utils/agent-progress'
 import { runSlashCommand } from '../../slash-commands/run'
-import { refreshSlashCommandRegistry } from '../../slash-commands/registry'
+import { refreshSlashCommandRegistry, findCommand } from '../../slash-commands/registry'
 import type { SlashContext } from '../../slash-commands/types'
 import { playAgentCompletionSound } from '../../utils/play-completion-sound'
 import SwitchToggle from './SwitchToggle.vue'
@@ -225,6 +226,8 @@ watch(
 
 const input = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
+const inputBoxEl = ref<HTMLElement | null>(null)
+const slashPickerRef = ref<InstanceType<typeof SlashCommandPicker> | null>(null)
 const messagesEl = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const modelsFile = ref<ModelsFile>({ schemaVersion: 1, activeModelId: '', models: [] })
@@ -315,6 +318,8 @@ const persist = async (opts?: { skipTitleSuggest?: boolean }) => {
       text: m.text,
       ...(m.filePaths?.length ? { filePaths: [...m.filePaths] } : {}),
       ...(m.apiContent ? { apiContent: m.apiContent } : {}),
+      ...(m.slashInvoke ? { slashInvoke: m.slashInvoke } : {}),
+      ...(m.slashOnly ? { slashOnly: true } : {}),
       ...(m.assistantContent !== undefined ? { assistantContent: m.assistantContent } : {}),
       ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
     })),
@@ -341,6 +346,38 @@ const resizeInput = () => {
   if (!el) return
   el.style.height = 'auto'
   el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+}
+
+const inputSlash = computed(() => {
+  const t = input.value
+  if (!t.startsWith('/')) return null
+  const sp = t.indexOf(' ', 1)
+  if (sp < 0) return null
+  const cmdPart = t.slice(1, sp)
+  if (!cmdPart) return null
+  const cmd = findCommand(cmdPart)
+  if (!cmd) return null
+  return { name: cmd.name, args: t.slice(sp + 1) }
+})
+
+const inputFieldValue = computed(() => (inputSlash.value ? inputSlash.value.args : input.value))
+
+const onInputField = (e: Event) => {
+  const val = (e.target as HTMLTextAreaElement).value
+  if (inputSlash.value) {
+    input.value = `/${inputSlash.value.name} ${val}`
+  } else {
+    input.value = val
+  }
+  resizeInput()
+}
+
+const clearInputSlash = () => {
+  input.value = ''
+  void nextTick(() => {
+    resizeInput()
+    inputEl.value?.focus()
+  })
 }
 
 const scrollMessages = async () => {
@@ -545,11 +582,16 @@ const toApiMessages = (msgs: ChatMessage[]): AiChatMessage[] => {
   const api: AiChatMessage[] = []
   for (const m of msgs) {
     if (m.role === 'user') {
-      api.push({ role: 'user', content: m.apiContent ?? m.text })
+      const content = (m.apiContent ?? m.text ?? '').trim()
+      if (m.slashOnly && !m.apiContent) continue
+      if (!content) continue
+      api.push({ role: 'user', content })
     } else {
+      const content = (m.assistantContent ?? m.text ?? '').trim()
+      if (!content) continue
       api.push({
         role: 'assistant',
-        content: m.assistantContent ?? m.text,
+        content,
         ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
       })
     }
@@ -1016,6 +1058,52 @@ const send = async () => {
       activeSession.value.updatedAt = Date.now()
       await persist()
     }
+    if (slashResult.sendPrompt) {
+      const prompt = slashResult.sendPrompt
+      const modelId = modelsFile.value.activeModelId
+      const model = activeModel.value
+      if (!modelId || !model) {
+        activeSession.value.messages.push({
+          role: 'assistant',
+          text: '请先在设置中添加并启用模型，再执行自定义命令。',
+        })
+        activeSession.value.updatedAt = Date.now()
+        await persist()
+        return
+      }
+      activeSession.value.messages.push({
+        role: 'user',
+        text,
+        slashOnly: true,
+        apiContent: prompt,
+      })
+      if (activeSession.value.title === 'New Agent' || activeSession.value.title === '新对话') {
+        activeSession.value.title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
+      }
+      activeSession.value.updatedAt = Date.now()
+      loading.value = true
+      if (agentMode.value) bindAgentProgress()
+      else startIdleHintTimer()
+      try {
+        await persist()
+        const apiMessages = toApiMessages(activeSession.value.messages)
+        if (agentMode.value) {
+          const res = await window.axecoder.agentSend(props.projectRoot, modelId, apiMessages)
+          pushAssistantFromAgent(res)
+        } else {
+          await runPlainChat(model, modelId, apiMessages)
+        }
+        activeSession.value.updatedAt = Date.now()
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : '请求异常'
+        activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${msg}` })
+        activeSession.value.updatedAt = Date.now()
+      } finally {
+        loading.value = false
+        clearProgressUi()
+        await persist()
+      }
+    }
     return
   }
 
@@ -1150,6 +1238,54 @@ const regenerateLastReply = async () => {
 watch(input, () => {
   void nextTick(() => resizeInput())
 })
+
+const onSlashPick = (name: string) => {
+  input.value = `/${name} `
+  void nextTick(() => {
+    resizeInput()
+    inputEl.value?.focus()
+  })
+}
+
+const onInputKeydown = (e: KeyboardEvent) => {
+  if (inputSlash.value && e.key === 'Backspace') {
+    const el = inputEl.value
+    if (
+      el &&
+      el.selectionStart === 0 &&
+      el.selectionEnd === 0 &&
+      !inputSlash.value.args
+    ) {
+      e.preventDefault()
+      input.value = `/${inputSlash.value.name}`
+      return
+    }
+  }
+  const picker = slashPickerRef.value
+  if (!picker?.isOpen) return
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    picker.moveActive(1)
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    picker.moveActive(-1)
+  } else if (e.key === 'Tab') {
+    e.preventDefault()
+    picker.pickActive()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    input.value = ''
+  }
+}
+
+const onInputEnter = () => {
+  const picker = slashPickerRef.value
+  if (picker?.isOpen) {
+    picker.pickActive()
+    return
+  }
+  void send()
+}
 
 watch(
   () => props.projectRoot,
@@ -1323,13 +1459,19 @@ defineExpose({
             <div class="user-message-meta">
               <span class="user-message-nickname">{{ profileNickname }}</span>
             </div>
-            <div class="user-bubble">
+            <div class="user-bubble" :class="{ 'user-bubble--slash': msg.slashOnly }">
               <div v-if="msg.filePaths?.length" class="msg-file-tags">
                 <span v-for="fp in msg.filePaths" :key="fp" class="msg-file-tag" :title="fp">
                   {{ relativeToProject(projectRoot, fp) }}
                 </span>
               </div>
-              {{ msg.text }}
+              <div v-if="msg.slashOnly || msg.slashInvoke" class="slash-cmd">
+                <div class="slash-cmd-bar">
+                  <span class="slash-cmd-badge">命令</span>
+                  <span class="slash-cmd-line">{{ msg.text || msg.slashInvoke }}</span>
+                </div>
+              </div>
+              <template v-else-if="msg.text">{{ msg.text }}</template>
             </div>
           </div>
           <div class="user-message-avatar" :title="profileNickname">
@@ -1337,13 +1479,19 @@ defineExpose({
             <span v-else>{{ profileNickname.slice(0, 1) }}</span>
           </div>
         </div>
-        <div v-else-if="msg.role === 'user'" class="user-bubble">
+        <div v-else-if="msg.role === 'user'" class="user-bubble" :class="{ 'user-bubble--slash': msg.slashOnly }">
           <div v-if="msg.filePaths?.length" class="msg-file-tags">
             <span v-for="fp in msg.filePaths" :key="fp" class="msg-file-tag" :title="fp">
               {{ relativeToProject(projectRoot, fp) }}
             </span>
           </div>
-          {{ msg.text }}
+          <div v-if="msg.slashOnly || msg.slashInvoke" class="slash-cmd">
+            <div class="slash-cmd-bar">
+              <span class="slash-cmd-badge">命令</span>
+              <span class="slash-cmd-line">{{ msg.text || msg.slashInvoke }}</span>
+            </div>
+          </div>
+          <template v-else-if="msg.text">{{ msg.text }}</template>
         </div>
         <template v-else>
           <div
@@ -1461,7 +1609,14 @@ defineExpose({
       </div>
     </div>
     <div v-if="activeSession" class="chat-input-area">
+      <SlashCommandPicker
+        ref="slashPickerRef"
+        :input-text="input"
+        :anchor-el="inputBoxEl"
+        @select="onSlashPick"
+      />
       <div
+        ref="inputBoxEl"
         class="input-box"
         :class="{ 'drop-active': dropActive }"
         @dragover="onChatDragOver"
@@ -1493,15 +1648,22 @@ defineExpose({
             </button>
           </span>
         </div>
-        <textarea
-          ref="inputEl"
-          v-model="input"
-          class="chat-input"
-          rows="1"
-          placeholder="Plan, Build, / for commands, @ for context"
-          @input="resizeInput"
-          @keydown.enter.exact.prevent="send"
-        />
+        <div class="chat-input-wrap" :class="{ 'has-slash': !!inputSlash }">
+          <span v-if="inputSlash" class="input-slash-pill" title="斜杠命令">
+            /{{ inputSlash.name }}
+            <button type="button" class="input-slash-remove" @click="clearInputSlash">×</button>
+          </span>
+          <textarea
+            ref="inputEl"
+            :value="inputFieldValue"
+            class="chat-input"
+            rows="1"
+            :placeholder="inputSlash ? '补充说明…' : 'Plan, Build, / for commands, @ for context'"
+            @input="onInputField"
+            @keydown="onInputKeydown"
+            @keydown.enter.exact.prevent="onInputEnter"
+          />
+        </div>
         <div class="chat-input-footer">
           <div class="footer-left">
             <span class="agent-pill" title="Agent">
@@ -1899,6 +2061,51 @@ defineExpose({
   line-height: 1.5;
 }
 
+.user-bubble--slash {
+  padding: 0;
+  background: transparent;
+}
+
+.slash-cmd {
+  border: 1px solid color-mix(in srgb, var(--wc-accent) 45%, var(--wc-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--wc-input-bg) 92%, var(--wc-accent) 8%);
+  overflow: hidden;
+  min-width: 120px;
+  max-width: 100%;
+}
+
+.slash-cmd-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.slash-cmd-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--wc-accent) 25%, var(--wc-input-bg));
+  color: var(--wc-accent);
+  letter-spacing: 0.02em;
+}
+
+.slash-cmd-line {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .assistant-text {
   font-size: 13px;
   line-height: 1.6;
@@ -2089,6 +2296,58 @@ defineExpose({
   color: var(--wc-text-muted);
 }
 
+.chat-input-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 14px 4px;
+  min-height: 44px;
+}
+
+.chat-input-wrap.has-slash {
+  padding-top: 9px;
+}
+
+.input-slash-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wc-text);
+  background: color-mix(in srgb, var(--wc-input-bg) 82%, var(--wc-accent) 18%);
+  border: 1px solid color-mix(in srgb, var(--wc-accent) 40%, var(--wc-border));
+  line-height: 1.4;
+}
+
+.input-slash-remove {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--wc-text-muted);
+}
+
+.input-slash-remove:hover {
+  background: color-mix(in srgb, var(--wc-accent) 20%, var(--wc-muted-surface));
+  color: var(--wc-text);
+}
+
+.chat-input-wrap .chat-input {
+  flex: 1;
+  min-width: 60px;
+  padding: 0;
+  min-height: 22px;
+}
+
 .chat-input {
   width: 100%;
   min-height: 44px;
@@ -2105,7 +2364,7 @@ defineExpose({
   color: var(--wc-text-muted);
 }
 
-.chat-pane.chat-empty .chat-input {
+.chat-pane.chat-empty .chat-input-wrap {
   min-height: 72px;
 }
 

@@ -28,6 +28,15 @@ describe('agent-runtime-gaps', () => {
     expect(estimateContextChars(messages)).toBeGreaterThan(1000)
   })
 
+  it('estimateContextChars 容忍缺失 content', () => {
+    const messages: AgentLoopMessage[] = [
+      { role: 'system', content: 'sys' },
+      { role: 'assistant', content: undefined as unknown as string },
+      { role: 'user', content: undefined as unknown as string },
+    ]
+    expect(estimateContextChars(messages)).toBe(3)
+  })
+
   it('compactAgentMessages 保留尾部', () => {
     const messages: AgentLoopMessage[] = []
     for (let i = 0; i < 30; i++) {

@@ -218,10 +218,9 @@ export const describeMcpServerForPrompt = async (
   if (!conn.ok) {
     return `- **${cfg.name}** (${kind}): _unavailable — ${conn.error}_`
   }
+  const toolNames = conn.pooled.toolNames ?? []
   const tools =
-    conn.pooled.toolNames.length > 0
-      ? conn.pooled.toolNames.join(', ')
-      : '(no tools advertised)'
+    toolNames.length > 0 ? toolNames.join(', ') : '(no tools advertised)'
   const instr = conn.pooled.serverInstructions?.trim()
   let line = `- **${cfg.name}** (${kind}): tools: ${tools}`
   if (instr) line += `\n  Instructions: ${instr}`

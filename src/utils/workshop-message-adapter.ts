@@ -1,4 +1,4 @@
-import type { WorkshopMessage } from '../../types/axecoder'
+import type { WorkshopMessage } from '../types/axecoder'
 
 export type WorkbenchMessageKind = 'workshop'
 

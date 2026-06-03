@@ -259,7 +259,7 @@ export type WorkshopStep = {
   status: WorkshopStepStatus
 }
 
-export type WorkshopPhase = 'idle' | 'running' | 'waiting_user' | 'done'
+export type WorkshopPhase = 'idle' | 'planning' | 'running' | 'waiting_user' | 'done'
 
 export type WorkshopMessageKind = 'chat' | 'reasoning'
 
@@ -306,6 +306,10 @@ export type WorkshopRunResult =
 export type ChatMessage = {
   role: 'user' | 'assistant'
   text: string
+  /** 斜杠命令行（如 /foo bar）；仅 UI 展示命令条 */
+  slashInvoke?: string
+  /** 仅展示命令条，正文走 apiContent 或下一条用户消息 */
+  slashOnly?: boolean
   thought?: string
   /** 发送时引用的项目文件（相对路径展示用绝对 path 存） */
   filePaths?: string[]
@@ -463,6 +467,23 @@ export type AxeCoderFs = {
   agentLoadSkill: (
     projectRoot: string,
     skillName: string,
+  ) => Promise<
+    | { ok: true; name: string; text: string; path: string }
+    | { ok: false; error: string }
+  >
+  agentListCustomCommands: (
+    projectRoot: string,
+  ) => Promise<
+    | {
+        ok: true
+        commands: { name: string; path: string; description: string; source: string }[]
+        dirs: string[]
+      }
+    | { ok: false; error: string }
+  >
+  agentLoadCustomCommand: (
+    projectRoot: string,
+    commandName: string,
   ) => Promise<
     | { ok: true; name: string; text: string; path: string }
     | { ok: false; error: string }

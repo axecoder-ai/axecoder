@@ -48,6 +48,12 @@
   --wc-search-match-bg: rgba(55, 148, 255, 0.28);
   --wc-search-badge-bg: #0078d4;
   --wc-search-badge-fg: #ffffff;
+  --wc-diff-add-fg: #7ee787;
+  --wc-diff-add-bg: rgba(46, 160, 67, 0.22);
+  --wc-diff-del-fg: #ff7b72;
+  --wc-diff-del-bg: rgba(248, 81, 73, 0.22);
+  --wc-diff-hunk-fg: #3794ff;
+  --wc-diff-hunk-bg: rgba(55, 148, 255, 0.12);
 }
 
 /* Aura 浅色（参考 Cursor Composer） */
@@ -89,6 +95,12 @@
   --wc-search-match-bg: rgba(37, 99, 235, 0.22);
   --wc-search-badge-bg: #2563eb;
   --wc-search-badge-fg: #ffffff;
+  --wc-diff-add-fg: #116329;
+  --wc-diff-add-bg: #dafbe1;
+  --wc-diff-del-fg: #cf222e;
+  --wc-diff-del-bg: #ffebe9;
+  --wc-diff-hunk-fg: #0550ae;
+  --wc-diff-hunk-bg: rgba(37, 99, 235, 0.14);
 }
 
 /* Aura 深色 */
@@ -130,6 +142,12 @@
   --wc-search-match-bg: rgba(59, 130, 246, 0.28);
   --wc-search-badge-bg: #1e40af;
   --wc-search-badge-fg: #ffffff;
+  --wc-diff-add-fg: #7ee787;
+  --wc-diff-add-bg: rgba(46, 160, 67, 0.22);
+  --wc-diff-del-fg: #ff7b72;
+  --wc-diff-del-bg: rgba(248, 81, 73, 0.22);
+  --wc-diff-hunk-fg: #3b82f6;
+  --wc-diff-hunk-bg: rgba(59, 130, 246, 0.12);
 }
 
 :root {

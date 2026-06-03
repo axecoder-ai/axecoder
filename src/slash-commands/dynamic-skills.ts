@@ -26,9 +26,13 @@ export const buildSkillSlashCommands = (
         if (res.skillText) {
           const session = ctx.getSession()
           if (session) {
+            const invoke = `/${key}${args.trim() ? ` ${args.trim()}` : ''}`
+            const body = `【Skill: ${res.skillName ?? name}】\n\n${res.skillText}\n\n---\n请按上述 Skill 指引处理后续任务。`
             session.messages.push({
               role: 'user',
-              text: `【Skill: ${res.skillName ?? name}】\n\n${res.skillText}\n\n---\n请按上述 Skill 指引处理后续任务。`,
+              text: invoke,
+              slashOnly: true,
+              apiContent: body,
             })
             session.updatedAt = Date.now()
             ctx.setSession(session)

@@ -1,4 +1,5 @@
 import { registerBuiltinSlashCommands } from './builtin'
+import { buildCustomSlashCommands } from './dynamic-commands'
 import { buildSkillSlashCommands } from './dynamic-skills'
 import { setSlashCommands } from './registry-core'
 
@@ -14,11 +15,12 @@ const reservedNames = (builtins: ReturnType<typeof registerBuiltinSlashCommands>
 export const refreshSlashCommandRegistry = async (projectRoot: string) => {
   const builtins = registerBuiltinSlashCommands()
   const reserved = reservedNames(builtins)
-  let dynamic = [] as ReturnType<typeof buildSkillSlashCommands>
+  let skillDynamic = [] as ReturnType<typeof buildSkillSlashCommands>
+  let customDynamic = [] as ReturnType<typeof buildCustomSlashCommands>
 
   const skillRes = await window.axecoder.agentListSkills(projectRoot)
   if (skillRes.ok && skillRes.skills.length) {
-    dynamic = buildSkillSlashCommands(
+    skillDynamic = buildSkillSlashCommands(
       skillRes.skills,
       async (skillName) => {
         const loaded = await window.axecoder.agentLoadSkill(projectRoot, skillName)
@@ -34,6 +36,31 @@ export const refreshSlashCommandRegistry = async (projectRoot: string) => {
     )
   }
 
-  setSlashCommands([...builtins, ...dynamic])
-  return { builtinCount: builtins.length, dynamicCount: dynamic.length }
+  const customRes = await window.axecoder.agentListCustomCommands(projectRoot)
+  if (customRes.ok && customRes.commands.length) {
+    customDynamic = buildCustomSlashCommands(
+      customRes.commands,
+      async (commandName, args) => {
+        const loaded = await window.axecoder.agentLoadCustomCommand(projectRoot, commandName)
+        if (!loaded.ok) return { ok: false, message: loaded.error ?? '加载失败' }
+        const userPart = args.trim()
+        const sendPrompt = userPart
+          ? `${loaded.text}\n\n---\n\n用户补充：\n${userPart}`
+          : loaded.text
+        return {
+          ok: true,
+          message: `已执行 /${loaded.name}`,
+          sendPrompt,
+        }
+      },
+      reserved,
+    )
+  }
+
+  setSlashCommands([...builtins, ...skillDynamic, ...customDynamic])
+  return {
+    builtinCount: builtins.length,
+    dynamicCount: skillDynamic.length + customDynamic.length,
+    customCount: customDynamic.length,
+  }
 }

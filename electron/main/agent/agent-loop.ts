@@ -189,11 +189,14 @@ const hasPendingInSession = (session: StoredAgentSession) =>
   session.pendingAskById.size > 0
 
 const stripBudgetReminders = (messages: AgentLoopMessage[]) =>
-  messages.filter((m) => !(m.role === 'user' && m.content.includes('Context budget:')))
+  messages.filter(
+    (m) => !(m.role === 'user' && (m.content ?? '').includes('Context budget:')),
+  )
 
 const stripContextInjectReminders = (messages: AgentLoopMessage[]) =>
   messages.filter(
-    (m) => !(m.role === 'user' && m.content.includes('<agent-context-injection>')),
+    (m) =>
+      !(m.role === 'user' && (m.content ?? '').includes('<agent-context-injection>')),
   )
 
 const prepareSessionBeforeModel = async (sessionId: string, session: StoredAgentSession) => {
@@ -293,7 +296,7 @@ export const runAgentLoopUntilDoneOrPending = async (
     if (res.toolCalls.length) {
       session.messages.push({
         role: 'assistant',
-        content: res.content,
+        content: res.content ?? '',
         reasoningContent: res.reasoningContent,
         toolCalls: res.toolCalls,
       })
@@ -555,11 +558,11 @@ export const startAgentTurn = async (
   ]
   for (const m of history) {
     if (m.role === 'user') {
-      messages.push({ role: 'user', content: m.content })
+      messages.push({ role: 'user', content: m.content ?? '' })
     } else if (m.role === 'assistant') {
       messages.push({
         role: 'assistant',
-        content: m.content,
+        content: m.content ?? '',
         ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
       })
     }

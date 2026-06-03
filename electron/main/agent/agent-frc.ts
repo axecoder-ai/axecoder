@@ -58,10 +58,10 @@ export const estimateContextChars = (messages: AgentLoopMessage[]) => {
   let n = 0
   for (const m of messages) {
     if (m.role === 'system' || m.role === 'user' || m.role === 'assistant') {
-      n += m.content.length
+      n += (m.content ?? '').length
       if (m.role === 'assistant' && m.reasoningContent) n += m.reasoningContent.length
     } else if (m.role === 'tool') {
-      n += m.content.length
+      n += (m.content ?? '').length
     }
   }
   return n

@@ -99,18 +99,18 @@ const lineClass = (line: string) => {
 }
 
 .diff-add {
-  color: #7ee787;
-  background: rgba(46, 160, 67, 0.2);
+  color: var(--wc-diff-add-fg);
+  background: var(--wc-diff-add-bg);
 }
 
 .diff-del {
-  color: #ff7b72;
-  background: rgba(248, 81, 73, 0.2);
+  color: var(--wc-diff-del-fg);
+  background: var(--wc-diff-del-bg);
 }
 
 .diff-hunk {
-  color: var(--wc-accent, #7aa2f7);
-  background: rgba(122, 162, 247, 0.08);
+  color: var(--wc-diff-hunk-fg);
+  background: var(--wc-diff-hunk-bg);
 }
 
 .diff-meta {

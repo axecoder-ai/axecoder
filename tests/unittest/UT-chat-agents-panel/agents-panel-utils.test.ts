@@ -13,12 +13,13 @@ import {
   WC_SIDEBAR_DEFAULT,
   WC_SIDEBAR_MIN,
 } from '../../../src/utils/agents-panel'
-import type { ChatSessionMeta } from '../../../src/types/axecoder'
+import type { SessionListItem } from '../../../src/types/axecoder'
 
-const meta = (id: string, updatedAt: number): ChatSessionMeta => ({
+const meta = (id: string, updatedAt: number): SessionListItem => ({
   id,
   title: id,
   updatedAt,
+  kind: 'agent',
 })
 
 describe('minAiPanelWidth', () => {

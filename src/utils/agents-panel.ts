@@ -1,4 +1,4 @@
-import type { ChatSessionMeta } from '../types/axecoder'
+import type { SessionListItem } from '../types/axecoder'
 
 export const WC_CHAT_MIN = 320
 export const WC_AGENTS_MIN = 200
@@ -68,15 +68,15 @@ export const isToday = (ts: number, now = Date.now()): boolean => {
 export type AgentSessionGroup = {
   key: string
   label: string
-  items: ChatSessionMeta[]
+  items: SessionListItem[]
 }
 
 export const groupSessionsByDay = (
-  sessions: ChatSessionMeta[],
+  sessions: SessionListItem[],
   now = Date.now(),
 ): AgentSessionGroup[] => {
-  const today: ChatSessionMeta[] = []
-  const older: ChatSessionMeta[] = []
+  const today: SessionListItem[] = []
+  const older: SessionListItem[] = []
   for (const s of sessions) {
     if (isToday(s.updatedAt, now)) today.push(s)
     else older.push(s)
@@ -88,10 +88,10 @@ export const groupSessionsByDay = (
 }
 
 export const sliceGroupItems = (
-  items: ChatSessionMeta[],
+  items: SessionListItem[],
   expanded: boolean,
   limit = AGENTS_GROUP_LIMIT,
-): { visible: ChatSessionMeta[]; hasMore: boolean } => {
+): { visible: SessionListItem[]; hasMore: boolean } => {
   if (expanded || items.length <= limit) {
     return { visible: items, hasMore: false }
   }
