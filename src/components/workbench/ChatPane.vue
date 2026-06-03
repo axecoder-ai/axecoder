@@ -11,6 +11,7 @@ import type {
   ChatSessionMeta,
   ModelEntry,
   ModelsFile,
+  WorkshopSessionMeta,
 } from '../../types/axecoder'
 import ModelPickerDropdown from './ModelPickerDropdown.vue'
 import ChatDiffCard from './ChatDiffCard.vue'
@@ -28,12 +29,17 @@ import { refreshSlashCommandRegistry } from '../../slash-commands/registry'
 import type { SlashContext } from '../../slash-commands/types'
 import { playAgentCompletionSound } from '../../utils/play-completion-sound'
 import SwitchToggle from './SwitchToggle.vue'
+import WorkshopChatSection from './WorkshopChatSection.vue'
+import type { SessionKind } from '../../types/axecoder'
 
 const md = new MarkdownIt()
 
+const workshopSectionRef = ref<InstanceType<typeof WorkshopChatSection> | null>(null)
+
 const props = defineProps<{
   projectRoot: string
-  /** 当前编辑器打开的文件，发送时可作为上下文 */
+  /** Agent / Workshop 会话类型（侧栏切换时由 App 传入，Tab 切换以 ChatPane 内 activeTabKind 为准） */
+  sessionKind?: SessionKind
   contextFilePath?: string | null
   agentsSidebarVisible: boolean
   agentAutoApplyWrites: boolean
@@ -42,6 +48,153 @@ const props = defineProps<{
   profileDisplayName?: string
   profileAvatarPath?: string
 }>()
+
+const emit = defineEmits<{
+  close: []
+  showAgentsSidebar: []
+  openModelsSettings: []
+  activeChange: [id: string]
+  kindChange: [kind: SessionKind]
+  sessionsChanged: []
+  filesChanged: []
+  openFile: [path: string]
+  'update:agentAutoApplyWrites': [value: boolean]
+}>()
+
+type OpenChatTab = { id: string; kind: SessionKind }
+
+const openTabsList = ref<OpenChatTab[]>([])
+const activeTabKind = ref<SessionKind>('agent')
+const activeTabId = ref('')
+
+const sessionMetas = ref<ChatSessionMeta[]>([])
+const activeSession = ref<ChatSession | null>(null)
+const activeId = ref('')
+const sessionCache = ref<Record<string, ChatSession>>({})
+
+const isWorkshopMode = computed(() => activeTabKind.value === 'workshop')
+
+const wsMetas = ref<WorkshopSessionMeta[]>([])
+const wsTitleById = ref<Record<string, string>>({})
+
+const tabKey = (t: OpenChatTab) => `${t.kind}:${t.id}`
+
+const isActiveTab = (t: OpenChatTab) => t.id === activeTabId.value && t.kind === activeTabKind.value
+
+const emitActiveTab = () => {
+  emit('activeChange', activeTabId.value)
+  emit('kindChange', activeTabKind.value)
+}
+
+const setActiveTab = (id: string, kind: SessionKind) => {
+  activeTabId.value = id
+  activeTabKind.value = kind
+  emitActiveTab()
+}
+
+const addUnifiedTab = (id: string, kind: SessionKind) => {
+  if (!id) return
+  if (openTabsList.value.some((t) => t.id === id && t.kind === kind)) return
+  openTabsList.value = [...openTabsList.value, { id, kind }]
+}
+
+const wsTabTitleFor = (id: string) => {
+  const liveId = workshopSectionRef.value?.activeId
+  if (id === liveId) return workshopSectionRef.value?.activeTitle ?? 'Workshop'
+  return wsTitleById.value[id] ?? wsMetas.value.find((m) => m.id === id)?.title ?? 'Workshop'
+}
+
+const agentTabTitleFor = (id: string) => {
+  if (id === activeId.value && activeSession.value) return activeSession.value.title
+  const cached = sessionCache.value[id]
+  if (cached) return cached.title
+  return sessionMetas.value.find((m) => m.id === id)?.title ?? 'Chat'
+}
+
+const unifiedOpenTabs = computed(() =>
+  openTabsList.value.map((t) => ({
+    ...t,
+    key: tabKey(t),
+    title: t.kind === 'workshop' ? wsTabTitleFor(t.id) : agentTabTitleFor(t.id),
+  })),
+)
+
+const loadWsMetas = async () => {
+  if (!hasProject.value) {
+    wsMetas.value = []
+    return
+  }
+  const res = await window.axecoder.getWorkshopSessions(props.projectRoot)
+  wsMetas.value = res.sessions
+  const titles = { ...wsTitleById.value }
+  for (const s of res.sessions) titles[s.id] = s.title
+  wsTitleById.value = titles
+}
+
+const removeUnifiedTab = (id: string, kind: SessionKind) => {
+  openTabsList.value = openTabsList.value.filter((t) => !(t.id === id && t.kind === kind))
+  if (kind === 'agent') {
+    const next = { ...sessionCache.value }
+    delete next[id]
+    sessionCache.value = next
+  } else {
+    const nextTitles = { ...wsTitleById.value }
+    delete nextTitles[id]
+    wsTitleById.value = nextTitles
+  }
+}
+
+const switchUnifiedTab = async (t: OpenChatTab) => {
+  if (isActiveTab(t)) return
+  if (activeTabKind.value === 'agent' && activeSession.value && activeId.value) {
+    cacheSession(activeSession.value)
+    await persist()
+  }
+  setActiveTab(t.id, t.kind)
+  if (t.kind === 'workshop') {
+    await workshopSectionRef.value?.selectSession(t.id)
+    return
+  }
+  await selectSession(t.id)
+}
+
+const closeUnifiedTab = async (t: OpenChatTab) => {
+  const wasActive = isActiveTab(t)
+  removeUnifiedTab(t.id, t.kind)
+  if (!wasActive) return
+  const remaining = openTabsList.value
+  if (remaining.length) {
+    await switchUnifiedTab(remaining[remaining.length - 1])
+    return
+  }
+  activeTabId.value = ''
+  activeTabKind.value = 'agent'
+  activeSession.value = null
+  activeId.value = ''
+  emitActiveTab()
+}
+
+const onWorkshopActiveChange = (id: string) => {
+  if (id) {
+    addUnifiedTab(id, 'workshop')
+    setActiveTab(id, 'workshop')
+    const title = workshopSectionRef.value?.activeTitle
+    if (title) wsTitleById.value = { ...wsTitleById.value, [id]: title }
+  } else if (activeTabKind.value === 'workshop') {
+    activeTabId.value = ''
+    emit('activeChange', '')
+  }
+}
+
+const onWorkshopSessionsChanged = async () => {
+  await loadWsMetas()
+  const id = workshopSectionRef.value?.activeId
+  if (id) {
+    const title = workshopSectionRef.value?.activeTitle
+    if (title) wsTitleById.value = { ...wsTitleById.value, [id]: title }
+  }
+  emit('sessionsChanged')
+}
 
 const profileAvatarUrl = ref('')
 
@@ -70,21 +223,6 @@ watch(
   { immediate: true },
 )
 
-const emit = defineEmits<{
-  close: []
-  showAgentsSidebar: []
-  openModelsSettings: []
-  activeChange: [id: string]
-  sessionsChanged: []
-  filesChanged: []
-  'update:agentAutoApplyWrites': [value: boolean]
-}>()
-
-const sessionMetas = ref<ChatSessionMeta[]>([])
-const activeSession = ref<ChatSession | null>(null)
-const activeId = ref('')
-const openTabIds = ref<string[]>([])
-const sessionCache = ref<Record<string, ChatSession>>({})
 const input = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const messagesEl = ref<HTMLElement | null>(null)
@@ -130,25 +268,6 @@ const cacheSession = (s: ChatSession) => {
   sessionCache.value = { ...sessionCache.value, [s.id]: s }
 }
 
-const addOpenTab = (id: string) => {
-  if (!openTabIds.value.includes(id)) openTabIds.value = [...openTabIds.value, id]
-}
-
-const removeOpenTab = (id: string) => {
-  openTabIds.value = openTabIds.value.filter((t) => t !== id)
-  const next = { ...sessionCache.value }
-  delete next[id]
-  sessionCache.value = next
-}
-
-const tabTitleFor = (id: string) => {
-  if (id === activeId.value && activeSession.value) return activeSession.value.title
-  const cached = sessionCache.value[id]
-  if (cached) return cached.title
-  return sessionMetas.value.find((m) => m.id === id)?.title ?? 'Chat'
-}
-
-const openTabs = computed(() => openTabIds.value.map((id) => ({ id, title: tabTitleFor(id) })))
 
 const syncMetaFromActive = () => {
   if (!activeSession.value) return
@@ -211,7 +330,9 @@ const reset = () => {
   sessionMetas.value = []
   activeSession.value = null
   activeId.value = ''
-  openTabIds.value = []
+  openTabsList.value = []
+  activeTabId.value = ''
+  activeTabKind.value = 'agent'
   sessionCache.value = {}
 }
 
@@ -245,9 +366,10 @@ const selectSession = async (id: string): Promise<boolean> => {
     session = res.session
   }
   cacheSession(session)
-  addOpenTab(id)
+  addUnifiedTab(id, 'agent')
   activeSession.value = session
   activeId.value = id
+  setActiveTab(id, 'agent')
   input.value = ''
   await nextTick()
   if (messagesEl.value) {
@@ -258,9 +380,6 @@ const selectSession = async (id: string): Promise<boolean> => {
   return true
 }
 
-const switchToTab = async (id: string) => {
-  await selectSession(id)
-}
 
 const loadModels = async () => {
   modelsFile.value = await window.axecoder.listModels()
@@ -273,25 +392,37 @@ const load = async () => {
   }
   const res = await window.axecoder.getChatSessions(props.projectRoot)
   sessionMetas.value = res.sessions
+  const wsTabs = openTabsList.value.filter((t) => t.kind === 'workshop')
   if (!sessionMetas.value.length) {
     activeSession.value = null
     activeId.value = ''
-    openTabIds.value = []
+    openTabsList.value = wsTabs
     sessionCache.value = {}
+    if (!wsTabs.length) return
+    if (activeTabKind.value === 'agent') {
+      const pick = wsTabs[wsTabs.length - 1]
+      await switchUnifiedTab(pick)
+    }
     return
   }
-  const keptTabs = openTabIds.value.filter((id) => sessionMetas.value.some((s) => s.id === id))
-  if (!keptTabs.length) {
+  const keptAgent = openTabsList.value
+    .filter((t) => t.kind === 'agent')
+    .filter((t) => sessionMetas.value.some((s) => s.id === t.id))
+  openTabsList.value = [...keptAgent, ...wsTabs]
+  if (!keptAgent.length) {
     activeSession.value = null
     activeId.value = ''
-    openTabIds.value = []
+    if (activeTabKind.value === 'agent' && wsTabs.length) {
+      await switchUnifiedTab(wsTabs[wsTabs.length - 1])
+    }
     return
   }
-  openTabIds.value = keptTabs
   const pickId =
-    activeId.value && keptTabs.includes(activeId.value)
+    activeTabKind.value === 'agent' &&
+    activeId.value &&
+    keptAgent.some((t) => t.id === activeId.value)
       ? activeId.value
-      : keptTabs[keptTabs.length - 1]
+      : keptAgent[keptAgent.length - 1].id
   await selectSession(pickId)
 }
 
@@ -310,9 +441,10 @@ const newChat = async () => {
     ...sessionMetas.value.filter((m) => m.id !== s.id),
   ]
   cacheSession(s)
-  addOpenTab(s.id)
+  addUnifiedTab(s.id, 'agent')
   activeSession.value = s
   activeId.value = s.id
+  setActiveTab(s.id, 'agent')
   emit('sessionsChanged')
 }
 
@@ -323,7 +455,7 @@ const deleteSession = async (id: string) => {
     activeSession.value = null
     activeId.value = ''
   }
-  removeOpenTab(id)
+  removeUnifiedTab(id, 'agent')
   await window.axecoder.deleteChatSession(props.projectRoot, id)
   sessionMetas.value = sessionMetas.value.filter((s) => s.id !== id)
   if (!sessionMetas.value.length) {
@@ -332,8 +464,10 @@ const deleteSession = async (id: string) => {
     return
   }
   if (wasActive) {
-    const nextId = openTabIds.value[openTabIds.value.length - 1] ?? sessionMetas.value[0].id
-    await selectSession(nextId)
+    const remaining = openTabsList.value
+    if (remaining.length) {
+      await switchUnifiedTab(remaining[remaining.length - 1])
+    }
   }
   emit('sessionsChanged')
 }
@@ -343,14 +477,9 @@ const closeTab = async (id: string) => {
     emit('close')
     return
   }
-  const wasActive = activeId.value === id
+  const wasActive = activeTabKind.value === 'agent' && activeId.value === id
   if (wasActive && activeSession.value) await persist()
-  removeOpenTab(id)
-  if (!wasActive) return
-  activeSession.value = null
-  activeId.value = ''
-  const remaining = openTabIds.value
-  if (remaining.length) await selectSession(remaining[remaining.length - 1])
+  await closeUnifiedTab({ id, kind: 'agent' })
 }
 
 const onModelPick = async (id: string) => {
@@ -1017,9 +1146,6 @@ const regenerateLastReply = async () => {
   }
 }
 
-watch(activeId, (id) => {
-  emit('activeChange', id)
-})
 
 watch(input, () => {
   void nextTick(() => resizeInput())
@@ -1029,12 +1155,14 @@ watch(
   () => props.projectRoot,
   () => {
     void load()
+    void loadWsMetas()
   },
 )
 
 onMounted(() => {
   void loadModels()
   void load()
+  void loadWsMetas()
   if (props.projectRoot) void refreshSlashCommandRegistry(props.projectRoot)
 })
 
@@ -1089,6 +1217,24 @@ defineExpose({
   selectSession,
   deleteSession,
   reset,
+  newWorkshop: async () => {
+    workshopSectionRef.value?.newSession()
+    await nextTick()
+    const id = workshopSectionRef.value?.activeId ?? ''
+    if (id) {
+      addUnifiedTab(id, 'workshop')
+      setActiveTab(id, 'workshop')
+    }
+  },
+  selectWorkshopSession: async (id: string) => {
+    addUnifiedTab(id, 'workshop')
+    await switchUnifiedTab({ id, kind: 'workshop' })
+  },
+  closeWorkshopTab: (id: string) => closeUnifiedTab({ id, kind: 'workshop' }),
+  loadWorkshopUsers: () => workshopSectionRef.value?.loadWorkshopUsers(),
+  loadWorkshop: loadWsMetas,
+  workshopActiveId: activeTabId,
+  activeTabKind,
 })
 </script>
 
@@ -1096,25 +1242,26 @@ defineExpose({
   <section
     class="chat-pane"
     :class="{
+      'workshop-in-chat': isWorkshopMode,
       'agents-hidden': !agentsSidebarVisible,
-      'chat-empty': isEmptyChat,
-      'chat-no-session': showNoSessionLanding,
+      'chat-empty': !isWorkshopMode && isEmptyChat,
+      'chat-no-session': !isWorkshopMode && showNoSessionLanding,
     }"
   >
     <div class="chat-tabs">
       <div
-        v-for="tab in openTabs"
-        :key="tab.id"
+        v-for="tab in unifiedOpenTabs"
+        :key="tab.key"
         class="chat-tab"
-        :class="{ active: tab.id === activeId }"
-        @click="switchToTab(tab.id)"
+        :class="{ active: tab.id === activeTabId && tab.kind === activeTabKind }"
+        @click="switchUnifiedTab({ id: tab.id, kind: tab.kind })"
       >
         <span class="tab-label">{{ tab.title }}</span>
         <button
           type="button"
           class="tab-close"
           title="关闭标签"
-          @click.stop="closeTab(tab.id)"
+          @click.stop="closeUnifiedTab({ id: tab.id, kind: tab.kind })"
         >
           ×
         </button>
@@ -1133,6 +1280,19 @@ defineExpose({
         </svg>
       </button>
     </div>
+    <WorkshopChatSection
+      v-show="isWorkshopMode"
+      ref="workshopSectionRef"
+      class="workshop-chat-host"
+      :project-root="projectRoot"
+      :profile-display-name="profileDisplayName"
+      :profile-avatar-path="profileAvatarPath"
+      @sessions-changed="onWorkshopSessionsChanged"
+      @open-file="(p) => emit('openFile', p)"
+      @open-models-settings="emit('openModelsSettings')"
+      @active-change="onWorkshopActiveChange"
+    />
+    <div v-show="!isWorkshopMode" class="agent-chat-body">
     <div
       ref="messagesEl"
       :key="activeId"
@@ -1418,6 +1578,7 @@ defineExpose({
         </div>
       </div>
     </div>
+    </div>
   </section>
 </template>
 
@@ -1434,6 +1595,25 @@ defineExpose({
   font-family: var(--wc-font-sans);
   font-size: var(--wc-font-size-ui);
   font-weight: var(--wc-font-weight-ui);
+}
+
+.agent-chat-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-pane.workshop-in-chat .workshop-chat-host,
+.chat-pane:not(.workshop-in-chat) .agent-chat-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-pane.workshop-in-chat .workshop-chat-host {
+  display: flex;
+  flex-direction: column;
 }
 
 .chat-pane.chat-empty .empty-hint {

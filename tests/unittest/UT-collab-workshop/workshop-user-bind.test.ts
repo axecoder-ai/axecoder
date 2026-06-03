@@ -37,7 +37,7 @@ describe('workshop-user-bind', () => {
     expect(findUserForWorkshopRole(users, 'backend')?.displayName).toBe('小陈')
   })
 
-  it('需求方按 role 匹配', () => {
-    expect(findUserForWorkshopRole(users, 'user')?.displayName).toBe('甲方')
+  it('BOSS 不在 users.json，user 角色不匹配', () => {
+    expect(findUserForWorkshopRole(users, 'user')).toBeUndefined()
   })
 })

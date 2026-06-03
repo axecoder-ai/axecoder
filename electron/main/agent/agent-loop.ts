@@ -80,10 +80,11 @@ const runModelStep = async (session: StoredAgentSession, sessionId: string) => {
     'main',
     lastUserTextFromMessages(session.messages),
   )
+  const workshopStream = sessionId.startsWith('workshop-')
   const onDelta =
     model.provider === 'openai'
       ? (delta: { content?: string; reasoning?: string }) => {
-          const text = (delta.content ?? '') + (delta.reasoning ?? '')
+          const text = workshopStream ? (delta.content ?? '') : (delta.content ?? '') + (delta.reasoning ?? '')
           if (text) {
             emitAgentProgress({ sessionId, kind: 'delta', delta: text })
           }
@@ -821,7 +822,7 @@ const collectWorkshopTurnReasoning = (session: StoredAgentSession): string => {
 
 /** Workshop 单角色：与 Chat Agent 同源循环（Read/Write/Grep…），sessionId 建议 `workshop-{id}-{role}` */
 export type WorkshopAgentTurnOptions = {
-  speakMode?: 'plan' | 'execute' | 'verify'
+  speakMode?: 'plan' | 'execute' | 'verify' | 'member' | 'manager_chat'
 }
 
 export const runWorkshopRoleAgentTurn = async (
@@ -876,11 +877,17 @@ export const runWorkshopRoleAgentTurn = async (
           '验收阶段：最终回复首行必须是 VERIFY: approve|redo|abort，其余用简短中文。',
           '',
         ].join('\n')
-      : [
-          `【Collab Workshop · ${roleName}】`,
-          '执行本步任务：先用工具查看代码；最终回复只用简短中文结论（不要英文思考过程），可附文件路径。',
-          '',
-        ].join('\n')
+      : options?.speakMode === 'member'
+        ? [
+            `【Collab Workshop · ${roleName}】`,
+            '先用工具查看代码；最终一条回复禁止输出思考过程、探索过程或 Markdown 长篇，只允许：第一行「已完成。」；随后列出涉及文件路径（每行 - 路径）。',
+            '',
+          ].join('\n')
+        : [
+            `【Collab Workshop · ${roleName}】`,
+            '执行本步任务：先用工具查看代码；最终回复只用简短中文结论，禁止输出思考过程，可附文件路径。',
+            '',
+          ].join('\n')
 
   const messages: AgentLoopMessage[] = [
     {

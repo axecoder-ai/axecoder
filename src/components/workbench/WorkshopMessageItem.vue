@@ -2,7 +2,6 @@
 import { computed, ref } from 'vue'
 import MarkdownIt from 'markdown-it'
 import type { WorkshopMessageKind, WorkshopRoleId } from '../../types/axecoder'
-import { workshopRoleUi } from '../../utils/workshop-roles'
 import AgentProgressStream from './AgentProgressStream.vue'
 import type { AgentProgressStep } from '../../utils/agent-progress'
 
@@ -27,37 +26,37 @@ const props = defineProps<{
   }
 }>()
 
-const reasoningOpen = ref(false)
 const isReasoningLegacy = computed(() => props.messageKind === 'reasoning')
-const reasoningText = computed(() =>
-  isReasoningLegacy.value ? props.text : props.reasoningContent?.trim() ?? '',
+const showLiveProgress = computed(
+  () => !!props.liveProgress && (props.liveProgress.steps.length > 0 || props.liveProgress.streamText),
 )
-const hasReasoning = computed(() => !!reasoningText.value)
-const showBody = computed(
-  () => !isReasoningLegacy.value && (props.text.trim() || props.streaming || props.thinking),
-)
+const showBody = computed(() => {
+  if (isReasoningLegacy.value) return false
+  if (showLiveProgress.value) return !!props.text.trim()
+  return !!(props.text.trim() || props.streaming || props.thinking)
+})
 
 defineEmits<{
   openFile: [path: string]
 }>()
 
-const ui = computed(() => workshopRoleUi(props.roleId))
 const displayNickname = computed(() => {
   if (props.unbound) return '未配置'
-  return props.nickname?.trim() || (props.roleId === 'system' ? ui.value.nickname : '')
+  const n = props.nickname?.trim()
+  if (n) return n
+  if (props.roleId === 'system') return '系统'
+  return '未配置'
 })
 const displayRoleTitle = computed(() => {
-  if (props.unbound) return props.roleId
-  return props.roleTitle?.trim() || (props.roleId === 'system' ? ui.value.roleTitle : '')
+  if (props.unbound) return '未在 Users 配置'
+  const t = props.roleTitle?.trim()
+  if (t) return t
+  if (props.roleId === 'system') return '协作助手'
+  return ''
 })
-const avatarLetter = computed(
-  () => displayNickname.value.slice(0, 1) || ui.value.avatar.slice(0, 1),
-)
+const avatarLetter = computed(() => displayNickname.value.slice(0, 1) || '?')
 const isUser = computed(() => props.roleId === 'user')
 const isSystem = computed(() => props.roleId === 'system')
-const showLiveProgress = computed(
-  () => !!props.liveProgress && (props.liveProgress.steps.length > 0 || props.liveProgress.streamText),
-)
 const useMarkdown = computed(
   () => !isUser.value && !isSystem.value && !props.streaming,
 )
@@ -68,8 +67,10 @@ const useMarkdown = computed(
     <div
       v-if="!isUser"
       class="ws-avatar"
-      :class="{ 'ws-avatar--img': avatarUrl }"
-      :style="avatarUrl ? undefined : { background: ui.color }"
+      :class="{
+        'ws-avatar--img': avatarUrl,
+        'ws-avatar--system': isSystem,
+      }"
       :title="`${displayNickname} · ${displayRoleTitle}`"
     >
       <img v-if="avatarUrl" :src="avatarUrl" alt="" />
@@ -97,19 +98,13 @@ const useMarkdown = computed(
           {{ text }}<span v-if="streaming" class="ws-cursor">▍</span>
         </template>
       </div>
-      <div v-if="hasReasoning" class="ws-reasoning">
-        <button type="button" class="ws-reasoning-toggle" @click="reasoningOpen = !reasoningOpen">
-          {{ reasoningOpen ? '收起思考' : '思考过程' }}
-        </button>
-        <pre v-show="reasoningOpen" class="ws-reasoning-body">{{ reasoningText }}</pre>
-      </div>
       <div v-if="showLiveProgress" class="ws-live-progress">
         <AgentProgressStream
           :steps="liveProgress!.steps"
-          :stream-text="liveProgress!.streamText"
+          stream-text=""
           :subagent-tasks="[]"
           :agent-mode="true"
-          fallback-headline="思考中…"
+          fallback-headline="执行中…"
         />
       </div>
       <div v-if="relatedFiles?.length && showBody" class="ws-files">
@@ -128,7 +123,6 @@ const useMarkdown = computed(
       v-if="isUser"
       class="ws-avatar ws-avatar--user"
       :class="{ 'ws-avatar--img': avatarUrl }"
-      :style="avatarUrl ? undefined : { background: ui.color }"
       :title="`${displayNickname} · ${displayRoleTitle}`"
     >
       <img v-if="avatarUrl" :src="avatarUrl" alt="" />
@@ -158,6 +152,19 @@ const useMarkdown = computed(
 .ws-msg--system {
   max-width: 100%;
 }
+.ws-avatar:not(.ws-avatar--img) {
+  background: var(--wc-muted-surface);
+  color: var(--wc-text);
+  border: 1px solid var(--wc-border);
+}
+.ws-avatar--system:not(.ws-avatar--img) {
+  color: var(--wc-text-muted);
+}
+.ws-avatar--user:not(.ws-avatar--img) {
+  background: var(--wc-accent);
+  color: #fff;
+  border: none;
+}
 .ws-avatar {
   width: 36px;
   height: 36px;
@@ -186,7 +193,7 @@ const useMarkdown = computed(
 .ws-body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
   flex: 1;
 }
@@ -210,7 +217,7 @@ const useMarkdown = computed(
   border: 1px solid var(--wc-border);
 }
 .ws-bubble {
-  padding: 8px 12px;
+  padding: 14px 14px;
   border-radius: 12px;
   font-size: 13px;
   line-height: 1.5;
@@ -305,6 +312,7 @@ const useMarkdown = computed(
 .ws-live-progress {
   font-size: 12px;
   max-width: 100%;
+  margin-top: 4px;
 }
 .ws-md {
   line-height: 1.6;

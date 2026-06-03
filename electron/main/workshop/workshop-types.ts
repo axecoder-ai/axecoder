@@ -9,18 +9,7 @@ export type WorkshopStep = {
   status: WorkshopStepStatus
 }
 
-export type WorkshopPhase =
-  | 'idle'
-  | 'planning'
-  | 'step_running'
-  | 'step_verify'
-  | 'waiting_user'
-  | 'done'
-  /** @deprecated 旧会话；新编排不再写入 */
-  | 'manager'
-  | 'backend'
-  | 'frontend'
-  | 'tester'
+export type WorkshopPhase = 'idle' | 'running' | 'waiting_user' | 'done'
 
 export type WorkshopMessageKind = 'chat' | 'reasoning'
 
@@ -63,7 +52,7 @@ export type WorkshopProgressPayload = {
   status: 'thinking' | 'speaking' | 'done'
 }
 
-export type RoleSpeakMode = 'plan' | 'execute' | 'verify'
+export type RoleSpeakMode = 'member' | 'manager_chat' | 'plan' | 'execute' | 'verify'
 
 export type RoleSpeakInput = {
   roleId: Exclude<WorkshopRoleId, 'system' | 'user'>

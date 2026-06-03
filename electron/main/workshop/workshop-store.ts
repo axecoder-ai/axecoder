@@ -13,6 +13,7 @@ import {
   writeRegistry,
 } from '../session/session-registry'
 import type { SessionRegistryEntry } from '../session/session-types'
+import { stripLegacyWorkshopFields } from './workshop-api-messages'
 import type { WorkshopMessage, WorkshopSession, WorkshopSessionMeta } from './workshop-types'
 
 /** 将旧版 kind:reasoning 独立条合并进同角色正文消息 */
@@ -103,9 +104,10 @@ export const getWorkshopSession = async (projectRoot: string, workshopId: string
   if (!root) return { session: null as WorkshopSession | null }
   try {
     const raw = await fs.readFile(projectWorkshopFilePath(root, workshopId), 'utf-8')
-    const session = JSON.parse(raw) as WorkshopSession
+    let session = JSON.parse(raw) as WorkshopSession
     if (!session?.id || !Array.isArray(session.messages)) return { session: null }
     session.messages = normalizeWorkshopMessages(session.messages)
+    session = stripLegacyWorkshopFields(session)
     return { session }
   } catch {
     return { session: null }

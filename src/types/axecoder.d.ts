@@ -259,17 +259,7 @@ export type WorkshopStep = {
   status: WorkshopStepStatus
 }
 
-export type WorkshopPhase =
-  | 'idle'
-  | 'planning'
-  | 'step_running'
-  | 'step_verify'
-  | 'waiting_user'
-  | 'done'
-  | 'manager'
-  | 'backend'
-  | 'frontend'
-  | 'tester'
+export type WorkshopPhase = 'idle' | 'running' | 'waiting_user' | 'done'
 
 export type WorkshopMessageKind = 'chat' | 'reasoning'
 
@@ -606,6 +596,13 @@ export type AxeCoderFs = {
     workshopId: string,
     userBrief: string,
     modelId: string,
+  ) => Promise<WorkshopRunResult>
+  workshopSendMessage: (
+    projectRoot: string,
+    workshopId: string,
+    text: string,
+    modelId: string,
+    displayText?: string,
   ) => Promise<WorkshopRunResult>
   workshopSendUserAnswer: (
     projectRoot: string,

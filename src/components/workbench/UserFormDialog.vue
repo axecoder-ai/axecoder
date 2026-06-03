@@ -80,10 +80,28 @@ defineExpose({
     avatarPreview.value = dataUrl
   },
 })
+
+let backdropMouseDown = false
+
+const onBackdropMousedown = (e: MouseEvent) => {
+  backdropMouseDown = e.target === e.currentTarget
+}
+
+const onBackdropMouseup = (e: MouseEvent) => {
+  if (backdropMouseDown && e.target === e.currentTarget) {
+    emit('close')
+  }
+  backdropMouseDown = false
+}
 </script>
 
 <template>
-  <div v-if="visible" class="modal-backdrop" @click.self="emit('close')">
+  <div
+    v-if="visible"
+    class="modal-backdrop"
+    @mousedown="onBackdropMousedown"
+    @mouseup="onBackdropMouseup"
+  >
     <div class="modal">
       <h3>{{ editing ? 'Edit user' : 'Add user' }}</h3>
       <div class="avatar-row">

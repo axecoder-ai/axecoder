@@ -7,7 +7,6 @@ import SearchPanel from './components/workbench/SearchPanel.vue'
 import EditorPane from './components/workbench/EditorPane.vue'
 import WelcomePage from './components/workbench/WelcomePage.vue'
 import ChatPane from './components/workbench/ChatPane.vue'
-import WorkshopPane from './components/workbench/WorkshopPane.vue'
 import AgentsPanel from './components/workbench/AgentsPanel.vue'
 import BottomPanel from './components/workbench/BottomPanel.vue'
 import StatusBar from './components/workbench/StatusBar.vue'
@@ -44,7 +43,6 @@ const statusLanguage = computed(() => languageLabelForPath(activePath.value))
 
 const activeActivity = ref('explorer')
 const aiPanelVisible = ref(false)
-const workshopVisible = ref(false)
 const agentsSidebarVisible = ref(true)
 const activeChatSessionId = ref('')
 const activeSessionKind = ref<SessionKind>('agent')
@@ -70,7 +68,6 @@ const fileExplorerRef = ref<InstanceType<typeof FileExplorer> | null>(null)
 const searchPanelRef = ref<InstanceType<typeof SearchPanel> | null>(null)
 const editorPaneRef = ref<InstanceType<typeof EditorPane> | null>(null)
 const chatPaneRef = ref<InstanceType<typeof ChatPane> | null>(null)
-const workshopPaneRef = ref<InstanceType<typeof WorkshopPane> | null>(null)
 const settingsPanelRef = ref<InstanceType<typeof SettingsPanel> | null>(null)
 const agentsPanelRef = ref<InstanceType<typeof AgentsPanel> | null>(null)
 const bottomPanelRef = ref<InstanceType<typeof BottomPanel> | null>(null)
@@ -108,32 +105,20 @@ const trackColumnDrag = (
 const hasOpenEditorTabs = computed(() => openFiles.value.length > 0)
 /** 仅在有打开的文件标签时显示编辑区；无文件时 AI 面板可占满中间区域 */
 const showEditorArea = computed(() => hasOpenEditorTabs.value)
-/** Collab Workshop 占满中央工作区 */
-const showWorkshopCenter = computed(
-  () => workshopVisible.value && !showEditorArea.value,
-)
-/** 右侧 Chat 列（Workshop 占中央时不显示 Chat） */
-const showChatAside = computed(
-  () => aiPanelVisible.value && !workshopVisible.value,
-)
-/** 统一会话列表：Chat 侧栏或 Workshop 中央时均保留 Agents 列 */
+/** 右侧 Chat 列（Agent / Workshop 共用） */
+const showChatAside = computed(() => aiPanelVisible.value)
+/** 统一会话列表 */
 const showAgentsAside = computed(
-  () => agentsSidebarVisible.value && (showChatAside.value || showWorkshopCenter.value),
+  () => agentsSidebarVisible.value && showChatAside.value,
 )
-const showSessionAside = computed(
-  () => showChatAside.value || showAgentsAside.value,
-)
-const agentsOnlyAside = computed(
-  () => showWorkshopCenter.value && showAgentsAside.value && !showChatAside.value,
-)
+const showSessionAside = computed(() => showChatAside.value || showAgentsAside.value)
 /** 欢迎页仅在没有打开项目时显示 */
 const showWelcomePage = computed(
   () =>
     !projectRoot.value &&
     welcomeOnStartup.value &&
     !showEditorArea.value &&
-    !aiPanelVisible.value &&
-    !workshopVisible.value,
+    !aiPanelVisible.value,
 )
 const aiPanelFillsCenter = computed(
   () => showChatAside.value && !showWelcomePage.value && !showEditorArea.value,
@@ -251,20 +236,17 @@ const onAgentsSplitPointerDown = (e: PointerEvent) => {
   )
 }
 
-watch(hasOpenEditorTabs, (has) => {
-  if (has) workshopVisible.value = false
-})
+watch(hasOpenEditorTabs, () => {})
 
-const toggleWorkshop = () => {
-  if (showEditorArea.value) {
-    workshopVisible.value = false
-    return
-  }
-  if (workshopVisible.value) {
-    workshopVisible.value = false
-    return
-  }
-  workshopVisible.value = true
+const toggleWorkshop = async () => {
+  aiPanelVisible.value = true
+  await nextTick()
+  await chatPaneRef.value?.loadWorkshop?.()
+  await chatPaneRef.value?.newWorkshop()
+  activeChatSessionId.value = chatPaneRef.value?.workshopActiveId ?? ''
+  activeSessionKind.value = chatPaneRef.value?.activeTabKind ?? 'workshop'
+  await chatPaneRef.value?.loadWorkshopUsers()
+  await agentsPanelRef.value?.load()
 }
 
 type SettingsTabId = 'general' | 'models' | 'users' | 'rules'
@@ -285,8 +267,7 @@ const openModelsSettings = () => {
 
 const onSettingsModelsChanged = async () => {
   await chatPaneRef.value?.loadModels()
-  await workshopPaneRef.value?.loadModels()
-  await workshopPaneRef.value?.loadWorkshopUsers()
+  await chatPaneRef.value?.loadWorkshopUsers()
 }
 
 const showExplorer = () => activeActivity.value === 'explorer'
@@ -462,53 +443,46 @@ const onPaletteRun = (id: string) => {
 }
 
 const onNewAgentSession = async () => {
-  workshopVisible.value = false
   aiPanelVisible.value = true
-  activeSessionKind.value = 'agent'
   await chatPaneRef.value?.newChat()
-  if (chatPaneRef.value?.activeId) activeChatSessionId.value = chatPaneRef.value.activeId
+  activeChatSessionId.value = chatPaneRef.value?.activeId ?? ''
+  activeSessionKind.value = chatPaneRef.value?.activeTabKind ?? 'agent'
   await agentsPanelRef.value?.load()
 }
 
 const onNewWorkshopSession = async () => {
-  if (showEditorArea.value) {
-    window.alert('请先关闭已打开的文件标签，以在中央打开 Collab Workshop')
-    return
-  }
-  workshopVisible.value = true
-  activeSessionKind.value = 'workshop'
-  activeChatSessionId.value = ''
-  workshopPaneRef.value?.newSession()
+  aiPanelVisible.value = true
+  await nextTick()
+  await chatPaneRef.value?.loadWorkshop?.()
+  await chatPaneRef.value?.newWorkshop()
+  activeChatSessionId.value = chatPaneRef.value?.workshopActiveId ?? ''
+  activeSessionKind.value = chatPaneRef.value?.activeTabKind ?? 'workshop'
+  await chatPaneRef.value?.loadWorkshopUsers()
   await agentsPanelRef.value?.load()
 }
 
 const onSelectSession = async (payload: { id: string; kind: SessionKind }) => {
-  if (payload.kind === 'workshop') {
-    if (showEditorArea.value) {
-      window.alert('请先关闭已打开的文件标签，以在中央打开 Collab Workshop')
-      return
-    }
-    workshopVisible.value = true
-    activeSessionKind.value = 'workshop'
-    activeChatSessionId.value = payload.id
-    await nextTick()
-    await workshopPaneRef.value?.selectSession(payload.id)
-    return
-  }
-  workshopVisible.value = false
   aiPanelVisible.value = true
-  activeSessionKind.value = 'agent'
+  activeSessionKind.value = payload.kind
+  activeChatSessionId.value = payload.id
   await nextTick()
-  const ok = await chatPaneRef.value?.selectSession(payload.id)
-  if (ok) activeChatSessionId.value = chatPaneRef.value?.activeId ?? payload.id
+  if (payload.kind === 'workshop') {
+    await chatPaneRef.value?.loadWorkshop?.()
+    await chatPaneRef.value?.selectWorkshopSession(payload.id)
+  } else {
+    await chatPaneRef.value?.selectSession(payload.id)
+  }
+  activeChatSessionId.value =
+    chatPaneRef.value?.workshopActiveId ?? chatPaneRef.value?.activeId ?? payload.id
+  activeSessionKind.value = chatPaneRef.value?.activeTabKind ?? payload.kind
 }
 
 const onDeleteSession = async (payload: { id: string; kind: SessionKind }) => {
   if (payload.kind === 'workshop') {
     await window.axecoder.deleteWorkshopSession(projectRoot.value, payload.id)
-    if (activeSessionKind.value === 'workshop' && activeChatSessionId.value === payload.id) {
-      activeChatSessionId.value = ''
-      workshopPaneRef.value?.newSession()
+    await chatPaneRef.value?.closeWorkshopTab?.(payload.id)
+    if (activeSessionKind.value === 'workshop') {
+      activeChatSessionId.value = chatPaneRef.value?.workshopActiveId ?? ''
     }
   } else {
     await chatPaneRef.value?.deleteSession(payload.id)
@@ -519,7 +493,10 @@ const onDeleteSession = async (payload: { id: string; kind: SessionKind }) => {
 
 const onChatActiveChange = (id: string) => {
   activeChatSessionId.value = id
-  activeSessionKind.value = 'agent'
+}
+
+const onChatKindChange = (kind: SessionKind) => {
+  activeSessionKind.value = kind
 }
 
 const onWorkshopSessionsChanged = async () => {
@@ -571,7 +548,7 @@ onUnmounted(() => {
     <TitleBar
       :primary-sidebar-visible="primarySidebarVisible"
       :ai-panel-visible="aiPanelVisible"
-      :workshop-visible="showWorkshopCenter"
+      :workshop-visible="activeSessionKind === 'workshop'"
       :project-name="projectName"
       :window-layout="windowLayout"
       @toggle-primary-sidebar="togglePrimarySidebar"
@@ -615,15 +592,6 @@ onUnmounted(() => {
           :class="{ dragging: primarySplitDragging }"
           @pointerdown="onPrimarySplitPointerDown"
         />
-        <WorkshopPane
-          ref="workshopPaneRef"
-          v-show="showWorkshopCenter"
-          :project-root="projectRoot"
-          @close="workshopVisible = false"
-          @open-file="onOpenFile"
-          @open-models-settings="openModelsSettings"
-          @sessions-changed="onWorkshopSessionsChanged"
-        />
         <WelcomePage
           v-show="showWelcomePage"
           :recent-projects="recentProjects"
@@ -653,7 +621,7 @@ onUnmounted(() => {
           @cursor-change="(l, c) => { cursorLine = l; cursorCol = c }"
         />
         <div
-          v-show="aiPanelUsesFixedWidth || agentsOnlyAside"
+          v-show="aiPanelUsesFixedWidth"
           class="editor-ai-split-handle"
           :class="{ dragging: aiPanelSplitDragging }"
           @pointerdown="onAiPanelSplitPointerDown"
@@ -664,19 +632,17 @@ onUnmounted(() => {
           class="ai-side-panel"
           :class="{
             'ai-side-panel--fill': aiPanelFillsCenter,
-            'ai-side-panel--agents-only': agentsOnlyAside,
           }"
           :style="
-            agentsOnlyAside
-              ? { width: `${agentsWidth}px` }
-              : aiPanelUsesFixedWidth
-                ? { width: `${aiPanelWidth}px` }
-                : undefined
+            aiPanelUsesFixedWidth
+              ? { width: `${aiPanelWidth}px` }
+              : undefined
           "
         >
           <ChatPane
             v-show="showChatAside"
             ref="chatPaneRef"
+            :session-kind="activeSessionKind"
             :project-root="projectRoot"
             :context-file-path="activePath"
             :agents-sidebar-visible="agentsSidebarVisible"
@@ -692,7 +658,9 @@ onUnmounted(() => {
             @show-agents-sidebar="agentsSidebarVisible = true"
             @open-models-settings="openModelsSettings"
             @active-change="onChatActiveChange"
-            @sessions-changed="onChatSessionsChanged"
+            @kind-change="onChatKindChange"
+            @sessions-changed="onChatSessionsChanged(); onWorkshopSessionsChanged()"
+            @open-file="onOpenFile"
             @files-changed="fileExplorerRef?.refresh?.()"
           />
           <div

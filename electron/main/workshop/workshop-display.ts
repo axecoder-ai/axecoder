@@ -1,8 +1,26 @@
 import type { UserEntry } from '../users-types'
+import { extractRelatedFiles } from './workshop-subagent-speaker'
 import { parseManagerStepPlan, parseManagerVerifyDecision } from './workshop-plan-parse'
 import type { RoleSpeakMode } from './workshop-types'
 
 const cjkCount = (s: string) => (s.match(/[\u4e00-\u9fff]/g) ?? []).length
+
+/** 成员群聊正文：仅「已完成 + 涉及文件」；完整 report 存入 reasoningContent */
+export const formatMemberChatSummary = (
+  report: string,
+  relatedFiles?: string[],
+): { summary: string; reasoningContent?: string } => {
+  const files = relatedFiles?.length ? relatedFiles : extractRelatedFiles(report)
+  const summary =
+    files.length > 0
+      ? `已完成本段工作。\n\n涉及文件：\n${files.map((f) => `- ${f}`).join('\n')}`
+      : '已完成本段工作。'
+  const raw = report.trim()
+  return {
+    summary,
+    reasoningContent: raw.length > summary.length + 20 ? raw.slice(0, 8000) : undefined,
+  }
+}
 
 /** 群聊正文：简短中文结论；完整 report 留给解析 */
 export const formatWorkshopRoleDisplay = (

@@ -14,7 +14,6 @@ import WorkbenchChatInput from './WorkbenchChatInput.vue'
 import { applyProgressPayload, type AgentProgressStep } from '../../utils/agent-progress'
 import { parseWorkshopStreamRole } from '../../utils/workshop-stream'
 import type { ChatFileRef } from '../../utils/chat-file-context'
-import { workshopRoleUi, type WorkshopRoleUiId } from '../../utils/workshop-roles'
 import { findUserById, findUserForWorkshopRole, inferWorkshopRoleId } from '../../utils/workshop-user-bind'
 
 const props = defineProps<{
@@ -213,13 +212,11 @@ const messageRoleProps = (msg: WorkshopMessage) => {
 
 const userComposerUi = computed(() => {
   const p = roleProps('user')
-  const fallback = workshopRoleUi('user')
   return {
     ...p,
-    nickname: p.nickname || fallback.nickname,
-    roleTitle: p.roleTitle || fallback.roleTitle,
-    letter: (p.nickname || fallback.nickname).slice(0, 1) || fallback.avatar,
-    color: fallback.color,
+    nickname: p.nickname || 'BOSS',
+    roleTitle: p.roleTitle || 'BOSS',
+    letter: (p.nickname || 'B').slice(0, 1),
   }
 })
 
@@ -229,7 +226,7 @@ const loadWorkshopUsers = async () => {
   const avatars: Partial<Record<WorkshopRoleId, string>> = {}
   const names: Partial<Record<WorkshopRoleId, { nickname: string; roleTitle: string }>> = {}
   const byUser: Record<string, string> = {}
-  const roles: WorkshopRoleUiId[] = ['manager', 'backend', 'frontend', 'tester', 'user']
+  const roles: WorkshopRoleId[] = ['manager', 'backend', 'frontend', 'tester']
   for (const roleId of roles) {
     const u = findUserForWorkshopRole(data.users, roleId)
     if (!u) continue
@@ -490,9 +487,9 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
             agentProgressActive
           "
           :role-id="streamRoleId"
-          :text="streamText"
+          text=""
           streaming
-          :live-progress="{ steps: progressSteps, streamText }"
+          :live-progress="{ steps: progressSteps, streamText: '' }"
           v-bind="roleProps(streamRoleId)"
         />
         <WorkshopMessageItem
@@ -514,7 +511,6 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
             <span
               class="composer-avatar"
               :class="{ 'composer-avatar--img': userComposerUi.avatarUrl }"
-              :style="userComposerUi.avatarUrl ? undefined : { background: userComposerUi.color }"
             >
               <img v-if="userComposerUi.avatarUrl" :src="userComposerUi.avatarUrl" alt="" />
               <span v-else>{{ userComposerUi.letter }}</span>
@@ -711,6 +707,9 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
   color: #fff;
   overflow: hidden;
   flex-shrink: 0;
+}
+.composer-avatar:not(.composer-avatar--img) {
+  background: var(--wc-accent);
 }
 .composer-avatar--img {
   background: var(--wc-muted-surface);

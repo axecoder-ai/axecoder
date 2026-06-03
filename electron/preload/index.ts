@@ -422,6 +422,22 @@ contextBridge.exposeInMainWorld('axecoder', {
       cloneForIpc(userBrief),
       cloneForIpc(modelId),
     ) as Promise<import('../../src/types/axecoder').WorkshopRunResult>,
+  workshopSendMessage: (
+    projectRoot: string,
+    workshopId: string,
+    text: string,
+    modelId: string,
+    displayText?: string,
+  ) =>
+    ipcRenderer.invoke(
+      'workshop:sendMessage',
+      cloneForIpc(projectRoot),
+      cloneForIpc(workshopId),
+      cloneForIpc(text),
+      cloneForIpc(modelId),
+      undefined,
+      cloneForIpc(displayText),
+    ) as Promise<import('../../src/types/axecoder').WorkshopRunResult>,
   workshopSendUserAnswer: (projectRoot: string, workshopId: string, answer: string) =>
     ipcRenderer.invoke(
       'workshop:sendUserAnswer',

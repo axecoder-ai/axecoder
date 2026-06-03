@@ -1,7 +1,6 @@
 import { runSubAgentTask } from '../agent/agent-subagent'
 import { modelTaskKindForWorkshopRole, resolveModelIdForTask } from '../ai/model-resolve'
 import { buildSubAgentToolList } from '../agent/agent-tool-registry'
-import { roleDefById } from './workshop-roles'
 import { buildWorkshopStreamId } from './workshop-stream'
 import type { RoleSpeaker, RoleSpeakInput, RoleSpeakOutput } from './workshop-types'
 
@@ -22,8 +21,19 @@ export const extractRelatedFiles = (text: string): string[] => {
 }
 
 export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
-  const role = roleDefById(input.roleId)
-  const name = input.assigneeUser?.displayName ?? role?.name ?? input.roleId
+  const name = input.assigneeUser?.displayName?.trim() || input.roleId
+  if (input.speakMode === 'member' && input.assigneeUser) {
+    return [
+      `【Collab Workshop · ${name}（${input.assigneeUser.role}）· 群聊发言】`,
+      '必须使用 Read、Grep、Glob 等工具查看真实代码后再交付。',
+      '完成后最终回复只允许：第一行「已完成。」；第二段列出修改/涉及的文件路径（每行一个 - 路径）。禁止输出思考过程、代码探索过程、代码块、长篇分析、英文。',
+      '',
+      `【用户需求】\n${input.userBrief}`,
+      input.priorSummary ? `【此前讨论】\n${input.priorSummary}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
   if (input.speakMode === 'plan') {
     const roster =
       input.users
@@ -64,7 +74,7 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
       `【Collab Workshop · ${name}（${input.assigneeUser.role}）· 执行步骤】`,
       `【本步任务】${input.step?.title ?? ''}`,
       '必须使用 Read、Grep、Glob 等工具查看真实代码后再交付。',
-      '完成后用简洁中文给出：结论、已查看的文件、建议改动（可含相对路径）。',
+      '完成后最终回复只允许：第一行「已完成。」；第二段列出修改/涉及的文件路径（每行一个 - 路径）。禁止输出思考过程、代码探索过程、代码块、长篇分析、英文。',
       '',
       `【用户需求】\n${input.userBrief}`,
       input.priorSummary ? `【此前讨论】\n${input.priorSummary}` : '',
@@ -151,7 +161,7 @@ export const buildSubagentRoleSpeaker = (
       partialReportOnMaxTurns: true,
       onDelta: onStreamDelta
         ? (delta) => {
-            const text = (delta.content ?? '') + (delta.reasoning ?? '')
+            const text = delta.content ?? ''
             if (text) onStreamDelta(streamId, text)
           }
         : undefined,

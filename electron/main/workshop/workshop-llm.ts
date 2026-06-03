@@ -4,7 +4,6 @@ import { chatWithProvider } from '../ai/chat-with-provider'
 import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
 import { modelTaskKindForWorkshopRole } from '../ai/model-resolve'
 import type { RoleSpeaker } from './workshop-types'
-import { roleDefById } from './workshop-roles'
 import { buildWorkshopStreamId } from './workshop-stream'
 
 const extractSummary = (raw: string): string => {
@@ -38,8 +37,7 @@ export const buildLlmRoleSpeaker = (
     const model = await getModelById(modelId)
     if (!model) throw new Error('模型不存在')
     const apiKey = await getSecret(modelId)
-    const role = roleDefById(input.roleId)
-    const name = role?.name ?? input.roleId
+    const name = input.assigneeUser?.displayName?.trim() || input.roleId
     const system = [
       `你是 Collab Workshop 中的「${name}」。`,
       '与主聊天纯对话模式相同：用简洁中文直接回答，不要调用工具。',
@@ -59,7 +57,7 @@ export const buildLlmRoleSpeaker = (
     const onDelta =
       onStreamDelta && model.provider === 'openai'
         ? (delta: { content?: string; reasoning?: string }) => {
-            const text = (delta.content ?? '') + (delta.reasoning ?? '')
+            const text = delta.content ?? ''
             if (text) onStreamDelta(streamId, text)
           }
         : undefined
