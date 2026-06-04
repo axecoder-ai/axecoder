@@ -11,7 +11,7 @@ export async function runSlashCommand(
   if (!parsed) return null
   const def = findCommand(parsed.commandName)
   if (!def) {
-    return { ok: false, message: '未知命令。' }
+    return { ok: false, message: 'Unknown command.' }
   }
   return def.run(ctx, parsed.args)
 }

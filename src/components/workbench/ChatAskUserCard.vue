@@ -47,7 +47,7 @@ const onSubmit = () => {
 
 <template>
   <div class="ask-card">
-    <div class="ask-head">需要你的选择</div>
+    <div class="ask-head">Your input needed</div>
     <div v-for="q in pending.questions" :key="q.id" class="ask-block">
       <p class="ask-prompt">{{ q.prompt }}</p>
       <div v-if="q.allow_multiple" class="ask-options">
@@ -76,7 +76,7 @@ const onSubmit = () => {
     </div>
     <div class="ask-actions">
       <button type="button" class="btn-submit" :disabled="busy || !canSubmit" @click="onSubmit">
-        提交回答
+        Submit
       </button>
     </div>
   </div>

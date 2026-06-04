@@ -34,8 +34,8 @@ export const saveChatPastedImage = async (
   await ensureAxecoderDir()
   await fs.mkdir(path.dirname(axecoderPath(rel)), { recursive: true })
   const buf = Buffer.from(base64.replace(/\s/g, ''), 'base64')
-  if (!buf.length) throw new Error('图片数据为空')
-  if (buf.length > 8 * 1024 * 1024) throw new Error('单张图片不能超过 8MB')
+  if (!buf.length) throw new Error('Image data is empty')
+  if (buf.length > 8 * 1024 * 1024) throw new Error('Image must be under 8MB')
   await fs.writeFile(axecoderPath(rel), buf)
   return { id, mimeType: mime, storagePath: rel }
 }

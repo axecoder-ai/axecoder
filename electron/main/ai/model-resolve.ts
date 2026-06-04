@@ -27,7 +27,7 @@ export const modelTaskKindForSubagentType = (subagentType: string): ModelTaskKin
   return 'main'
 }
 
-/** 工坊角色发言 → 档位（经理/实现角色用主模型，测试用快速） */
+/** 工坊角色发言 → 档位（经理/实现角色用主模型，QA用快速） */
 export const modelTaskKindForWorkshopRole = (
   roleId: string,
   speakMode?: string,

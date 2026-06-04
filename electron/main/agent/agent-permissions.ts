@@ -44,7 +44,7 @@ export const isToolAllowedByList = (cfg: AppConfig, toolName: AgentToolName) => 
   return allowed.includes(toolName) || allowed.includes('*')
 }
 
-/** allow = 直接执行；ask = 走 pending；deny = 拒绝 */
+/** allow = 直接执行；ask = 走 pending；deny = Reject */
 export const resolveToolPermission = (
   cfg: AppConfig,
   toolName: AgentToolName,

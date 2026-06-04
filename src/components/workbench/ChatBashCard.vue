@@ -16,15 +16,15 @@ const emit = defineEmits<{
   <div class="bash-card">
     <div class="bash-head">
       <span class="bash-tool">Bash</span>
-      <span class="bash-hint">待确认执行</span>
+      <span class="bash-hint">Pending execution</span>
     </div>
     <pre class="bash-command">{{ pending.command }}</pre>
     <div class="bash-actions">
       <button type="button" class="btn-run" :disabled="busy" @click="emit('confirm')">
-        运行
+        Run
       </button>
       <button type="button" class="btn-reject" :disabled="busy" @click="emit('reject')">
-        拒绝
+        Reject
       </button>
     </div>
   </div>

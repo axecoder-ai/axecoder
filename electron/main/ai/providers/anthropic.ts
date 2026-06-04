@@ -29,7 +29,7 @@ export const chatAnthropic = async (
   | { ok: true; text: string; content: string; reasoningContent?: string }
   | { ok: false; error: string }
 > => {
-  if (!apiKey.trim()) return { ok: false, error: 'Anthropic 需要 API Key' }
+  if (!apiKey.trim()) return { ok: false, error: 'Anthropic requires an API Key' }
   const url = buildAnthropicMessagesUrl(baseUrl)
   try {
     const res = await fetch(url, {
@@ -48,7 +48,7 @@ export const chatAnthropic = async (
     })
     if (!res.ok) {
       const errText = await res.text()
-      return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
+      return { ok: false, error: `request failed (${res.status}): ${errText.slice(0, 300)}` }
     }
     const data = (await res.json()) as { content?: { type: string; text?: string }[] }
     const block = data.content?.find((c) => c.type === 'text')

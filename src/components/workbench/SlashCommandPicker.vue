@@ -23,7 +23,7 @@ const popoverRef = ref<HTMLElement | null>(null)
 const popoverLeft = ref(0)
 const popoverBottom = ref(0)
 
-const isSkill = (c: SlashCommandDef) => c.description.startsWith('运行 Skill：')
+const isSkill = (c: SlashCommandDef) => c.description.startsWith('Run skill: ')
 
 const query = computed(() => {
   const t = props.inputText

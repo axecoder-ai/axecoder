@@ -23,7 +23,7 @@ export const buildCustomSlashCommands = (
     reservedNames.add(key)
     out.push({
       name: key,
-      description: `自定义：${c.description}（${c.source}）`,
+      description: `Custom: ${c.description}（${c.source}）`,
       run: async (_ctx, args) => {
         const res = await runCustom(c.name, args)
         if (!res.ok) return { ok: false, message: res.message }

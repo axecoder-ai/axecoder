@@ -15,7 +15,7 @@ const refresh = async () => {
   if (!props.projectRoot) {
     branch.value = ''
     changes.value = []
-    error.value = '请先打开项目'
+    error.value = 'Open a project first'
     return
   }
   loading.value = true
@@ -43,21 +43,21 @@ watch(
 
 <template>
   <aside v-show="visible" class="sidebar-panel">
-    <div class="panel-title">源代码管理</div>
+    <div class="panel-title">Source Control</div>
     <div class="panel-body">
-      <div v-if="loading" class="hint">加载中…</div>
+      <div v-if="loading" class="hint">Loading…</div>
       <div v-else-if="error" class="hint error">{{ error }}</div>
       <template v-else>
-        <div v-if="branch" class="branch">分支：{{ branch }}</div>
+        <div v-if="branch" class="branch">Branch: {{ branch }}</div>
         <ul v-if="changes.length" class="change-list">
           <li v-for="(c, i) in changes" :key="i">
             <span class="code">{{ c.code.trim() || '?' }}</span>
             <span class="file">{{ c.file }}</span>
           </li>
         </ul>
-        <div v-else class="hint">工作区干净，无未提交变更</div>
+        <div v-else class="hint">Working tree clean</div>
       </template>
-      <button type="button" class="refresh-btn" @click="refresh">刷新</button>
+      <button type="button" class="refresh-btn" @click="refresh">Refresh</button>
     </div>
   </aside>
 </template>

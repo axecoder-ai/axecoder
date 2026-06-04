@@ -37,7 +37,7 @@ export const normalizeWorkshopMessages = (messages: WorkshopMessage[]): Workshop
         ...m,
         kind: undefined,
         reasoningContent: m.text,
-        text: '（无结论）',
+        text: '(no conclusion)',
       })
       i++
       continue
@@ -119,8 +119,8 @@ export const saveWorkshopSession = async (
   session: WorkshopSession,
 ): Promise<StoreResult> => {
   const root = await normalizeProjectRoot(projectRoot)
-  if (!root) return { ok: false, error: '未打开项目' }
-  if (!session?.id?.trim()) return { ok: false, error: 'workshop id 无效' }
+  if (!root) return { ok: false, error: 'No project open' }
+  if (!session?.id?.trim()) return { ok: false, error: 'Invalid workshop id' }
   try {
     await ensureProjectWorkshopsDir(root)
     const meta: SessionRegistryEntry = {
@@ -134,7 +134,7 @@ export const saveWorkshopSession = async (
     await writeRegistry(root, index)
     return { ok: true }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '保存失败'
+    const msg = e instanceof Error ? e.message : 'Save failed'
     return { ok: false, error: msg }
   }
 }
@@ -144,7 +144,7 @@ export const deleteWorkshopSession = async (
   workshopId: string,
 ): Promise<StoreResult> => {
   const root = await normalizeProjectRoot(projectRoot)
-  if (!root) return { ok: false, error: '未打开项目' }
+  if (!root) return { ok: false, error: 'No project open' }
   try {
     const index = removeRegistryEntry(await readRegistry(root), workshopId, 'workshop')
     await writeRegistry(root, index)
@@ -152,7 +152,7 @@ export const deleteWorkshopSession = async (
     await fs.rm(projectWorkshopFilePath(root, workshopId), { force: true })
     return { ok: true }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '删除失败'
+    const msg = e instanceof Error ? e.message : 'Delete failed'
     return { ok: false, error: msg }
   }
 }

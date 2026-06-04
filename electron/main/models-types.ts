@@ -26,6 +26,8 @@ export type ModelsFile = {
   models: ModelEntry[]
 }
 
+export type AppLocale = 'en' | 'zh-CN'
+
 export type AppTheme = 'vscode' | 'aura-light' | 'aura-dark'
 
 /** Claude Code built-in output styles (`outputStyles.ts`) */
@@ -33,15 +35,17 @@ export type AgentOutputStyleId = 'default' | 'Explanatory' | 'Learning'
 
 export type AppConfig = {
   schemaVersion: 1
+  /** UI locale (renderer + main-process messages) */
+  locale?: AppLocale
   autoSave: boolean
   autoSaveDelay: number
   fontSize: number
   theme: AppTheme
-  /** Agent Write/Edit/Delete/Move 不经确认直接写盘 */
+  /** Agent Write/Edit/Delete/Move 不经confirm直接写盘 */
   agentAutoApplyWrites: boolean
-  /** Agent 系统提示输出风格（内置 id 或自定义 output-styles 目录中的 slug） */
+  /** Agent System提示Output风格（内置 id 或自定义 output-styles 目录中的 slug） */
   agentOutputStyle: string
-  /** Wave4：联网搜索（需 API Key） */
+  /** Wave4：联网Search（需 API Key） */
   agentFeatureWebSearch?: boolean
   agentWebSearchApiKey?: string
   agentFeatureLsp?: boolean
@@ -55,22 +59,22 @@ export type AppConfig = {
   agentDisallowedTools?: string[]
   /** 上下文字符阈值，超过则自动 compact */
   agentContextCompactThreshold?: number
-  /** FRC 保留最近 tool 条数 */
+  /** FRC 保留Recent tool 条数 */
   agentFrcKeepToolMessages?: number
   agentTokenBudget?: number
   agentProactiveEnabled?: boolean
   agentHooksEnabled?: boolean
   /** 为 false 时主/子任务均使用 activeModelId */
   agentModelTierRoutingEnabled?: boolean
-  /** Agent 任务完成时播放提示音 */
+  /** Agent 任务done时播放提示音 */
   agentCompletionSoundEnabled?: boolean
   /** ~/.axecoder 下音频文件名，如 agent-completion-sound.mp3 */
   agentCompletionSoundPath?: string
   /** 选择文件时的原始文件名（仅展示） */
   agentCompletionSoundDisplayName?: string
-  /** 设置 Rules 页：是否导入第三方 Plugins/Skills 配置（V1 仅占位） */
+  /** Settings Rules 页：是否导入第三方 Plugins/Skills 配置（V1 仅占位） */
   rulesIncludeThirdPartyPlugins?: boolean
-  /** 设置侧栏个人资料昵称 */
+  /** Settings侧栏个人资料昵称 */
   profileDisplayName?: string
   /** ~/.axecoder 下头像相对路径 */
   profileAvatarPath?: string

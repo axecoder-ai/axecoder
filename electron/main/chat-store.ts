@@ -14,6 +14,7 @@ import {
   writeRegistry,
 } from './session/session-registry'
 import type { SessionRegistryEntry } from './session/session-types'
+import { t } from './i18n'
 
 export type ChatMessage = {
   role: 'user' | 'assistant'
@@ -73,8 +74,8 @@ export const saveChatSession = async (
   session: ChatSession,
 ): Promise<StoreResult> => {
   const root = await normalizeProjectRoot(projectRoot)
-  if (!root) return { ok: false, error: '未打开项目' }
-  if (!session?.id?.trim()) return { ok: false, error: '会话 id 无效' }
+  if (!root) return { ok: false, error: t('errors.noProject') }
+  if (!session?.id?.trim()) return { ok: false, error: t('errors.invalidSessionId') }
   try {
     await ensureProjectSessionsDir(root)
     const meta: SessionRegistryEntry = {
@@ -88,7 +89,7 @@ export const saveChatSession = async (
     await writeRegistry(root, index)
     return { ok: true }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '保存失败'
+    const msg = e instanceof Error ? e.message : t('common.saveFailed')
     return { ok: false, error: msg }
   }
 }
@@ -98,14 +99,14 @@ export const deleteChatSession = async (
   sessionId: string,
 ): Promise<StoreResult> => {
   const root = await normalizeProjectRoot(projectRoot)
-  if (!root) return { ok: false, error: '未打开项目' }
+  if (!root) return { ok: false, error: t('errors.noProject') }
   try {
     const index = removeRegistryEntry(await readRegistry(root), sessionId, 'agent')
     await writeRegistry(root, index)
     await fs.rm(projectSessionFilePath(root, sessionId), { force: true })
     return { ok: true }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '删除失败'
+    const msg = e instanceof Error ? e.message : t('errors.deleteFailed')
     return { ok: false, error: msg }
   }
 }

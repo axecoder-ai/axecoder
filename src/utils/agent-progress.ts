@@ -35,21 +35,21 @@ export type AgentProgressPayload =
       description: string
     }
 
-export const labelForModelTurn = (turn: number) => `第 ${turn} 轮：正在调用模型…`
+export const labelForModelTurn = (turn: number) => `Turn ${turn}: calling model…`
 
-export const labelForModelDone = (turn: number) => `第 ${turn} 轮：模型回复完成`
+export const labelForModelDone = (turn: number) => `Turn ${turn}: model reply done`
 
 export const labelForToolStart = (toolName: string, summary: string) =>
-  `正在执行 ${toolName}：${summary}`
+  `Running ${toolName}: ${summary}`
 
 export const labelForToolDone = (toolName: string, summary: string, ok: boolean) =>
-  ok ? `${toolName} 完成` : `${toolName} 失败：${summary}`
+  ok ? `${toolName} done` : `${toolName} failed：${summary}`
 
-/** 普通单轮聊天无工具进度时的轮换提示 */
+/** Rotating hints when chat has no tool progress */
 export const CHAT_IDLE_HINTS = [
-  '正在思考…',
-  '正在组织回复…',
-  '仍在处理，请稍候…',
+  'Thinking…',
+  'Organizing reply…',
+  'Still working, please wait…',
 ]
 
 let stepSeq = 0

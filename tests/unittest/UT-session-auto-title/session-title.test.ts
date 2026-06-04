@@ -53,9 +53,9 @@ describe('session-title helpers', () => {
     expect(shouldSuggestSessionTitle(dialog, '支付模块优先级')).toBe(false)
   })
 
-  it('parseSuggestedTitle 去掉引号与前缀', () => {
-    expect(parseSuggestedTitle('「支付系统优先级」')).toBe('支付系统优先级')
-    expect(parseSuggestedTitle('主题：退款流程改造')).toBe('退款流程改造')
+  it('parseSuggestedTitle strips quotes and prefixes', () => {
+    expect(parseSuggestedTitle('"Payment system priority"')).toBe('Payment system priority')
+    expect(parseSuggestedTitle('Topic: refund flow redesign')).toBe('refund flow redesign')
   })
 
   it('buildTitlePrompt 包含最近对话', () => {

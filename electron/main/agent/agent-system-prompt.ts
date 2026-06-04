@@ -9,6 +9,8 @@ import {
   resolveAgentOutputStyle,
 } from './agent-output-styles'
 import { getMcpInstructionsSection } from './agent-mcp-instructions'
+import { getMainLocale } from '../i18n'
+import { agentLanguageForLocale } from '../../../shared/i18n'
 
 /** Claude Code — 静态/动态分界；仅用于组装，不写入发给模型的字符串 */
 export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY = '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
@@ -116,14 +118,14 @@ export type BuildAgentSystemPromptOptions = SessionSpecificGuidanceOptions & {
   modelId?: string
   /** Default 中文 */
   languagePreference?: string
-  /** 预加载记忆；省略则从项目根读 AGENTS.md / CLAUDE.md */
+  /** 预加载记忆；省略则从Project根读 AGENTS.md / CLAUDE.md */
   projectMemory?: string | null
   skipProjectMemory?: boolean
   /** Claude Code `outputStyle` — default | Explanatory | Learning */
   outputStyleId?: AgentBuiltInOutputStyleId
   /** 会话 scratchpad 绝对路径（Chat Agent） */
   scratchpadDir?: string
-  /** FRC 保留最近 tool 条数，用于 `getFunctionResultClearingSection` */
+  /** FRC 保留Recent tool 条数，用于 `getFunctionResultClearingSection` */
   agentFrcKeepToolMessages?: number
 }
 
@@ -245,7 +247,7 @@ You have been invoked in the following environment:
 ${items.map((item) => ` - ${item}`).join('\n')}`
 }
 
-/** Claude Code `loadMemoryPrompt` — §11；读项目根 AGENTS.md / CLAUDE.md */
+/** Claude Code `loadMemoryPrompt` — §11；读Project根 AGENTS.md / CLAUDE.md */
 export const loadProjectMemoryPrompt = async (projectRoot: string): Promise<string | null> => {
   const root = path.resolve(projectRoot.trim())
   const blocks: string[] = []
@@ -306,7 +308,9 @@ export const buildDefaultSubAgentSystemPrompt = async (
   const root = path.resolve(projectRoot.trim())
   const envInfo = await computeSimpleEnvInfo(root, options.modelId)
   const language =
-    getLanguageSection(options.languagePreference ?? '中文') ?? null
+    getLanguageSection(
+      options.languagePreference ?? agentLanguageForLocale(getMainLocale()),
+    ) ?? null
   const parts = [
     DEFAULT_AGENT_PROMPT,
     getDefaultAgentEnvNotesSection(),
@@ -354,7 +358,9 @@ export const buildAgentSystemPrompt = async (
   const workspaceRules = await loadAlwaysApplyRulesPrompt(root)
   const envInfo = await computeSimpleEnvInfo(root, options.modelId)
   const language =
-    getLanguageSection(options.languagePreference ?? '中文') ?? null
+    getLanguageSection(
+      options.languagePreference ?? agentLanguageForLocale(getMainLocale()),
+    ) ?? null
   const outputStyleSection = getOutputStyleSection(outputStyleConfig)
 
   const staticParts = [

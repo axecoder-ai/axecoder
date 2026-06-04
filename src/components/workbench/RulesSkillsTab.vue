@@ -43,7 +43,7 @@ const defaultScope = computed((): RuleScope =>
 )
 
 const projectTabLabel = computed(() =>
-  projectRoot.value ? fileNameFromPath(projectRoot.value) : '项目',
+  projectRoot.value ? fileNameFromPath(projectRoot.value) : 'Project',
 )
 
 const scopeLabel = (r: RuleListItem) =>
@@ -89,7 +89,7 @@ const onThirdPartyToggle = async () => {
 
 const openNew = () => {
   if (filter.value === 'project' && !projectRoot.value) {
-    alert('请先打开项目以创建项目规则')
+    alert('Open a project first to create project rules')
     return
   }
   editing.value = null
@@ -139,7 +139,7 @@ const onSaved = async (payload: {
 }
 
 const onDelete = async (item: RuleListItem) => {
-  if (!confirm(`删除规则「${item.description}」？`)) return
+  if (!confirm(`Delete rule "${item.description}"?`)) return
   const res = await window.axecoder.deleteRule(
     item.scope,
     item.fileName,
@@ -191,7 +191,7 @@ defineExpose({ reload })
     <div class="toggle-card">
       <div class="toggle-text">
         <span class="toggle-title">Include third-party Plugins, Skills, and other configs</span>
-        <span class="toggle-sub">Automatically import agent configs from other tools（V1 占位，尚未导入）</span>
+        <span class="toggle-sub">Automatically import agent configs from other tools (V1 placeholder, not wired yet)</span>
       </div>
       <button
         type="button"
@@ -242,7 +242,7 @@ defineExpose({ reload })
       </div>
       <p v-else class="empty">No rules yet. Create one with + New.</p>
       <p v-if="filter === 'project' && !projectRoot" class="warn">
-        未打开项目：仅显示用户规则；项目规则需先打开工作区。
+        No project open: user rules only; open a workspace for project rules.
       </p>
     </section>
 

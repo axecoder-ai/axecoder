@@ -25,13 +25,13 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
   const name = input.assigneeUser?.displayName?.trim() || input.roleId
   if (input.speakMode === 'member' && input.assigneeUser) {
     return [
-      `【Collab Workshop · ${name}（${input.assigneeUser.role}）· 群聊发言】`,
-      '必须使用 Read、Grep、Glob 等工具查看真实代码后再交付。',
-      '完成后最终回复只允许：第一行「已完成。」；第二段列出修改/涉及的文件路径（每行一个 - 路径）。禁止输出思考过程、代码探索过程、代码块、长篇分析、英文。',
+      `[Collab Workshop · ${name} (${input.assigneeUser.role}) · group message]`,
+      'You must use Read, Grep, Glob, etc. on real code before delivering.',
+      'Final reply only: first line "Done."; then changed/touched paths (one "- path" per line). No reasoning, exploration, code blocks, or long analysis.',
       input.skillPromptBlock ?? '',
       '',
-      `【用户需求】\n${input.userBrief}`,
-      input.priorSummary ? `【此前讨论】\n${input.priorSummary}` : '',
+      `[User request]\n${input.userBrief}`,
+      input.priorSummary ? `[Prior discussion]\n${input.priorSummary}` : '',
     ]
       .filter(Boolean)
       .join('\n')
@@ -40,59 +40,59 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
     const roster =
       input.users
         ?.filter((u) => !(u.isBuiltin && u.builtinRole === 'manager'))
-        .map((u) => `- assigneeUserId: "${u.id}" → ${u.displayName}（${u.role}）`)
+        .map((u) => `- assigneeUserId: "${u.id}" → ${u.displayName} (${u.role})`)
         .join('\n') ?? ''
     const force = input.forcePlanJson
-      ? '\n【紧急】上一轮未解析出 JSON。本轮最终回复只能有一个 ```json 代码块，禁止任何其它文字或英文思考。'
+      ? '\n[Urgent] Last round JSON parse failed. This round: one ```json block only—no other text.'
       : ''
     return [
-      '【Collab Workshop · 技术经理 · 拆任务】',
-      '先用工具查看代码；思考过程不要写入最终回复。',
-      '最终回复有且仅有一个 ```json 代码块（中文步骤 title），格式：',
-      '{ "steps": [ { "id": "s1", "title": "步骤标题", "assigneeUserId": "user-xxx" } ] }',
-      'assigneeUserId 必须从下列用户中选择（勿指派技术经理）：',
-      roster || '（暂无可用执行人，请在设置中添加用户）',
+      '[Collab Workshop · Tech Lead · plan steps】',
+      'Inspect code with tools first; do not put reasoning in the final reply.',
+      'Final reply must be exactly one ```json block (English step titles):',
+      '{ "steps": [ { "id": "s1", "title": "Step title", "assigneeUserId": "user-xxx" } ] }',
+      'assigneeUserId must be chosen from the list below (do not assign Tech Lead):',
+      roster || '(No executors yet; add users in Settings)',
       force,
       '',
-      `【用户需求】\n${input.userBrief}`,
-      input.priorSummary ? `【此前讨论】\n${input.priorSummary}` : '',
+      `[User request]\n${input.userBrief}`,
+      input.priorSummary ? `[Prior discussion]\n${input.priorSummary}` : '',
     ]
       .filter(Boolean)
       .join('\n')
   }
   if (input.speakMode === 'verify') {
     return [
-      '【Collab Workshop · 技术经理 · 验收】',
-      `【当前步骤】${input.step?.title ?? ''}（id: ${input.step?.id ?? ''}）`,
-      `【本步产出】\n${input.stepOutput ?? ''}`,
-      '请验收。首行必须是以下之一：VERIFY: approve | VERIFY: redo | VERIFY: abort',
-      '其后可写简短评审意见。',
+      '[Collab Workshop · Tech Lead · verification]',
+      `[Current step] ${input.step?.title ?? ''} (id: ${input.step?.id ?? ''})`,
+      `[Step output]\n${input.stepOutput ?? ''}`,
+      'Review this step. First line must be one of: VERIFY: approve | VERIFY: redo | VERIFY: abort',
+      'You may add brief review notes after that.',
       '',
-      `【用户需求】\n${input.userBrief}`,
+      `[User request]\n${input.userBrief}`,
     ].join('\n')
   }
   if (input.speakMode === 'execute' && input.assigneeUser) {
     return [
-      `【Collab Workshop · ${name}（${input.assigneeUser.role}）· 执行步骤】`,
-      `【本步任务】${input.step?.title ?? ''}`,
-      '必须使用 Read、Grep、Glob 等工具查看真实代码后再交付。',
-      '完成后最终回复只允许：第一行「已完成。」；第二段列出修改/涉及的文件路径（每行一个 - 路径）。禁止输出思考过程、代码探索过程、代码块、长篇分析、英文。',
+      `[Collab Workshop · ${name} (${input.assigneeUser.role}) · execute step]`,
+      `[Step task] ${input.step?.title ?? ''}`,
+      'You must use Read, Grep, Glob, etc. on real code before delivering.',
+      'Final reply only: first line "Done."; then changed/touched paths (one "- path" per line). No reasoning, exploration, code blocks, or long analysis.',
       input.skillPromptBlock ?? '',
       '',
-      `【用户需求】\n${input.userBrief}`,
-      input.priorSummary ? `【此前讨论】\n${input.priorSummary}` : '',
+      `[User request]\n${input.userBrief}`,
+      input.priorSummary ? `[Prior discussion]\n${input.priorSummary}` : '',
     ]
       .filter(Boolean)
       .join('\n')
   }
   return [
-    `【Collab Workshop · ${name}】`,
-    '你在多角色协作群聊中发言。必须使用 Read、Grep、Glob 等工具查看真实代码后再给结论。',
-    '若用户提到路径或目录（如 zhongzhi），务必先读取再回答，禁止在未读代码时重复索要业务澄清。',
-    '完成后用简洁中文给出：结论、已查看的文件、建议的后续改动（可含相对路径）。',
+    `[Collab Workshop · ${name}】`,
+    'You speak in a multi-role collaboration chat. Use Read, Grep, Glob on real code before concluding.',
+    'If the user names a path or directory, read it first; do not ask for business clarification without reading code.',
+    'When done, reply briefly in English: conclusion, files inspected, suggested follow-ups (paths allowed).',
     '',
-    `【用户需求】\n${input.userBrief}`,
-    input.priorSummary ? `【此前讨论】\n${input.priorSummary}` : '',
+    `[User request]\n${input.userBrief}`,
+    input.priorSummary ? `[Prior discussion]\n${input.priorSummary}` : '',
   ]
     .filter(Boolean)
     .join('\n')
@@ -104,16 +104,16 @@ export const detectNeedsUserClarification = (
   report: string,
 ): { needsUser: boolean; userQuestion?: string } => {
   if (roleId !== 'manager') return { needsUser: false }
-  const didRead = /已阅读|已查看|Read |Grep |Glob /i.test(report)
+  const didRead = /already read|inspected|Read |Grep |Glob /i.test(report)
   if (didRead) return { needsUser: false }
   const briefAsk = /[?？]/.test(userBrief)
-  const reportAsk = /需要澄清|请补充|请确认|不清楚|无法确定|NEED_CLARIFICATION/i.test(report)
+  const reportAsk = /need clarification|please clarify|please confirm|unclear|cannot determine|NEED_CLARIFICATION/i.test(report)
   if (!briefAsk && !reportAsk) return { needsUser: false }
   const q =
     report
       .split(/[。\n]/)
-      .find((l) => /[?？]|请补充|需要澄清/.test(l))
-      ?.trim() || '请补充验收标准、业务场景或优先级？'
+      .find((l) => /[?？]|please clarify|need clarification/i.test(l))
+      ?.trim() || 'Please clarify acceptance criteria, scenario, or priority?'
   return { needsUser: true, userQuestion: q.slice(0, 300) }
 }
 
@@ -122,7 +122,7 @@ export const parseSubagentReport = (
   roleId: RoleSpeakInput['roleId'],
   userBrief: string,
 ): RoleSpeakOutput => {
-  const summary = report.trim().slice(0, 2000) || '（无结论）'
+  const summary = report.trim().slice(0, 2000) || '(no conclusion)'
   const relatedFiles = extractRelatedFiles(report)
   const clarify = detectNeedsUserClarification(roleId, userBrief, report)
   return {
@@ -145,7 +145,7 @@ export const buildSubagentRoleSpeaker = (
 ): RoleSpeaker => {
   return async (input) => {
     const root = projectRoot.trim()
-    if (!root) throw new Error('请先打开项目')
+    if (!root) throw new Error('Open a project first')
     const enriched = await enrichRoleSpeakInputWithSkills(input, root)
     const subagentType = subagentTypeForRole(enriched.roleId)
     const tools = buildSubAgentToolList(subagentType)

@@ -43,7 +43,7 @@ export const chatOpenAi = async (
     })
     if (!res.ok) {
       const errText = await res.text()
-      return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
+      return { ok: false, error: `request failed (${res.status}): ${errText.slice(0, 300)}` }
     }
     if (useStream) {
       const accum = emptyOpenAiStreamAccum()

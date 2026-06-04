@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import type { AgentOutputStyleId, AppSettings, AppTheme } from '../../types/axecoder'
+import { computed } from 'vue'
+import { useI18n } from '../../i18n'
+import type { AgentOutputStyleId, AppLocale, AppSettings, AppTheme } from '../../types/axecoder'
+import { LOCALE_OPTIONS } from '@shared/i18n'
 import SwitchToggle from './SwitchToggle.vue'
 
 const props = defineProps<{
@@ -10,15 +13,40 @@ const emit = defineEmits<{
   save: [partial: Partial<AppSettings>]
 }>()
 
-const themes: { id: AppTheme; label: string; desc: string }[] = [
-  { id: 'vscode', label: 'VS Code Dark', desc: 'Classic editor dark theme' },
-  { id: 'aura-light', label: 'Aura Light', desc: 'Soft light gray background' },
-  { id: 'aura-dark', label: 'Aura Dark', desc: 'Low-contrast dark interface' },
-]
+const { t } = useI18n()
+
+const themes = computed(() => [
+  { id: 'vscode' as AppTheme, label: t('settings.theme.vscode'), desc: t('settings.theme.vscodeDesc') },
+  {
+    id: 'aura-light' as AppTheme,
+    label: t('settings.theme.auraLight'),
+    desc: t('settings.theme.auraLightDesc'),
+  },
+  {
+    id: 'aura-dark' as AppTheme,
+    label: t('settings.theme.auraDark'),
+    desc: t('settings.theme.auraDarkDesc'),
+  },
+])
+
+const outputStyles = computed(() => [
+  {
+    id: 'default' as AgentOutputStyleId,
+    label: t('settings.agent.outputStyle'),
+    desc: t('agentHelp.standardAssistant'),
+  },
+  { id: 'Explanatory' as AgentOutputStyleId, label: 'Explanatory', desc: 'Explanatory' },
+  { id: 'Learning' as AgentOutputStyleId, label: 'Learning', desc: 'Learning' },
+])
 
 const pickTheme = (id: AppTheme) => {
   if (id === props.settings.theme) return
   emit('save', { theme: id })
+}
+
+const pickLocale = (id: AppLocale) => {
+  if (id === props.settings.locale) return
+  emit('save', { locale: id })
 }
 
 const onAutoSave = (v: boolean) => {
@@ -38,12 +66,6 @@ const onFontSize = (e: Event) => {
 const onAgentAutoApply = (v: boolean) => {
   emit('save', { agentAutoApplyWrites: v })
 }
-
-const outputStyles: { id: AgentOutputStyleId; label: string; desc: string }[] = [
-  { id: 'default', label: 'Default', desc: 'Standard software engineering assistant' },
-  { id: 'Explanatory', label: 'Explanatory', desc: 'Adds codebase insights when finishing tasks' },
-  { id: 'Learning', label: 'Learning', desc: 'Collaborative hands-on practice with insights' },
-]
 
 const onOutputStyle = (e: Event) => {
   const v = (e.target as HTMLSelectElement).value as AgentOutputStyleId
@@ -94,34 +116,51 @@ const clearCompletionSound = () => {
 
 <template>
   <div class="general-tab">
-    <h2>General</h2>
+    <h2>{{ t('settings.title') }}</h2>
 
     <section class="section">
-      <h3 class="section-title">Color theme</h3>
-      <p class="section-desc">Choose the interface theme; applies immediately</p>
-      <div class="theme-grid">
+      <h3 class="section-title">{{ t('settings.locale.title') }}</h3>
+      <p class="section-desc">{{ t('settings.locale.desc') }}</p>
+      <div class="locale-row">
         <button
-          v-for="t in themes"
-          :key="t.id"
+          v-for="opt in LOCALE_OPTIONS"
+          :key="opt.id"
           type="button"
-          class="theme-card"
-          :class="{ active: settings.theme === t.id }"
-          @click="pickTheme(t.id)"
+          class="locale-btn"
+          :class="{ active: (settings.locale ?? 'en') === opt.id }"
+          @click="pickLocale(opt.id)"
         >
-          <span class="theme-preview" :data-theme-preview="t.id" />
-          <span class="theme-label">{{ t.label }}</span>
-          <span class="theme-desc">{{ t.desc }}</span>
+          {{ t(opt.labelKey) }}
         </button>
       </div>
     </section>
 
     <section class="section">
-      <h3 class="section-title">Agent</h3>
-      <p class="section-desc">How Agent confirms changes to project files during a chat</p>
+      <h3 class="section-title">{{ t('settings.theme.title') }}</h3>
+      <p class="section-desc">{{ t('settings.theme.desc') }}</p>
+      <div class="theme-grid">
+        <button
+          v-for="th in themes"
+          :key="th.id"
+          type="button"
+          class="theme-card"
+          :class="{ active: settings.theme === th.id }"
+          @click="pickTheme(th.id)"
+        >
+          <span class="theme-preview" :data-theme-preview="th.id" />
+          <span class="theme-label">{{ th.label }}</span>
+          <span class="theme-desc">{{ th.desc }}</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="section">
+      <h3 class="section-title">{{ t('settings.agent.title') }}</h3>
+      <p class="section-desc">{{ t('settings.agent.desc') }}</p>
       <div class="pref-item">
         <div class="pref-info">
-          <span class="pref-label">Auto-apply disk writes</span>
-          <p class="pref-hint">When enabled, Write / Edit / Delete / Move apply directly without Apply / Reject prompts</p>
+          <span class="pref-label">{{ t('settings.agent.autoApply') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.autoApplyHint') }}</p>
         </div>
         <div class="pref-control">
           <SwitchToggle
@@ -132,8 +171,8 @@ const clearCompletionSound = () => {
       </div>
       <div class="pref-item">
         <div class="pref-info">
-          <span class="pref-label">Output style</span>
-          <p class="pref-hint">Affects system prompts for new Agent sessions. Custom styles: ~/.axecoder/output-styles, ~/.claude/output-styles, or project .axecoder/output-styles (*.md). Use /style in chat to switch.</p>
+          <span class="pref-label">{{ t('settings.agent.outputStyle') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.outputStyleHint') }}</p>
         </div>
         <div class="pref-control pref-control--wide">
           <select
@@ -149,8 +188,8 @@ const clearCompletionSound = () => {
       </div>
       <div class="pref-item pref-item--stack">
         <div class="pref-info">
-          <span class="pref-label">Completion sound</span>
-          <p class="pref-hint">Play the selected audio when Agent finishes responding successfully</p>
+          <span class="pref-label">{{ t('settings.agent.completionSound') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.completionSoundHint') }}</p>
         </div>
         <div class="pref-control">
           <SwitchToggle
@@ -159,28 +198,37 @@ const clearCompletionSound = () => {
           />
         </div>
         <div v-if="settings.agentCompletionSoundEnabled" class="sound-row">
-          <button type="button" class="sound-btn" @click="browseCompletionSound">Browse…</button>
+          <button type="button" class="sound-btn" @click="browseCompletionSound">
+            {{ t('settings.agent.browse') }}
+          </button>
           <button
             type="button"
             class="sound-btn"
             :disabled="!settings.agentCompletionSoundPath"
             @click="previewCompletionSound"
           >
-            Preview
+            {{ t('settings.agent.preview') }}
           </button>
           <span v-if="soundLabel()" class="sound-file">
             {{ soundLabel() }}
-            <button type="button" class="sound-clear" title="Clear" @click="clearCompletionSound">×</button>
+            <button
+              type="button"
+              class="sound-clear"
+              :title="t('settings.agent.clear')"
+              @click="clearCompletionSound"
+            >
+              ×
+            </button>
           </span>
         </div>
       </div>
     </section>
 
     <section class="section">
-      <h3 class="section-title">Editor</h3>
+      <h3 class="section-title">{{ t('settings.editor.title') }}</h3>
       <div class="pref-item">
         <div class="pref-info">
-          <span class="pref-label">Auto-save</span>
+          <span class="pref-label">{{ t('settings.editor.autoSave') }}</span>
         </div>
         <div class="pref-control">
           <SwitchToggle :model-value="!!settings.autoSave" @update:model-value="onAutoSave" />
@@ -188,7 +236,7 @@ const clearCompletionSound = () => {
       </div>
       <div class="pref-item">
         <div class="pref-info">
-          <span class="pref-label">Auto-save delay (ms)</span>
+          <span class="pref-label">{{ t('settings.editor.autoSaveDelay') }}</span>
         </div>
         <div class="pref-control">
           <input
@@ -203,7 +251,7 @@ const clearCompletionSound = () => {
       </div>
       <div class="pref-item">
         <div class="pref-info">
-          <span class="pref-label">Editor font size</span>
+          <span class="pref-label">{{ t('settings.editor.fontSize') }}</span>
         </div>
         <div class="pref-control">
           <input
@@ -247,6 +295,27 @@ h2 {
   margin: 0 0 12px;
   font-size: 12px;
   color: var(--wc-text-dim);
+}
+
+.locale-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.locale-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  border: 1px solid var(--wc-border);
+  border-radius: 6px;
+  background: var(--wc-input-bg);
+  color: var(--wc-text);
+  cursor: pointer;
+}
+
+.locale-btn.active {
+  border-color: var(--wc-accent);
+  box-shadow: 0 0 0 1px var(--wc-accent);
 }
 
 .pref-item {

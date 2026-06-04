@@ -112,7 +112,7 @@ export const readRegistry = async (projectRoot: string): Promise<SessionRegistry
 
 export const writeRegistry = async (projectRoot: string, list: SessionRegistryEntry[]) => {
   const root = await normalizeProjectRoot(projectRoot)
-  if (!root) throw new Error('未打开项目')
+  if (!root) throw new Error('No project open')
   await ensureProjectSessionsDir(root)
   await writeFileAtomic(projectSessionsIndexPath(root), JSON.stringify(sortEntries(list)))
 }

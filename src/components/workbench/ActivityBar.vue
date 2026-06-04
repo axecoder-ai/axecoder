@@ -1,10 +1,15 @@
 <script setup lang="ts">
-const items = [
-  { id: 'explorer', title: '资源管理器' },
-  { id: 'search', title: '搜索' },
-  { id: 'scm', title: '源代码管理' },
-  { id: 'extensions', title: '扩展' },
-] as const
+import { computed } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
+
+const items = computed(() => [
+  { id: 'explorer', title: t('activity.explorer') },
+  { id: 'search', title: t('activity.search') },
+  { id: 'scm', title: t('activity.scm') },
+  { id: 'extensions', title: t('activity.extensions') },
+])
 
 defineProps<{
   active: string
@@ -31,7 +36,12 @@ defineEmits<{
         <span class="activity-icon" :data-icon="item.id" />
       </button>
     </div>
-    <button type="button" class="activity-item account" title="设置" @click="$emit('openSettings')">
+    <button
+      type="button"
+      class="activity-item account"
+      :title="t('common.settings')"
+      @click="$emit('openSettings')"
+    >
       <span class="activity-icon settings" />
     </button>
   </nav>

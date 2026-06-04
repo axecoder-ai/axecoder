@@ -61,7 +61,7 @@ export const getModelById = async (id: string): Promise<ModelEntry | null> => {
 
 export const saveModel = async (input: ModelSaveInput): Promise<ModelsFile> => {
   if (!isAllowedBaseUrl(input.baseUrl)) {
-    throw new Error('baseUrl 必须是 http 或 https')
+    throw new Error('baseUrl must be http or https')
   }
   const data = await readModelsFile()
   const fastApi = input.fastApiModelId?.trim() ?? ''
@@ -111,7 +111,7 @@ export const toggleModel = async (id: string, enabled: boolean): Promise<ModelsF
 export const setActiveModel = async (id: string): Promise<ModelsFile> => {
   const data = await readModelsFile()
   const m = data.models.find((x) => x.id === id)
-  if (!m || !m.enabled) throw new Error('模型不存在或未启用')
+  if (!m || !m.enabled) throw new Error('Model not found or not enabled')
   data.activeModelId = id
   await writeModelsFile(data)
   return data

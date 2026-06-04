@@ -1,9 +1,12 @@
 import fs from 'node:fs/promises'
 import type { AppConfig } from './models-types'
 import { ensureAxecoderDir, axecoderPath } from './axecoder-dir'
+import { invalidateMainLocaleCache } from './i18n'
+import { normalizeLocale } from '../../shared/i18n'
 
 const defaults: AppConfig = {
   schemaVersion: 1,
+  locale: 'en',
   autoSave: true,
   autoSaveDelay: 400,
   fontSize: 14,
@@ -43,6 +46,7 @@ export const getConfig = async (): Promise<AppConfig> => {
   if (!raw) return { ...defaults }
   return {
     schemaVersion: 1,
+    locale: normalizeLocale(raw.locale ?? defaults.locale),
     autoSave: raw.autoSave ?? defaults.autoSave,
     autoSaveDelay: raw.autoSaveDelay ?? defaults.autoSaveDelay,
     fontSize: raw.fontSize ?? defaults.fontSize,
@@ -85,6 +89,7 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
   const cur = await getConfig()
   const next: AppConfig = {
     schemaVersion: 1,
+    locale: partial.locale !== undefined ? normalizeLocale(partial.locale) : cur.locale,
     autoSave: partial.autoSave ?? cur.autoSave,
     autoSaveDelay: partial.autoSaveDelay ?? cur.autoSaveDelay,
     fontSize: partial.fontSize ?? cur.fontSize,
@@ -135,6 +140,7 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
         : cur.profileAvatarPath,
   }
   await fs.writeFile(configPath(), JSON.stringify(next, null, 2), 'utf-8')
+  invalidateMainLocaleCache()
   return next
 }
 

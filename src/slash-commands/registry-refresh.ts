@@ -25,10 +25,10 @@ export const refreshSlashCommandRegistry = async (projectRoot: string) => {
       skillRes.skills,
       async (skillName) => {
         const loaded = await window.axecoder.agentLoadSkill(root, skillName)
-        if (!loaded.ok) return { ok: false, message: loaded.error ?? '加载失败' }
+        if (!loaded.ok) return { ok: false, message: loaded.error ?? 'load failed' }
         return {
           ok: true,
-          message: `已加载 Skill「${loaded.name}」。请在后续消息中说明任务；Skill 内容已记入会话。\n\n路径：${loaded.path}`,
+          message: `Loaded skill "${loaded.name}". Describe the task in your next message; skill content is in the session.\n\nPath: ${loaded.path}`,
           skillText: loaded.text,
           skillName: loaded.name,
         }
@@ -43,14 +43,15 @@ export const refreshSlashCommandRegistry = async (projectRoot: string) => {
       customRes.commands,
       async (commandName, args) => {
         const loaded = await window.axecoder.agentLoadCustomCommand(root, commandName)
-        if (!loaded.ok) return { ok: false, message: loaded.error ?? '加载失败' }
+        if (!loaded.ok) return { ok: false, message: loaded.error ?? 'load failed' }
         const userPart = args.trim()
         const sendPrompt = userPart
-          ? `${loaded.text}\n\n---\n\n用户补充：\n${userPart}`
+          ? `${loaded.text}\n\n---\n\nUser notes:
+\n${userPart}`
           : loaded.text
         return {
           ok: true,
-          message: `已执行 /${loaded.name}`,
+          message: `Ran /${loaded.name}`,
           sendPrompt,
         }
       },

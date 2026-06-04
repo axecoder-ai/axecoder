@@ -8,7 +8,7 @@ import { buildWorkshopStreamId } from './workshop-stream'
 
 const extractSummary = (raw: string): string => {
   const t = raw.trim()
-  if (!t) return '（无结论）'
+  if (!t) return '(no conclusion)'
   const jsonMatch = t.match(/\{[\s\S]*\}/)
   if (jsonMatch) {
     try {
@@ -36,21 +36,22 @@ export const buildLlmRoleSpeaker = (
 ): RoleSpeaker => {
   return async (input) => {
     const model = await getModelById(modelId)
-    if (!model) throw new Error('模型不存在')
+    if (!model) throw new Error('Model not found')
     const apiKey = await getSecret(modelId)
     const name = input.assigneeUser?.displayName?.trim() || input.roleId
     const system = [
-      `你是 Collab Workshop 中的「${name}」。`,
-      '与主聊天纯对话模式相同：用简洁中文直接回答，不要调用工具。',
-      '优先输出 JSON（便于解析），格式：',
-      '{"summary":"核心结论","needsUser":false,"userQuestion":"","relatedFiles":[]}',
-      'needsUser 仅在必须向用户澄清时为 true；无法从上下文推断时可设 true。',
-      '不要输出 markdown 代码块包裹 JSON。',
+      `You are Collab Workshop member "${name}".`,
+      'Same as main chat Q&A: answer concisely in English; do not call tools.',
+      'Prefer JSON output for parsing:',
+      '{"summary":"core conclusion","needsUser":false,"userQuestion":"","relatedFiles":[]}',
+      'Set needsUser true only when user clarification is required.',
+      'Do not wrap JSON in markdown code fences.',
     ].join('\n')
     const user = [
-      `用户需求：${input.userBrief}`,
-      input.priorSummary ? `此前讨论：\n${input.priorSummary}` : '',
-      '请给出你的核心结论。',
+      `User request: ${input.userBrief}`,
+      input.priorSummary ? `Prior discussion:
+\n${input.priorSummary}` : '',
+      'Give your core conclusion.',
     ]
       .filter(Boolean)
       .join('\n\n')

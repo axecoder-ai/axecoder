@@ -166,7 +166,7 @@ const onBackdropMouseup = (e: MouseEvent) => {
       </label>
       <div class="row skills-row">
         <span>Skills / Commands</span>
-        <p class="hint">勾选该用户可执行的 Skill 或自定义命令（Workshop 成员发言时注入指引）</p>
+        <p class="hint">Skills/commands this user may run (injected when they speak in Workshop)</p>
         <p v-if="skillsLoading" class="hint">Loading…</p>
         <ul v-else-if="availableSkills.length" class="skill-list">
           <li v-for="item in availableSkills" :key="item.slug">
@@ -181,7 +181,7 @@ const onBackdropMouseup = (e: MouseEvent) => {
             </label>
           </li>
         </ul>
-        <p v-else class="hint">未发现 Skill 或命令。可在 ~/.cursor/skills、~/.axecoder/commands 或项目 .axecoder/commands 中添加。</p>
+        <p v-else class="hint">No skills or commands found. Add under ~/.cursor/skills, ~/.axecoder/commands, or project .axecoder/commands.</p>
       </div>
       <div class="actions">
         <button type="button" class="secondary-btn" @click="emit('close')">Cancel</button>

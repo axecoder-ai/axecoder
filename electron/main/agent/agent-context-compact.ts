@@ -6,7 +6,7 @@ const COMPACT_SUMMARY_PREFIX = '<system-reminder>\nConversation compacted. Earli
 export const shouldAutoCompact = (messages: AgentLoopMessage[], thresholdChars: number) =>
   estimateContextChars(messages) > thresholdChars
 
-/** 规则压缩：保留 system + 最近 N 条非 system，中间折叠为摘要占位 */
+/** 规则压缩：保留 system + Recent N 条非 system，中间折叠为摘要占位 */
 export const compactAgentMessages = (
   messages: AgentLoopMessage[],
   keepTail = 24,

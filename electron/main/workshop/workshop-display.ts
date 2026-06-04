@@ -5,7 +5,7 @@ import type { RoleSpeakMode } from './workshop-types'
 
 const cjkCount = (s: string) => (s.match(/[\u4e00-\u9fff]/g) ?? []).length
 
-/** 成员群聊正文：仅「已完成 + 涉及文件」；完整 report 存入 reasoningContent */
+/** Member group body: Done + files only; full report in reasoningContent */
 export const formatMemberChatSummary = (
   report: string,
   relatedFiles?: string[],
@@ -13,8 +13,8 @@ export const formatMemberChatSummary = (
   const files = relatedFiles?.length ? relatedFiles : extractRelatedFiles(report)
   const summary =
     files.length > 0
-      ? `已完成本段工作。\n\n涉及文件：\n${files.map((f) => `- ${f}`).join('\n')}`
-      : '已完成本段工作。'
+      ? `Completed this segment.\n\nFiles touched:\n${files.map((f) => `- ${f}`).join('\n')}`
+      : 'Completed this segment.'
   const raw = report.trim()
   return {
     summary,
@@ -22,7 +22,7 @@ export const formatMemberChatSummary = (
   }
 }
 
-/** 群聊正文：简短中文结论；完整 report 留给解析 */
+/** Group chat body: brief English summary; full report for parsing */
 export const formatWorkshopRoleDisplay = (
   report: string,
   mode: RoleSpeakMode | undefined,
@@ -40,13 +40,13 @@ export const formatWorkshopRoleDisplay = (
         return `${i + 1}. ${s.title}（${who}）`
       })
       return {
-        summary: `协作计划共 ${parsed.plan.steps.length} 步：\n${lines.join('\n')}`,
+        summary: `Collaboration plan: ${parsed.plan.steps.length} steps:\n${lines.join('\n')}`,
         planSource,
       }
     }
     const tail = pickChineseTail(raw)
     return {
-      summary: tail || '未能从回复中解析步骤 JSON，请重试。',
+      summary: tail || 'Could not parse step JSON from reply; retry.',
       planSource,
     }
   }
@@ -54,13 +54,13 @@ export const formatWorkshopRoleDisplay = (
   if (mode === 'verify') {
     const d = parseManagerVerifyDecision(raw)
     const verb =
-      d.action === 'approve' ? '通过' : d.action === 'redo' ? '要求重做' : '终止协作'
+      d.action === 'approve' ? 'approved' : d.action === 'redo' ? 'request redo' : 'abort collaboration'
     const comment = d.comment
       .replace(/VERIFY\s*:\s*(approve|redo|abort)/gi, '')
       .trim()
       .slice(0, 300)
     return {
-      summary: comment ? `验收：${verb}。${comment}` : `验收：${verb}。`,
+      summary: comment ? `Review: ${verb}。${comment}` : `Review: ${verb}。`,
       planSource,
     }
   }

@@ -47,7 +47,7 @@ const slugify = (text: string): string => {
 const resolveRulesDir = (scope: RuleScope, projectRoot?: string): string => {
   if (scope === 'user') return userRulesDir()
   const root = projectRoot?.trim() || ''
-  if (!root) throw new Error('请先打开项目以编辑项目规则')
+  if (!root) throw new Error('Open a project first to edit project rules')
   return projectRulesDir(root)
 }
 

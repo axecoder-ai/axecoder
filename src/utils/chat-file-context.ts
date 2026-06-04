@@ -1,4 +1,4 @@
-/** 单文件、总上下文字符上限，避免撑爆模型上下文 */
+/** Per-file and total context char limits */
 export const CHAT_FILE_MAX_CHARS = 80_000
 export const CHAT_FILES_TOTAL_MAX_CHARS = 200_000
 
@@ -29,12 +29,12 @@ export const isUnderProject = (projectRoot: string, filePath: string) => {
 const trimContent = (content: string, maxChars: number) => {
   if (content.length <= maxChars) return { text: content, truncated: false }
   return {
-    text: content.slice(0, maxChars) + `\n\n…（已截断，原长 ${content.length} 字符）`,
+    text: content.slice(0, maxChars) + `\n\n…(truncated, was ${content.length} chars)`,
     truncated: true,
   }
 }
 
-/** 把用户输入与项目文件内容拼成发给模型的 user 消息 */
+/** Merge user input and project files into user message for model */
 export const buildUserMessageWithFiles = async (
   userText: string,
   filePaths: string[],
@@ -53,7 +53,7 @@ export const buildUserMessageWithFiles = async (
       const res = await readFile(filePath)
       raw = res.content
     } catch {
-      blocks.push(`### ${relativeToProject(projectRoot, filePath)}\n（读取失败）`)
+      blocks.push(`### ${relativeToProject(projectRoot, filePath)}\n（Read failed）`)
       continue
     }
 
@@ -62,19 +62,19 @@ export const buildUserMessageWithFiles = async (
       CHAT_FILES_TOTAL_MAX_CHARS - totalChars,
     )
     if (perFileBudget <= 0) {
-      blocks.push(`### ${relativeToProject(projectRoot, filePath)}\n（已达总上下文上限，已跳过）`)
+      blocks.push(`### ${relativeToProject(projectRoot, filePath)}\n(context limit reached, skipped)`)
       continue
     }
 
     const { text, truncated } = trimContent(raw, perFileBudget)
     totalChars += text.length
     const label = relativeToProject(projectRoot, filePath)
-    const note = truncated ? '（内容已截断）' : ''
+    const note = truncated ? '(content truncated)' : ''
     blocks.push(`### ${label}${note}\n\`\`\`\n${text}\n\`\`\``)
   }
 
   if (!blocks.length) return userText
 
   const filesSection = blocks.join('\n\n')
-  return `${userText.trim()}\n\n---\n以下为项目文件内容，供你参考：\n\n${filesSection}`
+  return `${userText.trim()}\n\n---\nProject file context for reference:\n\n${filesSection}`
 }

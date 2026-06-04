@@ -3,7 +3,7 @@ export const consumeOpenAiSse = async (
   res: Response,
   onEvent: (obj: Record<string, unknown>) => void,
 ): Promise<void> => {
-  if (!res.body) throw new Error('响应无 body')
+  if (!res.body) throw new Error('Response has no body')
   const reader = res.body.getReader()
   const dec = new TextDecoder()
   let buf = ''
@@ -47,7 +47,7 @@ const pickDelta = (obj: Record<string, unknown>): Record<string, unknown> | unde
   return delta && typeof delta === 'object' ? (delta as Record<string, unknown>) : undefined
 }
 
-/** 合并一条 SSE chunk，返回本次新增的可见文本片段 */
+/** 合并一条 SSE chunk，返回本次新增的可见Text片段 */
 export const mergeOpenAiStreamChunk = (
   accum: OpenAiStreamAccum,
   obj: Record<string, unknown>,

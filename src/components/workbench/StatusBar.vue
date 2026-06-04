@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
+
 defineProps<{
   line: number
   col: number
@@ -8,9 +12,9 @@ defineProps<{
 }>()
 
 const saveLabel = (s?: string) => {
-  if (s === 'saving') return '保存中…'
-  if (s === 'saved') return '已保存'
-  if (s === 'error') return '保存失败'
+  if (s === 'saving') return t('status.saving')
+  if (s === 'saved') return t('status.saved')
+  if (s === 'error') return t('status.saveError')
   return ''
 }
 </script>

@@ -1,10 +1,10 @@
-/** 右侧 Agents 历史侧栏布局图标几何（ChatPane / AgentsPanel 与真源对齐） */
+/** Right Agents sidebar layout icon geometry */
 export const RIGHT_PANEL_LAYOUT_ICON_MARKERS = {
   outer: 'x="2.5" y="3.5" width="11" height="9"',
   inner: 'x="9" y="4.5" width="3.5" height="7"',
 } as const
 
-/** @deprecated 旧版 Agents 图标，用于回归检测 */
+/** @deprecated legacy Agents icon for regression */
 export const LEGACY_AGENTS_PANEL_ICON_MARKERS = {
   outer: 'x="2.5" y="4.5" width="11" height="7"',
   inner: 'x="10.5" y="5" width="2.5" height="6"',

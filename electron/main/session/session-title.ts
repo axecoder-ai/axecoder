@@ -2,18 +2,29 @@ import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 import { chatWithProvider } from '../ai/chat-with-provider'
 import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
+import { t, getMainLocale } from '../i18n'
+import { translate, messagesByLocale, type LocaleId } from '../../../shared/i18n'
 
 export type TitleDialogMessage = {
   role: 'user' | 'assistant'
   text: string
 }
 
-export const DEFAULT_SESSION_TITLES = new Set(['New Agent', '新对话'])
+const buildDefaultTitleSet = (): Set<string> => {
+  const s = new Set<string>(['New Agent'])
+  for (const loc of Object.keys(messagesByLocale) as LocaleId[]) {
+    s.add(translate(loc, 'session.defaultAgent'))
+    s.add(translate(loc, 'session.defaultChat'))
+  }
+  return s
+}
+
+export const DEFAULT_SESSION_TITLES = buildDefaultTitleSet()
 
 export const truncateSessionTitle = (text: string, maxLen = 24): string => {
-  const t = text.trim()
-  if (!t) return ''
-  return t.length > maxLen ? `${t.slice(0, maxLen)}…` : t
+  const line = text.trim()
+  if (!line) return ''
+  return line.length > maxLen ? `${line.slice(0, maxLen)}…` : line
 }
 
 export const firstUserMessageText = (messages: TitleDialogMessage[]): string => {
@@ -22,11 +33,11 @@ export const firstUserMessageText = (messages: TitleDialogMessage[]): string => 
 }
 
 export const isPlaceholderSessionTitle = (title: string, firstUserText: string): boolean => {
-  const t = title.trim()
-  if (!t || DEFAULT_SESSION_TITLES.has(t)) return true
+  const line = title.trim()
+  if (!line || DEFAULT_SESSION_TITLES.has(line)) return true
   const first = firstUserText.trim()
-  if (first && (t === truncateSessionTitle(first) || t === first)) return true
-  if (/^(你好|您好|hi|hello|hey)$/i.test(t)) return true
+  if (first && (line === truncateSessionTitle(first) || line === first)) return true
+  if (/^(你好|您好|hi|hello|hey)$/i.test(line)) return true
   return false
 }
 
@@ -42,26 +53,27 @@ export const shouldSuggestSessionTitle = (
 }
 
 export const buildTitlePrompt = (messages: TitleDialogMessage[], maxLines = 8): string => {
+  const loc = getMainLocale()
   const dialog = messages
     .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.text.trim())
     .slice(-maxLines)
   const body = dialog.map((m) => `${m.role}: ${m.text.trim().slice(0, 500)}`).join('\n')
   return [
-    '根据以下对话，生成一个 6–16 字的中文会话主题，概括讨论核心。',
-    '只输出标题本身：不要引号、不要编号、不要解释。',
+    translate(loc, 'session.titlePromptIntro'),
+    translate(loc, 'session.titlePromptRule'),
     '',
-    '对话：',
+    translate(loc, 'session.conversationLabel'),
     body,
   ].join('\n')
 }
 
 export const parseSuggestedTitle = (raw: string): string | null => {
-  let t = raw.trim().split('\n')[0]?.trim() ?? ''
-  t = t.replace(/^["'「『【]+|["'」』】]+$/g, '').trim()
-  t = t.replace(/^(标题|主题)[:：]\s*/i, '').trim()
-  if (!t) return null
-  if (t.length > 32) t = `${t.slice(0, 32)}…`
-  return t
+  let line = raw.trim().split('\n')[0]?.trim() ?? ''
+  line = line.replace(/^["'「『【]+|["'」』】]+$/g, '').trim()
+  line = line.replace(/^(Title|Topic|主题)[:：]\s*/i, '').trim()
+  if (!line) return null
+  if (line.length > 32) line = `${line.slice(0, 32)}…`
+  return line
 }
 
 export const suggestChatSessionTitle = async (
@@ -70,12 +82,12 @@ export const suggestChatSessionTitle = async (
   currentTitle: string,
 ): Promise<{ ok: true; title: string } | { ok: false; error: string }> => {
   if (!shouldSuggestSessionTitle(messages, currentTitle)) {
-    return { ok: false, error: '暂不需要生成标题' }
+    return { ok: false, error: t('errors.titleNotNeeded') }
   }
   const id = modelId.trim()
-  if (!id) return { ok: false, error: '未选择模型' }
+  if (!id) return { ok: false, error: t('errors.noModelSelected') }
   const model = await getModelById(id)
-  if (!model) return { ok: false, error: '模型不存在' }
+  if (!model) return { ok: false, error: t('errors.modelNotFound') }
   const apiKey = await getSecret(id)
   const apiModelId = await resolveApiModelIdForTask(model, 'subagent', '')
   const prompt = buildTitlePrompt(messages)
@@ -88,9 +100,9 @@ export const suggestChatSessionTitle = async (
   )
   if (!res.ok) return { ok: false, error: res.error }
   const title = parseSuggestedTitle(res.content ?? '')
-  if (!title) return { ok: false, error: '无法解析标题' }
+  if (!title) return { ok: false, error: t('errors.titleParseFailed') }
   if (isPlaceholderSessionTitle(title, firstUserMessageText(messages))) {
-    return { ok: false, error: '生成结果仍为占位' }
+    return { ok: false, error: t('errors.titleStillPlaceholder') }
   }
   return { ok: true, title }
 }

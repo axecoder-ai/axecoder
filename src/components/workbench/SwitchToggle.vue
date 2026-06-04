@@ -16,7 +16,7 @@ const emit = defineEmits<{
   change: [value: boolean]
 }>()
 
-/** 外部配置 → 展示（与 Rules 页 .switch 一致） */
+/** External config → display (same as Rules .switch) */
 const lit = ref(false)
 
 const readProp = () => {

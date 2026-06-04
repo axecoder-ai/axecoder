@@ -33,7 +33,7 @@ const body = ref('')
 const canUseProject = computed(() => Boolean(props.projectRoot?.trim()))
 
 const projectScopeLabel = computed(() =>
-  props.projectRoot ? fileNameFromPath(props.projectRoot) : '项目',
+  props.projectRoot ? fileNameFromPath(props.projectRoot) : 'Project',
 )
 
 watch(
@@ -60,7 +60,7 @@ watch(
 const onSave = () => {
   const desc = description.value.trim()
   if (!desc) {
-    alert('请填写规则标题/描述')
+    alert('Enter rule title/description')
     return
   }
   emit('save', {
@@ -90,22 +90,22 @@ const onSave = () => {
           {{ projectScopeLabel }}（.cursor/rules）
         </label>
       </fieldset>
-      <p v-else class="hint">未打开项目时，规则将保存到用户目录 ~/.axecoder/rules</p>
+      <p v-else class="hint">When no project is open, rules save to ~/.axecoder/rules</p>
       <label class="row">
-        标题 / description
-        <input v-model="description" type="text" placeholder="规则简述，显示在列表中" />
+        Title / description
+        <input v-model="description" type="text" placeholder="Short rule summary shown in the list" />
       </label>
       <label class="row row-switch">
-        <span>Always apply（始终注入 Agent 系统提示）</span>
+        <span>Always apply（always inject into Agent system prompt）</span>
         <SwitchToggle v-model="alwaysApply" />
       </label>
       <label class="row">
-        Globs（可选，V1 仅保存）
-        <input v-model="globs" type="text" placeholder="例如 src/**/*.ts" />
+        Globs (optional, V1 save only)
+        <input v-model="globs" type="text" placeholder="e.g. src/**/*.ts" />
       </label>
       <label class="row">
-        正文（Markdown）
-        <textarea v-model="body" rows="12" placeholder="规则正文…" />
+        Body (Markdown)
+        <textarea v-model="body" rows="12" placeholder="Rule body…" />
       </label>
       <div class="actions">
         <button type="button" @click="emit('close')">Cancel</button>

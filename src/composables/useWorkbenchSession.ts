@@ -1,7 +1,7 @@
 import type { Ref } from 'vue'
 import type { SessionKind, WorkshopRunResult, WorkshopSession } from '../types/axecoder'
 
-/** 统一 Agent / Workshop 会话发送入口（Workshop 部分） */
+/** Unified Agent/Workshop send entry (Workshop part) */
 export const useWorkbenchSession = (
   projectRoot: Ref<string>,
   kind: Ref<SessionKind>,
@@ -14,7 +14,7 @@ export const useWorkbenchSession = (
     imageRefs?: import('../types/axecoder').ChatImageRef[],
   ): Promise<WorkshopRunResult> => {
     if (kind.value !== 'workshop') {
-      return { ok: false, error: '当前不是 Workshop 会话' }
+      return { ok: false, error: 'Not a Workshop session' }
     }
     return window.axecoder.workshopSendMessage(
       projectRoot.value,

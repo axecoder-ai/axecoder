@@ -125,7 +125,7 @@ defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
           v-for="img in attachedImages"
           :key="img.ref.id"
           class="file-ref-chip image-chip"
-          title="粘贴的图片"
+          title="Pasted image"
         >
           <img :src="img.previewUrl" alt="" class="image-chip-thumb" />
           <button type="button" class="chip-remove" @click="emit('remove-image', img.ref.id)">×</button>
@@ -157,7 +157,7 @@ defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
             class="add-models-link"
             @click="emit('add-models')"
           >
-            添加模型
+            Add model
           </button>
         </div>
         <div class="footer-right">
@@ -165,7 +165,7 @@ defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
             type="button"
             class="send-btn"
             :class="{ active: canSend }"
-            title="发送"
+            title="Send"
             :disabled="!canSend"
             @click="onSend"
           >

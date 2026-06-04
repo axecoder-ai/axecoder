@@ -2,14 +2,14 @@ import type { UserEntry, WorkshopRoleId } from '../types/axecoder'
 
 const isManager = (u: UserEntry) => Boolean(u.isBuiltin && u.builtinRole === 'manager')
 
-/** Workshop 角色 → 设置里 Users 条目（按 role / builtin 匹配） */
+/** Workshop role → Users entry in Settings (role/builtin match) */
 export const findUserForWorkshopRole = (
   users: UserEntry[],
   roleId: WorkshopRoleId,
 ): UserEntry | undefined => {
   if (roleId === 'system' || roleId === 'user') return undefined
   if (roleId === 'manager') return users.find(isManager)
-  const title = roleId === 'backend' ? '后端' : roleId === 'frontend' ? '前端' : '测试'
+  const title = roleId === 'backend' ? 'Backend' : roleId === 'frontend' ? 'Frontend' : 'QA'
   return users.find(
     (u) => !u.isBuiltin && (u.role.trim() === title || u.role.trim().includes(title)),
   )
@@ -23,7 +23,7 @@ export const inferWorkshopRoleId = (
 ): 'manager' | 'backend' | 'frontend' | 'tester' => {
   if (user.isBuiltin && user.builtinRole === 'manager') return 'manager'
   const r = user.role.toLowerCase()
-  if (r.includes('前端')) return 'frontend'
-  if (r.includes('测试')) return 'tester'
+  if (r.includes('Frontend')) return 'frontend'
+  if (r.includes('QA')) return 'tester'
   return 'backend'
 }

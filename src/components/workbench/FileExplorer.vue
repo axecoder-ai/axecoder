@@ -66,7 +66,7 @@ const refresh = async () => {
 }
 
 const projectTitle = computed(() => {
-  if (!rootPath.value) return '未打开项目'
+  if (!rootPath.value) return 'No project open'
   return baseName(rootPath.value)
 })
 
@@ -175,7 +175,7 @@ const commitNewFile = async () => {
     expanded.value.add(parentPath)
     emit('open-file', filePath)
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '创建失败'
+    const msg = e instanceof Error ? e.message : 'Create failed'
     window.alert(msg)
     creatingFile.value = { parentPath, name: trimmed }
     nextTick(() => newFileInput.value?.focus())
@@ -194,7 +194,7 @@ const onNewFolder = () => {
   const parent = targetParent()
   if (!parent) return
   expanded.value = new Set([...expanded.value, parent])
-  creatingFolder.value = { parentPath: parent, name: '新建文件夹' }
+  creatingFolder.value = { parentPath: parent, name: 'New folder' }
   nextTick(() => {
     newFolderInput.value?.focus()
     newFolderInput.value?.select()
@@ -215,7 +215,7 @@ const commitNewFolder = async () => {
     await refresh()
     expanded.value.add(parentPath)
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '创建失败'
+    const msg = e instanceof Error ? e.message : 'Create failed'
     window.alert(msg)
     creatingFolder.value = { parentPath, name: trimmed }
     nextTick(() => newFolderInput.value?.focus())
@@ -279,7 +279,7 @@ const onDrop = async (e: DragEvent, destDir: string) => {
     expanded.value.add(destDir)
     if (props.activeFilePath === src) emit('open-file', destPath)
   } catch (err) {
-    const msg = err instanceof Error ? err.message : '移动失败'
+    const msg = err instanceof Error ? err.message : 'Move failed'
     window.alert(msg)
   }
 }
@@ -298,12 +298,12 @@ const onCopy = () => {
 
 const pickConflictAction = (): ConflictAction | null => {
   const ans = window.prompt(
-    '目标已存在。输入 skip（跳过）、rename（自动重命名）或 replace（替换）',
+    'Target exists. Enter skip, rename, or replace',
     'rename',
   )
   if (!ans) return null
   if (ans === 'skip' || ans === 'rename' || ans === 'replace') return ans
-  window.alert('无效输入，请输入 skip、rename 或 replace')
+  window.alert('Invalid input; enter skip, rename, or replace')
   return pickConflictAction()
 }
 
@@ -318,7 +318,7 @@ const transferWithConflict = async (
     return await run()
   } catch (e) {
     const msg = e instanceof Error ? e.message : ''
-    if (!msg.includes('已存在')) throw e
+    if (!msg.includes('already exists')) throw e
     const action = pickConflictAction()
     if (!action) return null
     return await run(action)
@@ -411,7 +411,7 @@ const onExportPdf = async () => {
     if ('cancelled' in res) return
     await fs.revealInFinder(res.path)
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '导出 PDF 失败'
+    const msg = e instanceof Error ? e.message : 'Export PDF failed'
     window.alert(msg)
   }
 }
@@ -425,7 +425,7 @@ const onExportDocx = async () => {
     if ('cancelled' in res) return
     await fs.revealInFinder(res.path)
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '导出 DOCX 失败'
+    const msg = e instanceof Error ? e.message : 'Export DOCX failed'
     window.alert(msg)
   }
 }
@@ -533,26 +533,26 @@ onUnmounted(() => {
         <span class="panel-title">{{ projectTitle }}</span>
       </button>
       <div class="header-actions">
-        <button type="button" class="hdr-btn" title="新建文件" :disabled="!rootPath" @click="onNewFile">
+        <button type="button" class="hdr-btn" title="New file" :disabled="!rootPath" @click="onNewFile">
           <svg class="hdr-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M4.5 1.5h5.2l3.3 3.3v8.7a.5.5 0 0 1-.5.5H4.5a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5z" stroke="currentColor" />
             <path d="M9.7 1.5V4.8h3.3" stroke="currentColor" />
             <path d="M10.5 11.5h2.5M11.75 10.25v2.5" stroke="currentColor" />
           </svg>
         </button>
-        <button type="button" class="hdr-btn" title="新建文件夹" :disabled="!rootPath" @click="onNewFolder">
+        <button type="button" class="hdr-btn" title="New folder" :disabled="!rootPath" @click="onNewFolder">
           <svg class="hdr-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M2.5 4.5h4.2l1 1h5.8v6.5a.5.5 0 0 1-.5.5h-9.5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5z" stroke="currentColor" />
             <path d="M10.5 11.5h2.5M11.75 10.25v2.5" stroke="currentColor" />
           </svg>
         </button>
-        <button type="button" class="hdr-btn" title="刷新" :disabled="!rootPath" @click="refresh">
+        <button type="button" class="hdr-btn" title="Refresh" :disabled="!rootPath" @click="refresh">
           <svg class="hdr-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M13.2 2.8A6 6 0 1 0 12.8 9" stroke="currentColor" stroke-linecap="round" />
             <path d="M13.2 2.8V6h-3.2" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
-        <button type="button" class="hdr-btn" title="全部折叠" :disabled="!rootPath" @click="collapseAll">
+        <button type="button" class="hdr-btn" title="Collapse all" :disabled="!rootPath" @click="collapseAll">
           <svg class="hdr-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <rect x="2" y="5.5" width="6" height="6" rx="0.5" stroke="currentColor" />
             <rect x="5.5" y="3" width="6" height="6" rx="0.5" stroke="currentColor" />
@@ -630,10 +630,10 @@ onUnmounted(() => {
         <span v-else class="file-name">{{ node.name }}</span>
       </div>
       <div v-if="!rootPath" class="tree-empty">
-        <p>尚未打开项目</p>
-        <button type="button" class="open-project-btn" @click="openProject">打开项目</button>
+        <p>No project open</p>
+        <button type="button" class="open-project-btn" @click="openProject">Open project</button>
       </div>
-      <div v-else-if="!flatNodes.length" class="tree-empty">项目为空</div>
+      <div v-else-if="!flatNodes.length" class="tree-empty">Project is empty</div>
     </div>
     </div>
 

@@ -36,7 +36,12 @@ export const resolveUserSkillPromptBlock = async (
     parts.push(`### ${slug}\n${text}`)
   }
   if (!parts.length) return ''
-  return ['【绑定 Skill / 命令】', '以下为本用户绑定的能力指引，请优先遵循：', '', ...parts].join('\n')
+  return [
+    '[Bound skills / commands]',
+    "Guidance for this user's bound capabilities—follow first:",
+    '',
+    ...parts,
+  ].join('\n')
 }
 
 export const enrichRoleSpeakInputWithSkills = async (

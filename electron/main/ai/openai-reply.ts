@@ -1,4 +1,4 @@
-/** 从 OpenAI 兼容响应里取出助手正文（含 reasoning 等扩展字段） */
+/** 从 OpenAI 兼容响应里取出助手正文（含 reasoning 等Extensions字段） */
 export const pickOpenAiReplyText = (message: Record<string, unknown> | undefined): string => {
   if (!message) return ''
 

@@ -18,6 +18,7 @@ const BUILTIN_COMMAND_NAMES = [
   'implement',
   'code-review',
   'design_doc_template',
+  'rppit',
 ] as const
 
 const builtinCommandsDir = () =>

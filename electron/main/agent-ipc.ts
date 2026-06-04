@@ -49,6 +49,7 @@ import {
   type AgentBuiltInOutputStyleId,
 } from './agent/agent-output-styles'
 import { getConfig, setConfig } from './config-store'
+import { t } from './i18n'
 
 export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
   bindAgentProgressWindow(getMainWindow)
@@ -59,6 +60,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
       projectRoot: string,
       modelId: string,
       messages: AiChatMessage[],
+      chatMode?: string,
     ) => {
       const history = (Array.isArray(messages) ? messages : [])
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -71,9 +73,9 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
             : {}),
         }))
       if (!history.some((m) => m.role === 'user')) {
-        return { ok: false as const, error: '无用户消息' }
+        return { ok: false as const, error: 'No user message' }
       }
-      return startAgentTurn(projectRoot, modelId, history)
+      return startAgentTurn(projectRoot, modelId, history, chatMode)
     },
   )
 
@@ -155,7 +157,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
 
   ipcMain.handle('agent:loadSkill', async (_, projectRoot: string, skillName: string) => {
     const skill = await findSkillByName(projectRoot ?? '', skillName)
-    if (!skill) return { ok: false as const, error: `未找到 Skill：${skillName}` }
+    if (!skill) return { ok: false as const, error: `Skill not found: ${skillName}` }
     const content = await readSkillContent(skill.path)
     if (!content.ok) return { ok: false as const, error: content.error }
     return { ok: true as const, name: skill.name, text: content.text, path: skill.path }
@@ -191,13 +193,13 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
         description: c.description,
         source: c.source,
       })),
-      dirs: ['~/.axecoder/commands', '<project>/.axecoder/commands'],
+      dirs: ['~/.cursor/commands', '~/.axecoder/commands', '<project>/.axecoder/commands'],
     }
   })
 
   ipcMain.handle('agent:loadCustomCommand', async (_, projectRoot: string, commandName: string) => {
     const cmd = await findCustomCommandByName(projectRoot ?? '', commandName)
-    if (!cmd) return { ok: false as const, error: `未找到命令：${commandName}` }
+    if (!cmd) return { ok: false as const, error: `Command not found: ${commandName}` }
     const content = await readCustomCommandContent(cmd.path)
     if (!content.ok) return { ok: false as const, error: content.error }
     return { ok: true as const, name: cmd.name, text: content.text, path: cmd.path }
@@ -243,7 +245,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
     return {
       ok: true as const,
       activeId: cfg.agentOutputStyle,
-      styles: [{ id: 'default', name: 'default', description: '标准软件工程助手', source: 'builtin' as const }, ...builtin, ...custom],
+      styles: [{ id: 'default', name: 'default', description: 'Standard software engineering assistant', source: 'builtin' as const }, ...builtin, ...custom],
       dirs: ['~/.axecoder/output-styles', '~/.claude/output-styles', '<project>/.axecoder/output-styles'],
     }
   })
@@ -253,7 +255,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
     if (id !== DEFAULT_OUTPUT_STYLE_NAME && !OUTPUT_STYLE_CONFIG[id as AgentBuiltInOutputStyleId]) {
       await refreshCustomOutputStylesCache()
       if (!getCachedCustomOutputStyles().styles[id]) {
-        return { ok: false as const, error: `未知输出风格：${id}` }
+        return { ok: false as const, error: `Unknown output style: ${id}` }
       }
     }
     await setConfig({ agentOutputStyle: id })
@@ -262,44 +264,46 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
 
   ipcMain.handle('agent:planModeHelp', async () => {
     const cfg = await getConfig()
-    const hooks = cfg.agentHooksEnabled !== false ? '已启用' : '已关闭'
+    const hooksStatus = cfg.agentHooksEnabled !== false
+      ? t('agentHelp.hooksEnabled')
+      : t('agentHelp.hooksDisabled')
     return {
       ok: true as const,
       text: [
-        '计划模式（Plan Mode）',
+        t('agentHelp.planTitle'),
         '',
-        '- 在 Agent 对话中调用工具 EnterPlanMode / ExitPlanMode 进入或退出计划模式。',
-        '- 计划模式下 Edit / Write / Delete / Move / Bash 会被阻断，便于先规划再实施。',
-        '- 斜杠命令 /plan 仅显示本说明；实际切换由 Agent 工具完成。',
+        `- ${t('agentHelp.planBullet1')}`,
+        `- ${t('agentHelp.planBullet2')}`,
+        `- ${t('agentHelp.planBullet3')}`,
         '',
-        `Hooks：${hooks}（配置见 ~/.axecoder/hooks.json，/hooks 查看详情）`,
+        t('agentHelp.hooksLine', { status: hooksStatus }),
       ].join('\n'),
     }
   })
 
   ipcMain.handle('agent:rewindHelp', async (_, projectRoot: string) => {
-    if (!projectRoot) return { ok: false as const, error: '未打开项目' }
+    if (!projectRoot) return { ok: false as const, error: t('errors.noProject') }
     const { spawn } = await import('node:child_process')
     const gitLines = await new Promise<string>((resolve) => {
       const proc = spawn('git', ['status', '--short'], { cwd: projectRoot })
       let out = ''
       proc.stdout?.on('data', (d) => { out += d.toString() })
-      proc.on('close', () => resolve(out.trim() || '(无未提交变更)'))
-      proc.on('error', () => resolve('(Git 不可用)'))
+      proc.on('close', () => resolve(out.trim() || t('agentHelp.gitClean')))
+      proc.on('error', () => resolve('(Git unavailable)'))
     })
     return {
       ok: true as const,
       text: [
-        '回滚（/rewind）',
+        t('agentHelp.rewindTitle'),
         '',
-        'Agent 会话支持 checkpoint：在对话中使用 `/rewind` 或 `/rewind <checkpointId>` 恢复上一轮开始前状态。',
-        '也可用 Git 查看并撤销工作区变更：',
+        t('agentHelp.rewindBullet1'),
+        t('agentHelp.rewindBullet2'),
         '',
         '```',
         gitLines,
         '```',
         '',
-        '常用命令：`git checkout -- <file>`、`git restore .`、`git stash`',
+        t('agentHelp.rewindCommands'),
       ].join('\n'),
     }
   })
@@ -310,7 +314,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
   }))
 
   ipcMain.handle('agent:listCheckpoints', async (_, sessionId: string) => {
-    if (!sessionId?.trim()) return { ok: false as const, error: '缺少 sessionId' }
+    if (!sessionId?.trim()) return { ok: false as const, error: t('errors.missingSessionId') }
     return { ok: true as const, checkpoints: listAgentCheckpoints(sessionId) }
   })
 
@@ -318,7 +322,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
     'agent:rewind',
     async (_, sessionId: string, checkpointId?: string) => {
       const session = getSession(sessionId)
-      if (!session) return { ok: false as const, error: 'Agent 会话不存在或已过期' }
+      if (!session) return { ok: false as const, error: t('errors.agentSessionMissing') }
       return rewindAgentCheckpoint(sessionId, session, checkpointId)
     },
   )
@@ -348,7 +352,7 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
   })
 
   ipcMain.handle('agent:initAgentsMd', async (_, projectRoot: string) => {
-    if (!projectRoot?.trim()) return { ok: false as const, error: '未打开项目' }
+    if (!projectRoot?.trim()) return { ok: false as const, error: 'No project open' }
     const filePath = path.join(path.resolve(projectRoot), 'AGENTS.md')
     try {
       await fs.access(filePath)

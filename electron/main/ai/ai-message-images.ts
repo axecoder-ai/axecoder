@@ -5,7 +5,7 @@ export const messageHasImages = (m: AiChatMessage) =>
 
 export const anyMessageHasImages = (messages: AiChatMessage[]) => messages.some(messageHasImages)
 
-export const userTextContent = (content: string) => content || '请描述或分析附带的图片。'
+export const userTextContent = (content: string) => content || 'Describe or analyze the attached image(s).'
 
 /** OpenAI Chat Completions 多模态 user content */
 export const userMessageToOpenAiContent = (

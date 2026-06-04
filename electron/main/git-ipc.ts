@@ -12,12 +12,12 @@ const runGit = (cwd: string, args: string[]): Promise<string> =>
       if (code === 0) resolve(out.trim())
       else reject(new Error(err.trim() || `git exit ${code}`))
     })
-    proc.on('error', () => reject(new Error('未安装 git 或无法执行')))
+    proc.on('error', () => reject(new Error('Git not installed or not executable')))
   })
 
 export const registerGitIpc = () => {
   ipcMain.handle('git:status', async (_, cwd: string) => {
-    if (!cwd) return { ok: false as const, error: '未打开项目' }
+    if (!cwd) return { ok: false as const, error: 'No project open' }
     try {
       const branch = await runGit(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])
       const raw = await runGit(cwd, ['status', '--porcelain'])
@@ -30,7 +30,7 @@ export const registerGitIpc = () => {
         : []
       return { ok: true as const, branch, changes }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Git 不可用'
+      const msg = e instanceof Error ? e.message : 'Git unavailable'
       return { ok: false as const, error: msg }
     }
   })

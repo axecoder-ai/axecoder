@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import electron from 'vite-plugin-electron/simple'
@@ -11,8 +12,34 @@ export default defineConfig(({ command }) => {
   const isServe = command === 'serve'
   const isBuild = command === 'build'
   const sourcemap = isServe || !!process.env.VSCODE_DEBUG
+  const devPort = (() => {
+    try {
+      return Number(new URL(pkg.debug.env.VITE_DEV_SERVER_URL).port) || 3344
+    } catch {
+      return 3344
+    }
+  })()
 
   return {
+    resolve: {
+      alias: {
+        '@shared': path.resolve(__dirname, 'shared'),
+      },
+    },
+    server: isServe
+      ? {
+          host: '127.0.0.1',
+          port: devPort,
+          strictPort: false,
+          fs: {
+            // 项目根目录的 opencode 符号链接，避免 Vite 扫描外部 monorepo
+            deny: [path.resolve(__dirname, 'opencode')],
+          },
+          watch: {
+            ignored: ['**/opencode/**'],
+          },
+        }
+      : undefined,
     plugins: [
       vue(),
       electron({
@@ -27,6 +54,11 @@ export default defineConfig(({ command }) => {
             }
           },
           vite: {
+            resolve: {
+              alias: {
+                '@shared': path.resolve(__dirname, 'shared'),
+              },
+            },
             build: {
               sourcemap,
               minify: isBuild,
@@ -62,13 +94,6 @@ export default defineConfig(({ command }) => {
         renderer: {},
       }),
     ],
-    server: process.env.VSCODE_DEBUG && (() => {
-      const url = new URL(pkg.debug.env.VITE_DEV_SERVER_URL)
-      return {
-        host: url.hostname,
-        port: +url.port,
-      }
-    })(),
     clearScreen: false,
   }
 })

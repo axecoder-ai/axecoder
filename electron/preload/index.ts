@@ -218,12 +218,14 @@ contextBridge.exposeInMainWorld('axecoder', {
     projectRoot: string,
     modelId: string,
     messages: import('../../src/types/axecoder').AiChatMessage[],
+    chatMode?: import('../../src/types/axecoder').ChatModeId,
   ) =>
     ipcRenderer.invoke(
       'agent:send',
       cloneForIpc(projectRoot),
       modelId,
       cloneForIpc(messages),
+      chatMode,
     ) as Promise<import('../../src/types/axecoder').AgentSendResult>,
   agentStop: (sessionId: string) =>
     ipcRenderer.invoke('agent:stop', sessionId) as Promise<

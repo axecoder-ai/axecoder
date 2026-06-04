@@ -25,7 +25,7 @@ const activeModel = computed(
   () => props.models.find((m) => m.id === props.activeModelId) ?? null,
 )
 
-const triggerLabel = computed(() => activeModel.value?.name ?? '选择模型')
+const triggerLabel = computed(() => activeModel.value?.name ?? 'Select model')
 
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -111,7 +111,7 @@ onUnmounted(() => {
             v-model="search"
             type="search"
             class="search-input"
-            placeholder="搜索模型"
+            placeholder="Search models"
             @click.stop
           />
         </div>
@@ -135,10 +135,10 @@ onUnmounted(() => {
             </button>
           </li>
         </ul>
-        <p v-else class="empty">无匹配模型</p>
+        <p v-else class="empty">No matching models</p>
         <button type="button" class="add-row" @click="onAdd">
           <span class="add-icon">+</span>
-          添加模型
+          Add model
         </button>
       </div>
     </Teleport>

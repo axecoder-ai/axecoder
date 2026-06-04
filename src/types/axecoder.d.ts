@@ -18,8 +18,11 @@ export type AppTheme = 'vscode' | 'aura-light' | 'aura-dark'
 
 export type AgentOutputStyleId = 'default' | 'Explanatory' | 'Learning'
 
+export type AppLocale = 'en' | 'zh-CN'
+
 export type AppSettings = {
   schemaVersion: 1
+  locale?: AppLocale
   autoSave: boolean
   autoSaveDelay: number
   fontSize: number
@@ -28,7 +31,7 @@ export type AppSettings = {
   agentOutputStyle: AgentOutputStyleId
   agentCompletionSoundEnabled?: boolean
   agentCompletionSoundPath?: string
-  /** 仅 UI 展示：选择文件时的原始文件名 */
+  /** UI only: original filename when picking files */
   agentCompletionSoundDisplayName?: string
   rulesIncludeThirdPartyPlugins?: boolean
   profileDisplayName?: string
@@ -48,6 +51,14 @@ export type PickCompletionSoundResult =
 export type CompletionSoundDataUrlResult =
   | { ok: true; dataUrl: string | null }
   | { ok: false; error: string }
+
+export type ChatModeId =
+  | 'agent'
+  | 'reflection'
+  | 'rppit'
+  | 'planning'
+  | 'planning-only'
+  | 'multi-agent'
 
 export type ModelProvider = 'openai' | 'ollama' | 'anthropic'
 
@@ -298,7 +309,7 @@ export type WorkshopMessage = {
   createdAt: number
   reasoningContent?: string
   hidden?: boolean
-  /** @deprecated 读取时已合并进 reasoningContent */
+  /** @deprecated merged into reasoningContent on read */
   kind?: WorkshopMessageKind
 }
 
@@ -332,20 +343,20 @@ export type WorkshopRunResult =
 export type ChatMessage = {
   role: 'user' | 'assistant'
   text: string
-  /** 斜杠命令行（如 /foo bar）；仅 UI 展示命令条 */
+  /** Slash command line (/foo bar); UI command pill only */
   slashInvoke?: string
-  /** 仅展示命令条，正文走 apiContent 或下一条用户消息 */
+  /** Command pill only; body via apiContent or next user message */
   slashOnly?: boolean
   thought?: string
-  /** 发送时引用的项目文件（相对路径展示用绝对 path 存） */
+  /** Project files referenced on send (relative display, absolute path stored) */
   filePaths?: string[]
   /** 粘贴图片引用（~/.axecoder/chat-attachments） */
   imageRefs?: ChatImageRef[]
   /** 用户气泡展示用 data URL（与 imageRefs 一一对应） */
   imagePreviews?: string[]
-  /** 已展开文件内容后的 API 文本，避免每轮重复读盘 */
+  /** 已Expand文件内容后的 API Text，避免每轮重复读盘 */
   apiContent?: string
-  /** @deprecated 仅存 imageRefs，发送时由 buildApiMessages 解析 */
+  /** @deprecated 仅存 imageRefs，Send时由 buildApiMessages 解析 */
   apiImages?: AiChatImagePart[]
   /** API 原始 assistant content（可与 reasoning 分离） */
   assistantContent?: string
@@ -353,18 +364,18 @@ export type ChatMessage = {
   reasoningContent?: string
   /** Agent 工具执行摘要 */
   toolLog?: AgentToolLogEntry[]
-  /** 待用户确认的写盘操作 */
+  /** 待用户confirm的写盘操作 */
   pendingWrites?: AgentPendingWrite[]
-  /** 待用户回答的结构化问题 */
+  /** 待用户回答的结构化Problems */
   pendingAsks?: AgentPendingAskUser[]
-  /** 待用户确认执行的 Bash 命令 */
+  /** 待用户confirm执行的 Bash 命令 */
   pendingBashes?: AgentPendingBash[]
   agentSessionId?: string
 }
 
 export type SessionKind = 'agent' | 'workshop'
 
-/** 统一会话列表项（Agents 侧栏） */
+/** Unified session list项（Agents 侧栏） */
 export type SessionListItem = {
   id: string
   title: string
@@ -497,6 +508,7 @@ export type AxeCoderFs = {
     projectRoot: string,
     modelId: string,
     messages: AiChatMessage[],
+    chatMode?: ChatModeId,
   ) => Promise<AgentSendResult>
   agentStop: (sessionId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   agentRunUserShell: (

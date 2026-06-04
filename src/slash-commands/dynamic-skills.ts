@@ -18,7 +18,7 @@ export const buildSkillSlashCommands = (
     reservedNames.add(key)
     out.push({
       name: key,
-      description: `运行 Skill：${s.name}（${s.source}）`,
+      description: `Run skill: ${s.name}（${s.source}）`,
       run: async (ctx, args) => {
         const name = args.trim() || s.name
         const res = await runSkill(name)
@@ -27,7 +27,7 @@ export const buildSkillSlashCommands = (
           const session = ctx.getSession()
           if (session) {
             const invoke = `/${key}${args.trim() ? ` ${args.trim()}` : ''}`
-            const body = `【Skill: ${res.skillName ?? name}】\n\n${res.skillText}\n\n---\n请按上述 Skill 指引处理后续任务。`
+            const body = `【Skill: ${res.skillName ?? name}】\n\n${res.skillText}\n\n---\nFollow the skill guidance above for the task.`
             session.messages.push({
               role: 'user',
               text: invoke,

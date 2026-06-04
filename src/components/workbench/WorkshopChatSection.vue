@@ -352,7 +352,7 @@ const sendText = async (raw: string, isClarify: boolean) => {
   else briefInput.value = ''
   attachedFiles.value = []
   clearAttachedImages()
-  const workshopId = pushOptimisticUser(text || '（图片）')
+  const workshopId = pushOptimisticUser(text || '(image)')
   await scrollBottom()
   loading.value = true
   thinkingRole.value = 'manager'
@@ -364,7 +364,7 @@ const sendText = async (raw: string, isClarify: boolean) => {
       workshopId,
       payload,
       modelId.value,
-      text || '（图片）',
+      text || '(image)',
       imageRefs.length ? imageRefs : undefined,
     )
     if (!res.ok) {
@@ -473,7 +473,7 @@ defineExpose({
 
 <template>
   <div class="workshop-chat-section">
-    <div v-if="!hasProject" class="workshop-empty">请先打开项目</div>
+    <div v-if="!hasProject" class="workshop-empty">Open a project first</div>
     <div v-else ref="listEl" class="message-list">
       <WorkshopMessageItem
         v-for="msg in messages"
@@ -512,7 +512,7 @@ defineExpose({
           :loading="loading"
           :enabled-models="enabledModels"
           :active-model-id="modelId"
-          placeholder="输入澄清答案…"
+          placeholder="Type clarification…"
           @update:attached-files="attachedFiles = $event"
           @paste="onPasteImage"
           @remove-image="removeAttachedImage"
@@ -530,7 +530,7 @@ defineExpose({
         :loading="loading"
         :enabled-models="enabledModels"
         :active-model-id="modelId"
-        placeholder="描述任务，开始 Workshop 群聊…"
+        placeholder="Describe the task to start Workshop…"
         @update:attached-files="attachedFiles = $event"
         @paste="onPasteImage"
         @remove-image="removeAttachedImage"
@@ -538,7 +538,7 @@ defineExpose({
         @select-model="(id) => (modelId = id)"
         @add-models="emit('openModelsSettings')"
       />
-      <p v-else-if="loading" class="composer-hint">协作进行中…</p>
+      <p v-else-if="loading" class="composer-hint">Collaboration in progress…</p>
     </div>
   </div>
 </template>

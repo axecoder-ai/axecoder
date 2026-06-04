@@ -78,7 +78,7 @@ const onKeydown = (e: KeyboardEvent) => {
         ref="inputRef"
         v-model="query"
         class="palette-input"
-        placeholder="输入命令名称…"
+        placeholder="Type command name…"
         @keydown="onKeydown"
       />
       <ul class="palette-list">
@@ -91,7 +91,7 @@ const onKeydown = (e: KeyboardEvent) => {
           <span>{{ cmd.label }}</span>
           <span v-if="cmd.shortcut" class="shortcut">{{ cmd.shortcut }}</span>
         </li>
-        <li v-if="!filtered.length" class="empty">无匹配命令</li>
+        <li v-if="!filtered.length" class="empty">No matching commands</li>
       </ul>
     </div>
   </div>

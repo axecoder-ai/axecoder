@@ -4,19 +4,19 @@ defineProps<{
 }>()
 
 const builtins = [
-  { name: 'Markdown 编辑', desc: 'Monaco 编辑器 + 实时预览' },
-  { name: '项目搜索', desc: '基于 ripgrep 的全文检索' },
-  { name: '文件管理', desc: '树形浏览、新建/重命名/拖放' },
-  { name: '自动保存', desc: '可在设置中配置延迟' },
-  { name: 'AI 助手', desc: '本地会话（需配置 API 后接入模型）' },
+  { name: 'Markdown editing', desc: 'Monaco editor + live preview' },
+  { name: 'ProjectSearch', desc: 'Full-text search via ripgrep' },
+  { name: 'File manager', desc: 'Tree view, new/rename/drag-drop' },
+  { name: 'Auto-save', desc: 'Delay configurable in Settings' },
+  { name: 'AI assistant', desc: 'Local sessions (configure API for models)' },
 ]
 </script>
 
 <template>
   <aside v-show="visible" class="sidebar-panel">
-    <div class="panel-title">扩展</div>
+    <div class="panel-title">Extensions</div>
     <div class="panel-body">
-      <p class="hint">AxeCoder 内置功能（V1 无第三方扩展市场）：</p>
+      <p class="hint">AxeCoder built-in features (V1, no third-party extension marketplace）：</p>
       <ul class="ext-list">
         <li v-for="(ext, i) in builtins" :key="i">
           <div class="ext-name">{{ ext.name }}</div>

@@ -69,7 +69,7 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
 
     <div v-if="agentMode && hiddenCount > 0" class="stream-expand">
       <button type="button" class="expand-btn" @click="expanded = true">
-        展开 {{ hiddenCount }} 项已完成步骤
+        Show {{ hiddenCount }} completed steps
       </button>
     </div>
 

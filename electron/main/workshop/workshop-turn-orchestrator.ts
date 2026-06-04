@@ -54,7 +54,7 @@ const runMemberSpeak = async (
   onProgress?.(roleId, 'speaking')
   const out = await speaker(inp)
   onProgress?.(roleId, 'done')
-  const summary = out.summary.trim() || '（无结论）'
+  const summary = out.summary.trim() || '(no conclusion)'
   pushMessage(session, roleId, summary, {
     relatedFiles: out.relatedFiles,
     speakerUserId: assignee.id,
@@ -72,7 +72,7 @@ const runManagerSpeak = async (
   const prior = priorSummaryFromMessages(session.messages)
   const mgr = await runManagerTurnLlm(routerLlm, session.userBrief, prior, users)
   if (!mgr.ok) {
-    pushMessage(session, 'system', `技术经理调度失败：${mgr.error}`)
+    pushMessage(session, 'system', `Tech Lead routing failed: ${mgr.error}`)
     session.phase = 'done'
     return { done: true as const }
   }
@@ -87,7 +87,7 @@ const runManagerSpeak = async (
   }
   const assignee = mgr.assigneeUserId ? findUserById(users, mgr.assigneeUserId) : undefined
   if (!assignee) {
-    pushMessage(session, 'system', '技术经理未指定有效执行人，协作结束。')
+    pushMessage(session, 'system', 'Tech Lead did not assign a valid executor; collaboration ended.')
     session.phase = 'done'
     return { done: true as const }
   }
@@ -105,12 +105,12 @@ const runManagerFinalReport = async (
   const mgr = await runManagerTurnLlm(
     routerLlm,
     session.userBrief,
-    `${prior}\n【提示】成员工作已全部完成，请向 BOSS 做最终汇报并结束协作（done:true）。`,
+    `${prior}\n[Note] All member work is done. Give BOSS a final report and end collaboration (done:true).`,
     users,
   )
   onProgress?.('manager', 'speaking')
   const manager = findManager(users)
-  const summary = mgr.ok ? mgr.summary : '任务已全部完成，请查阅上方成员汇报。'
+  const summary = mgr.ok ? mgr.summary : 'All tasks done; see member reports above.'
   pushMessage(session, 'manager', summary, { speakerUserId: manager?.id })
   onProgress?.('manager', 'done')
   session.phase = 'done'
@@ -128,7 +128,7 @@ const afterMemberSummary = async (
   const prior = priorSummaryFromMessages(session.messages)
   const routed = await routeTurnAfterMember(routerLlm, session.userBrief, prior, memberSummary)
   if ('ok' in routed && routed.ok === false) {
-    pushMessage(session, 'system', `话语权路由失败：${routed.error}`)
+    pushMessage(session, 'system', `Turn routing failed: ${routed.error}`)
     session.phase = 'done'
     return { ok: true, session }
   }
@@ -157,7 +157,7 @@ export const sendWorkshopMessage = async (
   userImages?: import('../models-types').AiChatImagePart[],
 ): Promise<WorkshopRunResult> => {
   const trimmed = text.trim()
-  if (!trimmed && !userImages?.length) return { ok: false, error: '消息不能为空' }
+  if (!trimmed && !userImages?.length) return { ok: false, error: 'Message cannot be empty' }
   if (userImages?.length) session.pendingUserImages = userImages
   const userDisplay = displayText?.trim() || trimmed
 
@@ -171,13 +171,13 @@ export const sendWorkshopMessage = async (
     const prior = priorSummaryFromMessages(session.messages)
     const picked = await pickNextSpeaker(routerLlm, session.userBrief, prior, users)
     if (!picked.ok) {
-      pushMessage(session, 'system', `选角失败：${picked.error}`)
+      pushMessage(session, 'system', `Casting failed: ${picked.error}`)
       session.phase = 'done'
       return { ok: true, session }
     }
     const assignee = findUserById(users, picked.assigneeUserId)
     if (!assignee) {
-      pushMessage(session, 'system', '选角失败：执行人不存在')
+      pushMessage(session, 'system', 'Casting failed: executor does not exist')
       session.phase = 'done'
       return { ok: true, session }
     }
@@ -204,7 +204,7 @@ export const sendWorkshopMessage = async (
   return afterMemberSummary(session, summary, users, routerLlm, speaker, onProgress)
 }
 
-/** 测试用：固定路由 */
+/** QA用：固定路由 */
 export const scriptedRouterLlm =
   (script: {
     picks?: string[]
@@ -213,24 +213,24 @@ export const scriptedRouterLlm =
     manager?: Array<{ summary: string; assigneeUserId?: string; done?: boolean }>
   }): RouterLLM =>
   async (prompt: string) => {
-    if (prompt.includes('选出下一个最应接话')) {
+    if (prompt.includes('pick who should speak next')) {
       const id = script.picks?.shift() ?? 'u-backend'
       return JSON.stringify({ assigneeUserId: id })
     }
-    if (prompt.includes('话语权交给谁')) {
+    if (prompt.includes('who gets the turn')) {
       const next = script.turns?.shift() ?? 'manager'
       if (next === 'boss_clarify') {
         return JSON.stringify({
           next: 'boss_clarify',
-          question: script.clarifyQuestion ?? '请确认需求范围？',
+          question: script.clarifyQuestion ?? 'Please confirm the scope?',
         })
       }
       if (next === 'done') return JSON.stringify({ next: 'done' })
       return JSON.stringify({ next: 'manager' })
     }
-    if (prompt.includes('技术经理，代替 BOSS')) {
+    if (prompt.includes('speaking for the BOSS')) {
       const m = script.manager?.shift() ?? {
-        summary: '请继续',
+        summary: 'Please continue',
         assigneeUserId: 'u-frontend',
         done: false,
       }
@@ -241,5 +241,5 @@ export const scriptedRouterLlm =
 
 export const scriptedMemberSpeaker: RoleSpeaker = async (input) => {
   const name = input.assigneeUser?.displayName ?? input.roleId
-  return { summary: `${name} 已完成本段工作（scripted）` }
+  return { summary: `${name} completed this segment (scripted)` }
 }

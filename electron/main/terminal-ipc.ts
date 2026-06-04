@@ -26,11 +26,11 @@ export const registerTerminalIpc = (getWin: () => BrowserWindow | null) => {
     shellProc.stdout.on('data', (d) => sendData(getWin, d.toString()))
     shellProc.stderr.on('data', (d) => sendData(getWin, d.toString()))
     shellProc.on('close', () => {
-      sendData(getWin, '\r\n[终端已退出]\r\n')
+      sendData(getWin, '\r\n[Terminal exited]\r\n')
       shellProc = null
     })
 
-    sendData(getWin, `[AxeCoder 终端] ${cwd || process.env.HOME}\r\n`)
+    sendData(getWin, `[AxeCoder Terminal] ${cwd || process.env.HOME}\r\n`)
     return { ok: true as const }
   })
 

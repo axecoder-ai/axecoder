@@ -65,9 +65,9 @@ export type RoleSpeakInput = {
   assigneeUser?: import('../users-types').UserEntry
   stepOutput?: string
   users?: import('../users-types').UserEntry[]
-  /** 计划 JSON 解析失败时要求模型只输出 JSON */
+  /** 计划 JSON parse failed时要求模型只Output JSON */
   forcePlanJson?: boolean
-  /** 成员绑定的 Skill / 命令正文块（由 speaker 层解析后填入） */
+  /** Member绑定的 Skill / 命令正文块（由 speaker 层解析后填入） */
   skillPromptBlock?: string
 }
 

@@ -32,8 +32,8 @@ export { buildCoreAgentTools, buildAgentTools } from './agent-tool-prompts'
 export { buildFullAgentTools, buildSubAgentToolList } from './agent-tool-registry'
 export { buildExtendedAgentTools } from './agent-tool-prompts-ext'
 
-/** 主 Agent 内置 + 扩展工具 */
+/** 主 Agent 内置 + Extensions工具 */
 export const AGENT_TOOLS: AgentToolDef[] = buildFullAgentTools()
 
-/** 默认子代理工具（generalPurpose；运行时按 subagent_type 再过滤） */
+/** 默认子代理工具（generalPurpose；Run时按 subagent_type 再过滤） */
 export const SUB_AGENT_TOOLS: AgentToolDef[] = buildSubAgentToolList('generalPurpose')

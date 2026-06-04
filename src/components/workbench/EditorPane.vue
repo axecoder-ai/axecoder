@@ -57,13 +57,13 @@ defineExpose({ revealLine, focusEditor })
           :class="{ active: tab.path === activePath }"
           @click="emit('select', tab.path)"
         >
-          <span v-if="tab.dirty" class="dirty-dot" title="未保存" />
+          <span v-if="tab.dirty" class="dirty-dot" title="Unsaved" />
           <span class="tab-icon md" />
           <span class="tab-name">{{ tab.name }}</span>
           <button
             type="button"
             class="tab-close"
-            title="关闭"
+            title="Close"
             @click.stop="emit('close', tab.path)"
           >
             ×

@@ -28,6 +28,10 @@ import {
 } from './utils/agents-panel'
 import type { SearchHit, SessionKind, WindowLayout } from './types/axecoder'
 import { languageLabelForPath } from './utils/editor-language'
+import { useI18n } from './i18n'
+import { appT } from './i18n/translate'
+
+const { t } = useI18n()
 
 const wb = useWorkbench()
 const {
@@ -103,16 +107,16 @@ const trackColumnDrag = (
 }
 
 const hasOpenEditorTabs = computed(() => openFiles.value.length > 0)
-/** 仅在有打开的文件标签时显示编辑区；无文件时 AI 面板可占满中间区域 */
+/** Show editor only when file tabs exist; AI panel may fill center when empty */
 const showEditorArea = computed(() => hasOpenEditorTabs.value)
-/** 右侧 Chat 列（Agent / Workshop 共用） */
+/** Right Chat column (Agent / Workshop shared) */
 const showChatAside = computed(() => aiPanelVisible.value)
-/** 统一会话列表 */
+/** Unified session list */
 const showAgentsAside = computed(
   () => agentsSidebarVisible.value && showChatAside.value,
 )
 const showSessionAside = computed(() => showChatAside.value || showAgentsAside.value)
-/** 欢迎页仅在没有打开项目时显示 */
+/** Welcome page when no project is open */
 const showWelcomePage = computed(
   () =>
     !projectRoot.value &&
@@ -273,18 +277,18 @@ const onSettingsModelsChanged = async () => {
 const showExplorer = () => activeActivity.value === 'explorer'
 const showSearch = () => activeActivity.value === 'search'
 
-const paletteCommands = [
-  { id: 'openProject', label: '打开项目', shortcut: '⌘O' },
-  { id: 'openFile', label: '打开文件', shortcut: '⌘⇧O' },
-  { id: 'newFile', label: '新建文件', shortcut: '⌘N' },
-  { id: 'save', label: '保存', shortcut: '⌘S' },
-  { id: 'find', label: '查找', shortcut: '⌘F' },
-  { id: 'findInFiles', label: '在项目中查找', shortcut: '⌘⇧F' },
-  { id: 'toggleChat', label: '显示/隐藏 AI 面板' },
-  { id: 'toggleAgents', label: '显示/隐藏 AI 面板' },
-  { id: 'toggleTerminal', label: '显示/隐藏终端' },
-  { id: 'settings', label: 'Settings' },
-]
+const paletteCommands = computed(() => [
+  { id: 'openProject', label: t('palette.openProject'), shortcut: '⌘O' },
+  { id: 'openFile', label: t('palette.openFile'), shortcut: '⌘⇧O' },
+  { id: 'newFile', label: t('palette.newFile'), shortcut: '⌘N' },
+  { id: 'save', label: t('palette.save'), shortcut: '⌘S' },
+  { id: 'find', label: t('palette.find'), shortcut: '⌘F' },
+  { id: 'findInFiles', label: t('palette.findInProject'), shortcut: '⌘⇧F' },
+  { id: 'toggleChat', label: t('palette.toggleAi'), shortcut: '' },
+  { id: 'toggleAgents', label: t('palette.toggleAi'), shortcut: '' },
+  { id: 'toggleTerminal', label: t('palette.toggleTerminal'), shortcut: '' },
+  { id: 'settings', label: t('palette.settings'), shortcut: '' },
+])
 
 const loadRecent = async () => {
   const [filesRes, projectsRes] = await Promise.all([
@@ -362,7 +366,7 @@ const onOpenFile = async (path: string) => {
     await loadRecent()
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    window.alert(`无法打开文件：\n${path}\n\n${msg}`)
+    window.alert(appT('palette.couldNotOpenFile', { path, msg }))
   }
 }
 
@@ -377,7 +381,7 @@ const onProjectOpened = async (rootPath: string) => {
   void agentsPanelRef.value?.load()
 }
 
-/** 未打开项目且无欢迎页时，中间不能全空，自动打开 AI 面板（已打开项目时允许用户手动关闭） */
+/** When no project and no welcome page, open AI panel so center is not empty (user may close after opening a project). */
 watch(
   () =>
     [

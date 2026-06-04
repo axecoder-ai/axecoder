@@ -46,7 +46,7 @@ export const registerMarkdownExportIpc = (getMainWindow: () => BrowserWindow | n
 
     const parent = getMainWindow()
     const save = await dialog.showSaveDialog(parent ?? undefined, {
-      title: '导出 PDF',
+      title: 'Export PDF',
       defaultPath: path.join(dir, `${base}.pdf`),
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     })
@@ -85,7 +85,7 @@ export const registerMarkdownExportIpc = (getMainWindow: () => BrowserWindow | n
 
     const parent = getMainWindow()
     const save = await dialog.showSaveDialog(parent ?? undefined, {
-      title: '导出 DOCX',
+      title: 'Export DOCX',
       defaultPath: path.join(dir, `${base}.docx`),
       filters: [{ name: 'Word', extensions: ['docx'] }],
     })

@@ -2,7 +2,7 @@ import type { WorkshopMessage } from '../types/axecoder'
 
 export type WorkbenchMessageKind = 'workshop'
 
-/** 群聊消息在 Facade 层的统一视图 */
+/** Unified workshop message view in facade */
 export type WorkbenchWorkshopMessage = {
   id: string
   kind: WorkbenchMessageKind

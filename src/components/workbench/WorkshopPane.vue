@@ -336,7 +336,7 @@ const startRun = async () => {
   briefInput.value = ''
   attachedFiles.value = []
   clearAttachedImages()
-  const workshopId = pushOptimisticUser(text || '（图片）')
+  const workshopId = pushOptimisticUser(text || '(image)')
   await scrollBottom()
   loading.value = true
   thinkingRole.value = 'manager'
@@ -349,7 +349,7 @@ const startRun = async () => {
       workshopId,
       payload,
       modelId.value,
-      text || '（图片）',
+      text || '(image)',
       imageRefs.length ? imageRefs : undefined,
     )
     if (!res.ok) {
@@ -382,7 +382,7 @@ const sendAnswer = async () => {
   answerInput.value = ''
   attachedFiles.value = []
   clearAttachedImages()
-  pushOptimisticUser(text || '（图片）')
+  pushOptimisticUser(text || '(image)')
   await scrollBottom()
   loading.value = true
   thinkingRole.value = 'manager'
@@ -395,7 +395,7 @@ const sendAnswer = async () => {
       active.value.id,
       payload,
       active.value.modelId,
-      text || '（图片）',
+      text || '(image)',
       imageRefs.length ? imageRefs : undefined,
     )
     if (!res.ok) {
@@ -461,8 +461,8 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
   <div class="workshop-pane">
     <header class="workshop-toolbar">
       <span class="workshop-brand">Collab Workshop</span>
-      <span class="workshop-hint" title="与主 Chat Agent 相同：Read/Write/Grep 等工具 + 流式进度">Agent</span>
-      <button type="button" class="btn-ghost" title="关闭" @click="emit('close')">×</button>
+      <span class="workshop-hint" title="Same tools as main Chat Agent (Read/Write/Grep…) with streaming progress">Agent</span>
+      <button type="button" class="btn-ghost" title="Close" @click="emit('close')">×</button>
     </header>
     <main class="workshop-main">
       <div v-if="stepBarVisible" class="ws-step-bar">
@@ -489,7 +489,7 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
           {{ f }}
         </button>
       </div>
-      <div v-if="!hasProject" class="workshop-empty">请先打开项目</div>
+      <div v-if="!hasProject" class="workshop-empty">Open a project first</div>
       <div v-else ref="listEl" class="message-list">
         <WorkshopMessageItem
           v-for="msg in messages"
@@ -552,7 +552,7 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
             :loading="loading"
             :enabled-models="enabledModels"
             :active-model-id="modelId"
-            placeholder="输入澄清答案…"
+            placeholder="Type clarification…"
             @update:attached-files="attachedFiles = $event"
             @paste="onPasteImage"
             @remove-image="removeAttachedImage"
@@ -578,7 +578,7 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
           @select-model="onModelPick"
           @add-models="emit('openModelsSettings')"
         />
-        <p v-else-if="loading" class="composer-hint">协作进行中…</p>
+        <p v-else-if="loading" class="composer-hint">Collaboration in progress…</p>
       </div>
     </main>
   </div>

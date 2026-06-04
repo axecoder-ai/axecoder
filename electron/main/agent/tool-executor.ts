@@ -33,7 +33,7 @@ import { normalizeAgentToolCall } from './agent-tool-aliases'
 export type AgentContext = {
   projectRoot: string
   readCache: Set<string>
-  /** 主会话 modelId，供 Agent 工具启动子代理 */
+  /** 主会话 modelId，供 Agent 工具Start子代理 */
   modelId?: string
   /** ≥1 表示已在子代理内，禁止再调 Agent */
   subAgentDepth?: number
@@ -228,7 +228,7 @@ export const executeAgentTool = async (
         toolCallId: call.id,
         tool: 'Edit',
         filePath: resolved,
-        summary: `编辑 ${resolved}`,
+        summary: `Edit ${resolved}`,
         patchText,
         apply: async () => {
           const rel = relativeInProject(ctx.projectRoot, resolved)
@@ -267,7 +267,7 @@ export const executeAgentTool = async (
         toolCallId: call.id,
         tool: 'Write',
         filePath: resolved,
-        summary: `写入 ${resolved}`,
+        summary: `Write ${resolved}`,
         patchText,
         apply: async () => {
           const rel = relativeInProject(ctx.projectRoot, resolved)
@@ -299,7 +299,7 @@ export const executeAgentTool = async (
         toolCallId: call.id,
         tool: 'Delete',
         filePath: resolved,
-        summary: `删除 ${resolved}`,
+        summary: `Delete ${resolved}`,
         patchText: `(delete)\n${resolved}`,
         apply: async () => {
           await deleteProjectPath(resolved)
@@ -331,7 +331,7 @@ export const executeAgentTool = async (
         toolCallId: call.id,
         tool: 'Move',
         filePath: to,
-        summary: `移动 ${from} → ${to}`,
+        summary: `Move ${from} → ${to}`,
         patchText: `(move)\n${from}\n→\n${to}`,
         apply: async () => {
           await moveProjectPath(from, to)

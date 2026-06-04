@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 import type { WindowLayout } from '../../types/axecoder'
 
 const props = defineProps<{
@@ -31,7 +34,7 @@ defineEmits<{
         type="button"
         class="icon-btn"
         :class="{ active: primarySidebarVisible }"
-        title="显示/隐藏侧边栏"
+        :title="t('titlebar.toggleSidebar')"
         @click="$emit('togglePrimarySidebar')"
       >
         <svg class="sidebar-toggle-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -44,7 +47,7 @@ defineEmits<{
     <button
       type="button"
       class="search-wrap"
-      :title="projectName ? `项目：${projectName}` : '点击打开项目文件夹'"
+      :title="projectName ? t('titlebar.projectLabel', { name: projectName }) : t('titlebar.openProjectHint')"
       @click="$emit('openProject')"
     >
       <svg class="icon" viewBox="0 0 16 16" fill="currentColor">
@@ -52,7 +55,7 @@ defineEmits<{
           d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.656a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"
         />
       </svg>
-      <span class="search-text">{{ projectName || '打开项目' }}</span>
+      <span class="search-text">{{ projectName || t('titlebar.openProject') }}</span>
     </button>
     <div class="title-bar-spacer" />
     <div class="title-actions">
@@ -83,7 +86,7 @@ defineEmits<{
         type="button"
         class="icon-btn"
         :class="{ active: aiPanelVisible }"
-        title="显示/隐藏 AI 面板"
+        :title="t('titlebar.toggleAi')"
         @click="$emit('toggleAiPanel')"
       >
         <svg
@@ -101,7 +104,12 @@ defineEmits<{
           />
         </svg>
       </button>
-      <button type="button" class="icon-btn" title="设置" @click="$emit('openModelSettings')">
+      <button
+        type="button"
+        class="icon-btn"
+        :title="t('common.settings')"
+        @click="$emit('openModelSettings')"
+      >
         <svg
           class="title-icon"
           viewBox="0 0 24 24"

@@ -3,7 +3,7 @@ import type { AgentLoopMessage } from './agent-types'
 const CLEARED_PLACEHOLDER =
   '[Previous tool result cleared to save context. Important facts should already be in the assistant text above.]'
 
-/** FRC：清理较早的 tool 消息内容（对齐 SUMMARIZE_TOOL_RESULTS 运行时） */
+/** FRC：清理较早的 tool 消息内容（对齐 SUMMARIZE_TOOL_RESULTS Run时） */
 export const clearOldToolResults = (
   messages: AgentLoopMessage[],
   keepRecentToolMessages = 8,

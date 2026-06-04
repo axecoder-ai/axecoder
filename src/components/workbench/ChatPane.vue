@@ -14,6 +14,7 @@ import type {
   WorkshopSessionMeta,
 } from '../../types/axecoder'
 import ModelPickerDropdown from './ModelPickerDropdown.vue'
+import ChatModePickerDropdown from './ChatModePickerDropdown.vue'
 import SlashCommandPicker from './SlashCommandPicker.vue'
 import ChatDiffCard from './ChatDiffCard.vue'
 import ChatAskUserCard from './ChatAskUserCard.vue'
@@ -36,6 +37,11 @@ import {
   useChatAttachedImages,
   type AttachedImageView,
 } from '../../composables/useChatAttachedImages'
+import {
+  loadStoredChatMode,
+  saveStoredChatMode,
+  type ChatModeId,
+} from '../../utils/chat-modes'
 
 const md = new MarkdownIt()
 
@@ -43,7 +49,7 @@ const workshopSectionRef = ref<InstanceType<typeof WorkshopChatSection> | null>(
 
 const props = defineProps<{
   projectRoot: string
-  /** Agent / Workshop 会话类型（侧栏切换时由 App 传入，Tab 切换以 ChatPane 内 activeTabKind 为准） */
+  /** Agent/Workshop session kind from App; tab uses ChatPane activeTabKind */
   sessionKind?: SessionKind
   contextFilePath?: string | null
   agentsSidebarVisible: boolean
@@ -266,10 +272,23 @@ let aiStreamUnsub: (() => void) | null = null
 const agentProgressActive = ref(false)
 const runningAgentSessionId = ref('')
 
+const chatModeId = ref<ChatModeId>(loadStoredChatMode())
+
+const onChatModePick = (id: ChatModeId) => {
+  chatModeId.value = id
+  saveStoredChatMode(id)
+}
+
 const agentMode = computed(() => {
   const m = activeModel.value
   return !!m && m.provider !== 'ollama'
 })
+
+const sendAgent = (
+  projectRoot: string,
+  modelId: string,
+  apiMessages: import('../../types/axecoder').AiChatMessage[],
+) => window.axecoder.agentSend(projectRoot, modelId, apiMessages, chatModeId.value)
 
 const messages = computed(() => activeSession.value?.messages ?? [])
 const hasProject = computed(() => !!props.projectRoot.trim())
@@ -731,7 +750,7 @@ const formatToolLog = (_log: AgentToolLogEntry[]) => ''
 
 const maybePlayAgentDoneSound = (res: { ok: boolean; status: string; assistantText?: string }) => {
   if (!res.ok || res.status !== 'done') return
-  if (res.assistantText?.includes('（已停止）')) return
+  if (res.assistantText?.includes('(stopped)')) return
   void playAgentCompletionSound({
     enabled: props.agentCompletionSoundEnabled,
     path: props.agentCompletionSoundPath,
@@ -741,14 +760,14 @@ const maybePlayAgentDoneSound = (res: { ok: boolean; status: string; assistantTe
 const pushAssistantFromAgent = (res: AgentSendResult | AgentContinueResult) => {
   if (!activeSession.value) return
   if (!res.ok) {
-    activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${res.error}` })
+    activeSession.value.messages.push({ role: 'assistant', text: `Request failed: ${res.error}` })
     return
   }
   const suffix = formatToolLog(res.toolLog)
   if (res.status === 'done') {
     activeSession.value.messages.push({
       role: 'assistant',
-      text: (res.assistantText + suffix).trim() || '（完成）',
+      text: (res.assistantText + suffix).trim() || '(done)',
       toolLog: res.toolLog,
       ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
       ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
@@ -1000,7 +1019,7 @@ const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiC
   }
   const res = await window.axecoder.aiChat(modelId, apiMessages, useSse ? streamId : undefined)
   if (res.ok) {
-    const replyText = res.text.trim() || '（模型未返回内容，请检查模型 ID 或 API 配置）'
+    const replyText = res.text.trim() || '(Model returned no content; check model ID or API settings)'
     activeSession.value!.messages.push({
       role: 'assistant',
       text: replyText,
@@ -1008,7 +1027,7 @@ const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiC
       ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
     })
   } else {
-    activeSession.value!.messages.push({ role: 'assistant', text: `请求失败：${res.error}` })
+    activeSession.value!.messages.push({ role: 'assistant', text: `Request failed: ${res.error}` })
   }
 }
 
@@ -1056,7 +1075,7 @@ const send = async () => {
     if (loading.value || pendingBusy.value) {
       activeSession.value.messages.push({
         role: 'assistant',
-        text: '请等待当前回复完成后再运行 shell 命令。',
+        text: 'Wait for the current reply to finish before running shell commands.',
       })
       activeSession.value.updatedAt = Date.now()
       await persist()
@@ -1075,7 +1094,7 @@ const send = async () => {
         role: 'assistant',
         text: res.ok
           ? `\`\`\`\n${res.text}\n\`\`\``
-          : `命令失败：${res.error ?? 'unknown'}`,
+          : `Command failed: ${res.error ?? 'unknown'}`,
       })
       activeSession.value.updatedAt = Date.now()
       await persist()
@@ -1089,7 +1108,7 @@ const send = async () => {
     if (loading.value || pendingBusy.value || hasPendingAgentInteraction()) {
       activeSession.value.messages.push({
         role: 'assistant',
-        text: '请等待当前回复或完成 Agent 确认/问答后再使用斜杠命令。',
+        text: 'Wait for the current reply or pending Agent confirmations before slash commands.',
       })
       activeSession.value.updatedAt = Date.now()
       await persist()
@@ -1104,7 +1123,7 @@ const send = async () => {
     if (slashResult === null) {
       activeSession.value.messages.push({
         role: 'assistant',
-        text: '输入格式无效，请以 /命令名 开头。',
+        text: 'Invalid input; start with /command.',
       })
       activeSession.value.updatedAt = Date.now()
       await persist()
@@ -1128,7 +1147,7 @@ const send = async () => {
       if (!modelId || !model) {
         activeSession.value.messages.push({
           role: 'assistant',
-          text: '请先在设置中添加并启用模型，再执行自定义命令。',
+          text: 'Add and enable a model in Settings before custom commands.',
         })
         activeSession.value.updatedAt = Date.now()
         await persist()
@@ -1140,7 +1159,7 @@ const send = async () => {
         slashOnly: true,
         apiContent: prompt,
       })
-      if (activeSession.value.title === 'New Agent' || activeSession.value.title === '新对话') {
+      if (activeSession.value.title === 'New Agent' || activeSession.value.title === 'New chat') {
         activeSession.value.title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
       }
       activeSession.value.updatedAt = Date.now()
@@ -1151,15 +1170,15 @@ const send = async () => {
         await persist()
         const apiMessages = await buildApiMessages(activeSession.value.messages)
         if (agentMode.value) {
-          const res = await window.axecoder.agentSend(props.projectRoot, modelId, apiMessages)
+          const res = await sendAgent(props.projectRoot, modelId, apiMessages)
           pushAssistantFromAgent(res)
         } else {
           await runPlainChat(model, modelId, apiMessages)
         }
         activeSession.value.updatedAt = Date.now()
       } catch (e) {
-        const msg = e instanceof Error ? e.message : '请求异常'
-        activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${msg}` })
+        const msg = e instanceof Error ? e.message : 'Request error'
+        activeSession.value.messages.push({ role: 'assistant', text: `Request failed: ${msg}` })
         activeSession.value.updatedAt = Date.now()
       } finally {
         loading.value = false
@@ -1176,7 +1195,7 @@ const send = async () => {
   if (!modelId || !model) {
     activeSession.value.messages.push({
       role: 'assistant',
-      text: '请先在设置中添加并启用模型，再开始对话。',
+      text: 'Add and enable a model in Settings before chatting.',
     })
     await persist()
     return
@@ -1184,7 +1203,7 @@ const send = async () => {
   const imageRefs = imageRefsForPersist()
   const imagePreviews = attachedImages.value.map((x: AttachedImageView) => x.previewUrl)
   const filePaths = sendFilePaths.value.length ? [...sendFilePaths.value] : undefined
-  const displayText = text || '（图片）'
+  const displayText = text || '(image)'
 
   loading.value = true
   if (agentMode.value) bindAgentProgress()
@@ -1208,7 +1227,7 @@ const send = async () => {
     includeContextFile.value = false
     if (
       activeSession.value!.title === 'New Agent' ||
-      activeSession.value!.title === '新对话'
+      activeSession.value!.title === 'New chat'
     ) {
       activeSession.value!.title =
         displayText.slice(0, 24) + (displayText.length > 24 ? '…' : '')
@@ -1226,15 +1245,15 @@ const send = async () => {
     const historyMsgs = activeSession.value!.messages.slice(0, -1)
     const apiMessages = await buildApiMessages([...historyMsgs, userMsg])
     if (agentMode.value) {
-      const res = await window.axecoder.agentSend(props.projectRoot, modelId, apiMessages)
+      const res = await sendAgent(props.projectRoot, modelId, apiMessages)
       pushAssistantFromAgent(res)
     } else {
       await runPlainChat(model, modelId, apiMessages)
     }
     activeSession.value!.updatedAt = Date.now()
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '请求异常'
-    activeSession.value?.messages.push({ role: 'assistant', text: `请求失败：${msg}` })
+    const msg = e instanceof Error ? e.message : 'Request error'
+    activeSession.value?.messages.push({ role: 'assistant', text: `Request failed: ${msg}` })
     if (activeSession.value) activeSession.value.updatedAt = Date.now()
   } finally {
     loading.value = false
@@ -1298,15 +1317,15 @@ const regenerateLastReply = async () => {
   try {
     const apiMessages = await buildApiMessages(msgs.slice(0, userIdx + 1))
     if (agentMode.value) {
-      const res = await window.axecoder.agentSend(props.projectRoot, modelId, apiMessages)
+      const res = await sendAgent(props.projectRoot, modelId, apiMessages)
       pushAssistantFromAgent(res)
     } else {
       await runPlainChat(model, modelId, apiMessages)
     }
     activeSession.value.updatedAt = Date.now()
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '请求异常'
-    activeSession.value.messages.push({ role: 'assistant', text: `请求失败：${msg}` })
+    const msg = e instanceof Error ? e.message : 'Request error'
+    activeSession.value.messages.push({ role: 'assistant', text: `Request failed: ${msg}` })
     activeSession.value.updatedAt = Date.now()
   } finally {
     loading.value = false
@@ -1420,9 +1439,9 @@ const landingShortcuts = [
 const progressHeadline = computed(() => {
   if (agentMode.value && progressSteps.value.length) {
     const active = [...progressSteps.value].reverse().find((s) => s.status === 'active')
-    return active?.label ?? 'Agent 执行中…'
+    return active?.label ?? 'Agent Running…'
   }
-  if (agentMode.value) return '正在启动 Agent…'
+  if (agentMode.value) return 'Starting Agent…'
   return CHAT_IDLE_HINTS[idleHintIdx.value] ?? CHAT_IDLE_HINTS[0]
 })
 
@@ -1478,7 +1497,7 @@ defineExpose({
         <button
           type="button"
           class="tab-close"
-          title="关闭标签"
+          title="Close tab"
           @click.stop="closeUnifiedTab({ id: tab.id, kind: tab.kind })"
         >
           ×
@@ -1643,7 +1662,7 @@ defineExpose({
       </div>
     </div>
     <div v-if="lastAssistantText && !loading" class="reply-actions">
-      <button type="button" class="icon-btn" title="复制回复" @click="copyLastReply">
+      <button type="button" class="icon-btn" title="Copy reply" @click="copyLastReply">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <rect
             x="5.5"
@@ -1667,7 +1686,7 @@ defineExpose({
       <button
         type="button"
         class="icon-btn"
-        title="重新生成"
+        title="Regenerate"
         :disabled="!enabledModels.length"
         @click="regenerateLastReply"
       >
@@ -1685,14 +1704,14 @@ defineExpose({
     <div v-if="sessionPendingState.count > 0" class="pending-bulk-bar">
       <div class="pending-bulk-left">
         <span class="pending-bulk-label">
-          {{ sessionPendingState.count }} 项待确认（文件变更 / 命令）
+          {{ sessionPendingState.count }}  pending (file changes / commands)
         </span>
-        <label class="pending-auto-apply" title="开启后 Write / Edit / Delete / Move / Bash 将直接执行，不再弹出确认">
+        <label class="pending-auto-apply" title="When on, Write/Edit/Delete/Move/Bash run without confirmation">
           <SwitchToggle
             :model-value="!!agentAutoApplyWrites"
             @update:model-value="onAgentAutoApplyChange"
           />
-          自动应用，无需确认
+          Auto-apply without confirmation
         </label>
       </div>
       <div class="pending-bulk-actions">
@@ -1702,7 +1721,7 @@ defineExpose({
           :disabled="pendingBusy"
           @click="onConfirmAllPending"
         >
-          全部确认 ({{ sessionPendingState.count }})
+          Accept all ({{ sessionPendingState.count }})
         </button>
         <button
           type="button"
@@ -1710,7 +1729,7 @@ defineExpose({
           :disabled="pendingBusy"
           @click="onRejectAllPending"
         >
-          全部拒绝
+          Reject all
         </button>
       </div>
     </div>
@@ -1746,7 +1765,7 @@ defineExpose({
             v-for="img in attachedImages"
             :key="img.ref.id"
             class="file-ref-chip image-chip"
-            title="粘贴的图片"
+            title="Pasted image"
           >
             <img :src="img.previewUrl" alt="" class="image-chip-thumb" />
             <button type="button" class="chip-remove" @click="removeAttachedImage(img.ref.id)">
@@ -1769,7 +1788,7 @@ defineExpose({
           </span>
         </div>
         <div class="chat-input-wrap" :class="{ 'has-slash': !!inputSlash }">
-          <span v-if="inputSlash" class="input-slash-pill" title="斜杠命令">
+          <span v-if="inputSlash" class="input-slash-pill" title="Slash command">
             /{{ inputSlash.name }}
             <button type="button" class="input-slash-remove" @click="clearInputSlash">×</button>
           </span>
@@ -1778,7 +1797,7 @@ defineExpose({
             :value="inputFieldValue"
             class="chat-input"
             rows="1"
-            :placeholder="inputSlash ? '补充说明…' : 'Plan, Build, / for commands, @ for context'"
+            :placeholder="inputSlash ? 'Add details…' : 'Plan, Build, / for commands, @ for context'"
             @input="onInputField"
             @keydown="onInputKeydown"
             @keydown.enter.exact.prevent="onInputEnter"
@@ -1787,17 +1806,10 @@ defineExpose({
         </div>
         <div class="chat-input-footer">
           <div class="footer-left">
-            <span class="agent-pill" title="Agent">
-              <svg class="agent-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                <path
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.2"
-                  d="M4.5 8c0-2.5 1.5-4 3.5-4s3.5 1.5 3.5 4-1.5 4-3.5 4-3.5-1.5-3.5-4z M8 8c0-2.5 1.5-4 3.5-4s3.5 1.5 3.5 4-1.5 4-3.5 4-3.5-1.5-3.5-4z"
-                />
-              </svg>
-              Agent
-            </span>
+            <ChatModePickerDropdown
+              :active-mode-id="chatModeId"
+              @select="onChatModePick"
+            />
             <ModelPickerDropdown
               v-if="enabledModels.length"
               :models="enabledModels"
@@ -1811,14 +1823,14 @@ defineExpose({
               class="add-models-link"
               @click="emit('openModelsSettings')"
             >
-              添加模型
+              Add model
             </button>
           </div>
           <div class="footer-right">
             <label
               v-if="agentMode"
               class="auto-apply-toggle"
-              title="开启后 Agent 的文件变更与 Bash 命令将直接应用，不再显示「应用 / 拒绝」"
+              title="When on, Agent file changes and Bash run without Apply/Reject prompts"
             >
               <SwitchToggle
             :model-value="!!agentAutoApplyWrites"
@@ -1830,7 +1842,7 @@ defineExpose({
               v-if="showAgentStop"
               type="button"
               class="stop-btn"
-              title="停止 Agent"
+              title="Stop Agent"
               @click="stopAgentRun"
             >
               <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -1842,7 +1854,7 @@ defineExpose({
               type="button"
               class="send-btn"
               :class="{ active: canSend }"
-              title="发送"
+              title="Send"
               :disabled="!canSend"
               @click="() => canSend && send()"
             >
@@ -2528,23 +2540,6 @@ defineExpose({
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-}
-
-.agent-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--wc-text-muted);
-  background: var(--wc-muted-surface);
-  flex-shrink: 0;
-  user-select: none;
-}
-
-.agent-icon {
-  opacity: 0.85;
 }
 
 .add-models-link {

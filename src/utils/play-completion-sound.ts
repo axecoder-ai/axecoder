@@ -15,7 +15,7 @@ const loadDataUrl = async (pathKey: string): Promise<string | null> => {
   return res.dataUrl
 }
 
-/** Agent 正常完成时播放（需已开启且已选音频） */
+/** Play on Agent completion when enabled and audio selected */
 export const playAgentCompletionSound = async (opts: {
   enabled?: boolean
   path?: string
@@ -29,6 +29,6 @@ export const playAgentCompletionSound = async (opts: {
   try {
     await audio.play()
   } catch {
-    /* 自动播放被拦截时忽略 */
+    /* Ignore autoplay blocked */
   }
 }

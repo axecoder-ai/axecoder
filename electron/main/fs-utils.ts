@@ -21,7 +21,7 @@ export const isPathInsideRoot = (rootPath: string, targetPath: string) => {
   return target === root || target.startsWith(root + path.sep)
 }
 
-/** 目标已存在时按序号生成新路径，如 file (1).md */
+/** When target exists按序号生成新路径，如 file (1).md */
 export const destPathWithSuffix = (destPath: string, suffix: number) => {
   const dir = path.dirname(destPath)
   const ext = path.extname(destPath)

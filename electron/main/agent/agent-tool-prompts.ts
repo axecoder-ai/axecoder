@@ -167,7 +167,7 @@ When NOT to use:
 
 Do not use a colon before tool calls in surrounding text; keep user-facing prose brief.`
 
-/** 核心文件/Shell/子代理工具（不含扩展层） */
+/** 核心文件/Shell/子代理工具（不含Extensions层） */
 export const buildCoreAgentTools = (): AgentToolDef[] => [
   {
     name: 'Read',

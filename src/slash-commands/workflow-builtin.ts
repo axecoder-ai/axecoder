@@ -10,6 +10,7 @@ const WORKFLOW_COMMANDS: { name: string; description: string }[] = [
   { name: 'implement', description: 'Implement a feature using a strict TDD workflow' },
   { name: 'code-review', description: 'Review code changes for quality and risk' },
   { name: 'design_doc_template', description: 'Draft a design document using the standard template' },
+  { name: 'rppit', description: 'Full pipeline: proposals → selection → plan → implement → review → deliver' },
 ]
 
 export const registerWorkflowBuiltinCommands = (): SlashCommandDef[] =>

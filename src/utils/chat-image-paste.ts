@@ -1,4 +1,4 @@
-/** 从剪贴板事件中取出第一张图片 File */
+/** First image File from clipboard event */
 export const firstImageFileFromClipboard = (e: ClipboardEvent): File | null => {
   const items = e.clipboardData?.items
   if (!items) return null
@@ -18,13 +18,13 @@ export const fileToBase64 = (file: File): Promise<{ base64: string; mimeType: st
     reader.onload = () => {
       const result = reader.result
       if (typeof result !== 'string') {
-        reject(new Error('读取图片失败'))
+        reject(new Error('Failed to read image'))
         return
       }
       const comma = result.indexOf(',')
       const base64 = comma >= 0 ? result.slice(comma + 1) : result
       resolve({ base64, mimeType: file.type || 'image/png' })
     }
-    reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read image'))
     reader.readAsDataURL(file)
   })

@@ -9,7 +9,7 @@ import type { RouterLLM } from './workshop-router'
 export const buildWorkshopRouterLlm = (modelId: string): RouterLLM => {
   return async (prompt: string) => {
     const model = await getModelById(modelId)
-    if (!model) throw new Error('模型不存在')
+    if (!model) throw new Error('Model not found')
     const apiKey = await getSecret(modelId)
     const apiModelId = await resolveApiModelIdForTask(model, 'main', prompt)
     const res = await chatWithProvider(
@@ -19,7 +19,7 @@ export const buildWorkshopRouterLlm = (modelId: string): RouterLLM => {
         {
           role: 'system',
           content:
-            '你是 Collab Workshop 调度器。严格按用户要求只输出 JSON，不要 markdown 说明或英文思考。',
+            'You are the Collab Workshop router. Output JSON only per instructions—no markdown or extra prose.',
         },
         { role: 'user', content: prompt },
       ],

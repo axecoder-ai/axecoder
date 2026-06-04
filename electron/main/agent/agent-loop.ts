@@ -3,6 +3,7 @@ import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 import { chatWithToolsForModel } from '../ai/chat-with-tools'
 import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
+import { t } from '../i18n'
 import { AGENT_TOOLS, buildAgentSystemPrompt, buildFullAgentTools } from './agent-tool-defs'
 import { getSessionActiveTools } from './agent-ext-executor'
 import type { AgentToolCall } from './agent-types'
@@ -50,6 +51,13 @@ import {
 } from './agent-run-abort'
 import { refreshCustomOutputStylesCache } from './agent-output-styles-custom'
 import type { AgentToolName } from './agent-types'
+import {
+  applyChatModeToNewSession,
+  chatModeSystemAddon,
+  normalizeChatMode,
+  type ChatModeId,
+} from './chat-mode'
+import { applyRppitModeToLastUserMessage } from './rppit-command'
 
 export { compactAgentMessages } from './agent-context-compact'
 export { runUserShellCommand } from './agent-user-shell'
@@ -73,7 +81,7 @@ const lastUserTextFromMessages = (messages: StoredAgentSession['messages']): str
 
 const runModelStep = async (session: StoredAgentSession, sessionId: string) => {
   const model = await getModelById(session.modelId)
-  if (!model) return { ok: false as const, error: '模型不存在' }
+  if (!model) return { ok: false as const, error: t('errors.modelNotFound') }
   const apiKey = await getSecret(session.modelId)
   const apiModelId = await resolveApiModelIdForTask(
     model,
@@ -251,14 +259,14 @@ const finishAbortedAgent = (
 ): AgentSendResult | AgentContinueResult => {
   const toolLog = [...session.toolLog]
   deleteSession(sessionId)
-  return { ok: true, status: 'done', assistantText: '（已停止）', toolLog }
+  return { ok: true, status: 'done', assistantText: t('common.stopped'), toolLog }
 }
 
 export const stopAgentTurn = (sessionId: string): { ok: true } | { ok: false; error: string } => {
   const sid = sessionId.trim()
-  if (!sid) return { ok: false, error: 'sessionId 无效' }
+  if (!sid) return { ok: false, error: t('errors.invalidSessionIdShort') }
   const session = getSession(sid)
-  if (!session) return { ok: false, error: 'Agent 会话不存在或已结束' }
+  if (!session) return { ok: false, error: t('errors.agentSessionMissing') }
   session.abortRequested = true
   abortAgentRun(sid)
   return { ok: true }
@@ -499,7 +507,7 @@ export const runAgentLoopUntilDoneOrPending = async (
 
     return finishDone(
       session,
-      assistantText || '（模型未返回内容）',
+      assistantText || '(model returned no content)',
       sessionId,
       res.content,
       res.reasoningContent,
@@ -519,10 +527,12 @@ export const startAgentTurn = async (
     reasoningContent?: string
     images?: import('../models-types').AiChatImagePart[]
   }[],
+  chatModeRaw?: ChatModeId | string,
 ): Promise<AgentSendResult> => {
-  if (!projectRoot.trim()) return { ok: false, error: '请先打开项目' }
+  const chatMode = normalizeChatMode(chatModeRaw)
+  if (!projectRoot.trim()) return { ok: false, error: t('errors.noProject') }
   const model = await getModelById(modelId)
-  if (!model) return { ok: false, error: '模型不存在' }
+  if (!model) return { ok: false, error: t('errors.modelNotFound') }
   const cfg = await getConfig()
 
   const sessionId = createSessionId()
@@ -549,16 +559,17 @@ export const startAgentTurn = async (
 
   await refreshCustomOutputStylesCache(projectRoot)
 
+  const systemBase = await buildAgentSystemPrompt(projectRoot, {
+    modelId: model.modelId,
+    enabledToolNames: AGENT_TOOLS.map((t) => t.name),
+    outputStyleId: cfg.agentOutputStyle,
+    scratchpadDir,
+    agentFrcKeepToolMessages: cfg.agentFrcKeepToolMessages ?? 8,
+  })
   const messages: AgentLoopMessage[] = [
     {
       role: 'system',
-      content: await buildAgentSystemPrompt(projectRoot, {
-        modelId: model.modelId,
-        enabledToolNames: AGENT_TOOLS.map((t) => t.name),
-        outputStyleId: cfg.agentOutputStyle,
-        scratchpadDir,
-        agentFrcKeepToolMessages: cfg.agentFrcKeepToolMessages ?? 8,
-      }),
+      content: systemBase + chatModeSystemAddon(chatMode),
     },
   ]
   for (const m of history) {
@@ -574,6 +585,14 @@ export const startAgentTurn = async (
         content: m.content ?? '',
         ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
       })
+    }
+  }
+
+  if (chatMode === 'rppit') {
+    const rppitApplied = await applyRppitModeToLastUserMessage(messages)
+    if (!rppitApplied.ok) {
+      messages[0]!.content +=
+        `\n\n<chat-mode>rppit mode active but playbook missing: ${rppitApplied.error}</chat-mode>`
     }
   }
 
@@ -595,6 +614,7 @@ export const startAgentTurn = async (
     scratchpadDir,
     compactedOnce: false,
   }
+  applyChatModeToNewSession(session, chatMode)
   putSession(sessionId, session)
   return runAgentLoopUntilDoneOrPending(sessionId, session)
 }
@@ -659,9 +679,9 @@ export const confirmAgentWrite = async (
   pendingId: string,
 ): Promise<AgentContinueResult> => {
   const session = getSession(sessionId)
-  if (!session) return { ok: false, error: '会话已过期，请重新发送' }
+  if (!session) return { ok: false, error: t('errors.sessionExpired') }
   const pending = session.pendingById.get(pendingId)
-  if (!pending) return { ok: false, error: '找不到待确认的变更' }
+  if (!pending) return { ok: false, error: t('errors.pendingChangeMissing') }
 
   const applied = await pending.apply()
   session.pendingById.delete(pendingId)
@@ -687,9 +707,9 @@ export const confirmAgentBash = async (
   pendingId: string,
 ): Promise<AgentContinueResult> => {
   const session = getSession(sessionId)
-  if (!session) return { ok: false, error: '会话已过期，请重新发送' }
+  if (!session) return { ok: false, error: t('errors.sessionExpired') }
   const pending = session.pendingBashById.get(pendingId)
-  if (!pending) return { ok: false, error: '找不到待确认的命令' }
+  if (!pending) return { ok: false, error: t('errors.pendingCommandMissing') }
 
   const applied = await pending.apply()
   session.pendingBashById.delete(pendingId)
@@ -720,9 +740,9 @@ export const rejectAgentWrite = async (
   reason?: string,
 ): Promise<AgentContinueResult> => {
   const session = getSession(sessionId)
-  if (!session) return { ok: false, error: '会话已过期，请重新发送' }
+  if (!session) return { ok: false, error: t('errors.sessionExpired') }
   const pending = session.pendingById.get(pendingId)
-  if (!pending) return { ok: false, error: '找不到待确认的变更' }
+  if (!pending) return { ok: false, error: t('errors.pendingChangeMissing') }
 
   session.pendingById.delete(pendingId)
   const toolMsg = session.messages.find(
@@ -746,9 +766,9 @@ export const rejectAgentBash = async (
   reason?: string,
 ): Promise<AgentContinueResult> => {
   const session = getSession(sessionId)
-  if (!session) return { ok: false, error: '会话已过期，请重新发送' }
+  if (!session) return { ok: false, error: t('errors.sessionExpired') }
   const pending = session.pendingBashById.get(pendingId)
-  if (!pending) return { ok: false, error: '找不到待确认的命令' }
+  if (!pending) return { ok: false, error: t('errors.pendingCommandMissing') }
 
   session.pendingBashById.delete(pendingId)
   const toolMsg = session.messages.find(
@@ -792,9 +812,9 @@ export const answerAgentQuestions = async (
   answers: Record<string, string | string[]>,
 ): Promise<AgentContinueResult> => {
   const session = getSession(sessionId)
-  if (!session) return { ok: false, error: '会话已过期，请重新发送' }
+  if (!session) return { ok: false, error: t('errors.sessionExpired') }
   const pending = session.pendingAskById.get(pendingId)
-  if (!pending) return { ok: false, error: '找不到待回答的问题' }
+  if (!pending) return { ok: false, error: t('errors.pendingQuestionMissing') }
 
   const valid = validateAskAnswers(pending.questions, answers)
   if (!valid.ok) return { ok: false, error: valid.error }
@@ -847,16 +867,16 @@ export const runWorkshopRoleAgentTurn = async (
   options?: WorkshopAgentTurnOptions,
 ): Promise<WorkshopAgentTurnResult> => {
   const root = projectRoot.trim()
-  if (!root) return { ok: false, error: '请先打开项目' }
+  if (!root) return { ok: false, error: t('errors.noProject') }
   const prompt = taskPrompt.trim()
-  if (!prompt) return { ok: false, error: '任务内容为空' }
+  if (!prompt) return { ok: false, error: t('errors.emptyTask') }
   const sid = sessionId.trim()
-  if (!sid) return { ok: false, error: 'sessionId 无效' }
+  if (!sid) return { ok: false, error: t('errors.invalidSessionIdShort') }
 
   const model = await getModelById(modelId)
-  if (!model) return { ok: false, error: '模型不存在' }
+  if (!model) return { ok: false, error: t('errors.modelNotFound') }
   if (!modelSupportsAgentTools(model)) {
-    return { ok: false, error: '当前模型不支持 Agent 工具，请使用 OpenAI 兼容模型' }
+    return { ok: false, error: t('errors.agentToolsUnsupported') }
   }
   const cfg = await getConfig()
   const revealedToolNames = new Set<AgentToolName>()
@@ -879,25 +899,25 @@ export const runWorkshopRoleAgentTurn = async (
   const isVerify = options?.speakMode === 'verify'
   const roleLead = isPlan
     ? [
-        `【Collab Workshop · ${roleName}】`,
-        '拆任务阶段：可用工具读代码，但最终一条 assistant 回复只能包含 ```json 步骤计划，禁止输出英文思考或过程描述。',
+        `[Collab Workshop · ${roleName}】`,
+        'Planning phase: use tools to read code, but the final assistant message must be only a ```json step plan—no reasoning prose.',
         '',
       ].join('\n')
     : isVerify
       ? [
-          `【Collab Workshop · ${roleName}】`,
-          '验收阶段：最终回复首行必须是 VERIFY: approve|redo|abort，其余用简短中文。',
+          `[Collab Workshop · ${roleName}】`,
+          'Verification phase: first line must be VERIFY: approve|redo|abort; keep the rest brief in English.',
           '',
         ].join('\n')
       : options?.speakMode === 'member'
         ? [
-            `【Collab Workshop · ${roleName}】`,
-            '先用工具查看代码；最终一条回复禁止输出思考过程、探索过程或 Markdown 长篇，只允许：第一行「已完成。」；随后列出涉及文件路径（每行 - 路径）。',
+            `[Collab Workshop · ${roleName}】`,
+            'Use tools to inspect code first; final reply only: first line "Done."; then file paths (one per line, "- path"). No reasoning or long markdown.',
             '',
           ].join('\n')
         : [
-            `【Collab Workshop · ${roleName}】`,
-            '执行本步任务：先用工具查看代码；最终回复只用简短中文结论，禁止输出思考过程，可附文件路径。',
+            `[Collab Workshop · ${roleName}】`,
+            'Execute this step: inspect code with tools first; final reply is a brief English summary only, optional file paths.',
             '',
           ].join('\n')
 
@@ -940,7 +960,7 @@ export const runWorkshopRoleAgentTurn = async (
   const result = await runAgentLoopUntilDoneOrPending(sid, session)
   if (!result.ok) return { ok: false, error: result.error }
 
-  const report = (result.assistantText || '').trim() || '（无结论）'
+  const report = (result.assistantText || '').trim() || '(no conclusion)'
   const liveBeforeTeardown = getSession(sid)
   const reasoningContent = liveBeforeTeardown
     ? collectWorkshopTurnReasoning(liveBeforeTeardown)
@@ -959,7 +979,7 @@ export const runWorkshopRoleAgentTurn = async (
       asks
         .flatMap((a) => a.questions.map((qq) => qq.prompt))
         .filter(Boolean)
-        .join('；') || '请补充需求细节？'
+        .join('；') || 'Please add requirement details?'
     return { ok: true, report, needsUser: true, userQuestion: q.slice(0, 300), ...reasoningMeta }
   }
 
@@ -970,7 +990,7 @@ export const runWorkshopRoleAgentTurn = async (
     if (!applied.ok) return { ok: false, error: applied.error }
     return {
       ok: true,
-      report: `${report}\n\n（已自动应用文件/命令变更）`.trim(),
+      report: `${report}\n\n(file/command changes auto-applied)`.trim(),
       ...reasoningMeta,
     }
   }

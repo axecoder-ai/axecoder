@@ -1,6 +1,6 @@
 import { runAgentBash, formatBashToolContent } from './agent-bash'
 
-/** 用户 `! <command>` — 在 projectRoot 执行并返回输出 */
+/** 用户 `! <command>` — 在 projectRoot 执行并返回Output */
 export const runUserShellCommand = async (projectRoot: string, command: string) => {
   const cmd = command.trim()
   if (!cmd) return { ok: false as const, error: 'empty command' }

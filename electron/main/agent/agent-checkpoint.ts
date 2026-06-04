@@ -45,7 +45,7 @@ export const pushAgentCheckpoint = (sessionId: string, session: StoredAgentSessi
   const cp: AgentCheckpoint = {
     id,
     turn: session.turn,
-    label: `第 ${session.turn} 轮开始前`,
+    label: `Before turn ${session.turn}`,
     createdAt: Date.now(),
     fileCount: Object.keys(files).length,
     messages: cloneMessages(session.messages),
@@ -75,11 +75,11 @@ export const rewindAgentCheckpoint = async (
   checkpointId?: string,
 ): Promise<{ ok: true; label: string; restoredFiles: number } | { ok: false; error: string }> => {
   const list = bySession.get(sessionId) ?? []
-  if (!list.length) return { ok: false, error: '无可用 checkpoint' }
+  if (!list.length) return { ok: false, error: 'No checkpoints available' }
   const cp = checkpointId
     ? list.find((c) => c.id === checkpointId)
     : list[list.length - 1]
-  if (!cp) return { ok: false, error: '找不到 checkpoint' }
+  if (!cp) return { ok: false, error: 'Checkpoint not found' }
 
   session.messages = cloneMessages(cp.messages)
   session.turn = cp.turn
@@ -126,13 +126,13 @@ export const writeMemoryFile = async (memoryPath: string, text: string) => {
 
 export const AGENTS_MD_TEMPLATE = `# AGENTS.md
 
-## 项目说明
+## Project overview
 
-（在此描述本仓库的目标、目录结构与约定。）
+(Describe goals, layout, and conventions here.)
 
-## Agent 指引
+## Agent guidelines
 
-- 优先最小改动
-- 修改前先 Read 相关文件
-- 测试：\`npm test\`
+- Prefer minimal changes
+- Read relevant files before editing
+- QA：\`npm test\`
 `

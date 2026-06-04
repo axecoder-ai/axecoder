@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { axecoderPath } from '../axecoder-dir'
 
@@ -36,6 +37,7 @@ const scanCommandsDir = async (
   dir: string,
   source: DiscoveredCustomCommand['source'],
   out: Map<string, DiscoveredCustomCommand>,
+  onlyIfMissing = false,
 ) => {
   let entries: { name: string; isFile: () => boolean }[] = []
   try {
@@ -47,6 +49,7 @@ const scanCommandsDir = async (
     if (!ent.isFile() || !ent.name.toLowerCase().endsWith('.md')) continue
     const name = slugFromFile(ent.name)
     if (!name) continue
+    if (onlyIfMissing && out.has(name)) continue
     const filePath = path.join(dir, ent.name)
     let raw = ''
     try {
@@ -57,7 +60,7 @@ const scanCommandsDir = async (
     out.set(name, {
       name,
       path: filePath,
-      description: descriptionFromMarkdown(raw, `自定义命令（${name}）`),
+      description: descriptionFromMarkdown(raw, `Custom command (${name})`),
       source,
     })
   }
@@ -67,6 +70,7 @@ export const discoverCustomCommands = async (
   projectRoot: string,
 ): Promise<DiscoveredCustomCommand[]> => {
   const byName = new Map<string, DiscoveredCustomCommand>()
+  await scanCommandsDir(path.join(os.homedir(), '.cursor', 'commands'), 'user', byName, true)
   await scanCommandsDir(axecoderPath('commands'), 'user', byName)
   if (projectRoot) {
     await scanCommandsDir(path.join(projectRoot, '.axecoder', 'commands'), 'project', byName)

@@ -1,6 +1,8 @@
 import { ref, computed } from 'vue'
 import type { AppSettings, SearchHit } from '../types/axecoder'
 import { applyTheme } from '../utils/apply-theme'
+import { normalizeLocale, setAppLocale } from '../i18n'
+import { useI18n } from '../i18n'
 import {
   fileNameFromPath,
   upsertOpenFile,
@@ -13,6 +15,7 @@ import {
 } from './workbench-state'
 
 export const useWorkbench = () => {
+  const { t } = useI18n()
   const fs = window.axecoder
 
   const openFiles = ref<OpenFile[]>([])
@@ -81,8 +84,8 @@ export const useWorkbench = () => {
       return true
     } catch (e) {
       saveStatus.value = 'error'
-      const msg = e instanceof Error ? e.message : '保存失败'
-      window.alert(`保存失败：${file.path}\n${msg}`)
+      const msg = e instanceof Error ? e.message : 'Save failed'
+      window.alert(t('explorer.saveFailedAlert', { path: file.path, msg }))
       return false
     }
   }
@@ -108,9 +111,9 @@ export const useWorkbench = () => {
   }
 
   const confirmDirty = (message: string): 'save' | 'discard' | 'cancel' => {
-    const choice = window.confirm(`${message}\n\n确定 = 保存并继续\n取消 = 留在当前`)
+    const choice = window.confirm(t('explorer.confirmSaveContinue', { message }))
     if (choice) return 'save'
-    const discard = window.confirm('放弃未保存的更改？\n\n确定 = 放弃\n取消 = 留在当前')
+    const discard = window.confirm(t('explorer.confirmDiscard'))
     if (discard) return 'discard'
     return 'cancel'
   }
@@ -150,7 +153,7 @@ export const useWorkbench = () => {
     if (file.dirty) {
       const prevActive = activePath.value
       activePath.value = path
-      const action = confirmDirty(`「${file.name}」有未保存的更改`)
+      const action = confirmDirty(t('explorer.unsavedFile', { name: file.name }))
       if (action === 'cancel') {
         activePath.value = prevActive
         return false
@@ -230,7 +233,7 @@ export const useWorkbench = () => {
       fs.confirmQuit()
       return
     }
-    const action = confirmDirty('有未保存的文件')
+    const action = confirmDirty(t('explorer.unsavedFiles'))
     if (action === 'cancel') return
     if (action === 'save') {
       const ok = await saveAllDirty()
@@ -282,11 +285,15 @@ export const useWorkbench = () => {
 
   const loadSettings = async () => {
     settings.value = await fs.getSettings()
+    setAppLocale(normalizeLocale(settings.value.locale))
     applyTheme(settings.value.theme)
   }
 
   const applySettings = async (partial: Partial<AppSettings>) => {
     settings.value = await fs.setSettings(partial)
+    if (partial.locale !== undefined) {
+      setAppLocale(normalizeLocale(settings.value.locale))
+    }
     applyTheme(settings.value.theme)
   }
 

@@ -12,6 +12,7 @@ import { registerModelsIpc } from './models-ipc'
 import { registerUsersIpc } from './users-ipc'
 import { registerRulesIpc } from './rules/rules-ipc'
 import { runMigrate } from './migrate-axecoder'
+import { refreshMainLocale } from './i18n'
 import Store from 'electron-store'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -237,6 +238,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  await refreshMainLocale()
   if (process.platform === 'darwin' && app.dock) {
     const dockIcon = nativeImage.createFromPath(path.join(process.env.APP_ROOT!, 'build', 'icon.png'))
     if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon)

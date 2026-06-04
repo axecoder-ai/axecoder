@@ -92,7 +92,7 @@ export const chatOpenAiWithTools = async (
     })
     if (!res.ok) {
       const errText = await res.text()
-      return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
+      return { ok: false, error: `request failed (${res.status}): ${errText.slice(0, 300)}` }
     }
     let message: Record<string, unknown>
     if (useStream) {
@@ -192,7 +192,7 @@ export const chatAnthropicWithTools = async (
   abortSignal?: AbortSignal,
   apiModelId?: string,
 ): Promise<ChatWithToolsResult> => {
-  if (!apiKey.trim()) return { ok: false, error: 'Anthropic 需要 API Key' }
+  if (!apiKey.trim()) return { ok: false, error: 'Anthropic requires an API Key' }
   const system = messages.find((m) => m.role === 'system')?.content ?? ''
   const url = buildAnthropicMessagesUrl(model.baseUrl)
   try {
@@ -214,7 +214,7 @@ export const chatAnthropicWithTools = async (
     })
     if (!res.ok) {
       const errText = await res.text()
-      return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
+      return { ok: false, error: `request failed (${res.status}): ${errText.slice(0, 300)}` }
     }
     const data = (await res.json()) as {
       content?: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[]
@@ -249,7 +249,7 @@ export const chatWithToolsForModel = async (
 ): Promise<ChatWithToolsResult> => {
   if (model.provider === 'ollama' || model.provider === 'openai') {
     if (model.provider === 'openai' && !apiKey.trim()) {
-      return { ok: false, error: 'OpenAI 格式需要 API Key' }
+      return { ok: false, error: 'OpenAI-compatible API requires an API Key' }
     }
     return chatOpenAiWithTools(model, apiKey, messages, onDelta, tools, abortSignal, apiModelId)
   }

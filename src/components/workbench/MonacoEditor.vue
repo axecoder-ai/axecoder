@@ -55,7 +55,7 @@ const mountEditor = async () => {
     if (pos) emit('cursor-change', pos.lineNumber, pos.column)
     editorReady.value = true
   } catch (e) {
-    loadError.value = e instanceof Error ? e.message : '编辑器加载失败'
+    loadError.value = e instanceof Error ? e.message : 'Editor failed to load'
   }
 }
 
@@ -128,7 +128,7 @@ defineExpose({
 <template>
   <div ref="container" class="monaco-host">
     <div v-if="loadError" class="monaco-error">{{ loadError }}</div>
-    <div v-else-if="!editorReady" class="monaco-loading">加载编辑器…</div>
+    <div v-else-if="!editorReady" class="monaco-loading">Loading editor…</div>
   </div>
 </template>
 

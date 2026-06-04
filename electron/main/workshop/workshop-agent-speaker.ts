@@ -14,7 +14,7 @@ export const buildAgentRoleSpeaker = (
 ): RoleSpeaker => {
   return async (input) => {
     const root = projectRoot.trim()
-    if (!root) throw new Error('请先打开项目')
+    if (!root) throw new Error('Open a project first')
     const enriched = await enrichRoleSpeakInputWithSkills(input, root)
     const name = enriched.assigneeUser?.displayName?.trim() || enriched.roleId
     const taskPrompt = buildRoleTaskPrompt(enriched)

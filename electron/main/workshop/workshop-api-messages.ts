@@ -1,6 +1,6 @@
 import type { WorkshopMessage, WorkshopRoleId } from './workshop-types'
 
-/** BOSS 与 技术经理 → user；其他成员 → assistant */
+/** BOSS and Tech Lead → user; other members → assistant */
 export const workshopApiRole = (roleId: WorkshopRoleId): 'user' | 'assistant' => {
   if (roleId === 'user' || roleId === 'manager') return 'user'
   return 'assistant'
@@ -14,10 +14,10 @@ export const priorSummaryFromMessages = (messages: WorkshopMessage[], maxChars =
       m.roleId === 'user'
         ? 'BOSS'
         : m.roleId === 'manager'
-          ? '技术经理'
+          ? 'Tech Lead'
           : m.roleId === 'system'
-            ? '系统'
-            : '成员'
+            ? 'System'
+            : 'Member'
     lines.push(`${tag}: ${m.text.trim()}`)
   }
   let text = lines.join('\n')

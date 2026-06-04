@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const items = [
-  { id: 'explorer', title: '资源管理器' },
-  { id: 'search', title: '在项目中搜索' },
+  { id: 'explorer', title: 'Explorer' },
+  { id: 'search', title: 'Search in project' },
 ] as const
 
 defineProps<{

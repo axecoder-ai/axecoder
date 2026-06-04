@@ -85,9 +85,9 @@ export const registerAiIpc = () => {
   ipcMain.handle(
     'ai:chat',
     async (event, modelId: string, messages: AiChatMessage[], clientStreamId?: string) => {
-      if (!modelId?.trim()) return { ok: false as const, error: '未选择模型' }
+      if (!modelId?.trim()) return { ok: false as const, error: 'No model selected' }
       const model = await getModelById(modelId)
-      if (!model) return { ok: false as const, error: '模型不存在' }
+      if (!model) return { ok: false as const, error: 'Model not found' }
       const apiKey = await getSecret(modelId)
       const streamId =
         typeof clientStreamId === 'string' && clientStreamId.trim()

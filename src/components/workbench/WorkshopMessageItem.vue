@@ -41,17 +41,17 @@ defineEmits<{
 }>()
 
 const displayNickname = computed(() => {
-  if (props.unbound) return '未配置'
+  if (props.unbound) return 'Not configured'
   const n = props.nickname?.trim()
   if (n) return n
-  if (props.roleId === 'system') return '系统'
-  return '未配置'
+  if (props.roleId === 'system') return 'System'
+  return 'Not configured'
 })
 const displayRoleTitle = computed(() => {
-  if (props.unbound) return '未在 Users 配置'
+  if (props.unbound) return 'Not configured in Users'
   const t = props.roleTitle?.trim()
   if (t) return t
-  if (props.roleId === 'system') return '协作助手'
+  if (props.roleId === 'system') return 'Collaboration assistant'
   return ''
 })
 const avatarLetter = computed(() => displayNickname.value.slice(0, 1) || '?')
@@ -104,7 +104,7 @@ const useMarkdown = computed(
           stream-text=""
           :subagent-tasks="[]"
           :agent-mode="true"
-          fallback-headline="执行中…"
+          fallback-headline="Running…"
         />
       </div>
       <div v-if="relatedFiles?.length && showBody" class="ws-files">
@@ -115,7 +115,7 @@ const useMarkdown = computed(
           class="ws-file-link"
           @click="$emit('openFile', f)"
         >
-          更新：{{ f }}
+          Update: {{ f }}
         </button>
       </div>
     </div>

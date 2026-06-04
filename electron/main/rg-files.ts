@@ -3,7 +3,7 @@ import { rgPath } from '@vscode/ripgrep'
 import { isUnderHiddenPathSegment } from '../../src/utils/hidden-path'
 import { isPathInsideRoot } from './fs-utils'
 
-/** 按 glob 列出项目内文件路径（绝对路径） */
+/** 按 glob 列出Project内文件路径（绝对路径） */
 export const runRipgrepFiles = (rootPath: string, globPattern: string): Promise<string[]> => {
   return new Promise((resolve, reject) => {
     const files: string[] = []
@@ -53,7 +53,7 @@ export const runRipgrepFiles = (rootPath: string, globPattern: string): Promise<
         }
       }
       if (code === 0 || code === 1) resolve(files)
-      else reject(new Error(`glob 展开失败 (code ${code})`))
+      else reject(new Error(`Glob expansion failed (code ${code})`))
     })
   })
 }

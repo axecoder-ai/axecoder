@@ -73,7 +73,7 @@ export type RunSubAgentOptions = {
   onDelta?: (delta: OpenAiStreamDelta) => void
   /** 默认 6；Workshop 等探索型任务可加大 */
   maxTurns?: number
-  /** 用尽轮次时若有 assistant 文本则返回阶段性报告，而非硬失败 */
+  /** 用尽轮次时若有 assistant Text则返回阶段性报告，而非硬failed */
   partialReportOnMaxTurns?: boolean
 }
 
@@ -87,7 +87,7 @@ export const runSubAgentTask = async (
   if (!prompt) return { ok: false, error: 'Sub-agent prompt is required' }
 
   const model = await getModelById(modelId)
-  if (!model) return { ok: false, error: '模型不存在' }
+  if (!model) return { ok: false, error: 'Model not found' }
   const apiKey = await getSecret(modelId)
   const subagentType = options?.subagentType || 'generalPurpose'
   const tools = options?.tools ?? buildSubAgentToolList(subagentType)
@@ -199,7 +199,7 @@ export const runSubAgentTask = async (
       continue
     }
 
-    const report = res.text.trim() || res.content.trim() || '（子代理未返回内容）'
+    const report = res.text.trim() || res.content.trim() || '(sub-agent returned no content)'
     return { ok: true, report }
   }
 
@@ -208,11 +208,11 @@ export const runSubAgentTask = async (
     if (partial) {
       return {
         ok: true,
-        report: `${partial}\n\n（已达最大工具轮次 ${maxTurns}，以上为阶段性结论，可继续追问或拆分任务。）`,
+        report: `${partial}\n\n(max tool turns ${maxTurns} reached; partial conclusion above—continue or split the task.)`,
       }
     }
   }
-  return { ok: false, error: `子代理超过最大工具轮次（${maxTurns}）` }
+  return { ok: false, error: `Sub-agent exceeded max tool turns (${maxTurns})` }
 }
 
 export const formatAgentToolSummary = (args: Record<string, unknown>) =>

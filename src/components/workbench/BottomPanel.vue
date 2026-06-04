@@ -79,10 +79,10 @@ defineExpose({ addOutput, setProblems })
 <template>
   <section v-show="visible" class="bottom-panel">
     <div class="panel-tabs">
-      <button type="button" :class="{ active: tab === 'terminal' }" @click="tab = 'terminal'">终端</button>
-      <button type="button" :class="{ active: tab === 'output' }" @click="tab = 'output'">输出</button>
+      <button type="button" :class="{ active: tab === 'terminal' }" @click="tab = 'terminal'">Terminal</button>
+      <button type="button" :class="{ active: tab === 'output' }" @click="tab = 'output'">Output</button>
       <button type="button" :class="{ active: tab === 'problems' }" @click="tab = 'problems'">
-        问题
+        Problems
         <span v-if="problems.length" class="badge">{{ problems.length }}</span>
       </button>
     </div>
@@ -99,18 +99,18 @@ defineExpose({ addOutput, setProblems })
           ref="terminalInput"
           v-model="terminalIn"
           class="terminal-in"
-          placeholder="回车执行；Ctrl+C 中断"
+          placeholder="Enter to run; Ctrl+C to interrupt"
           @keydown.enter="sendLine"
           @keydown="onTerminalKeydown"
         />
       </div>
     </div>
     <div v-show="tab === 'output'" class="panel-content">
-      <div v-if="!outputLog.length" class="empty">暂无输出</div>
+      <div v-if="!outputLog.length" class="empty">No output yet</div>
       <pre v-for="(line, i) in outputLog" :key="i" class="log-line">{{ line }}</pre>
     </div>
     <div v-show="tab === 'problems'" class="panel-content">
-      <div v-if="!problems.length" class="empty">未发现问题</div>
+      <div v-if="!problems.length" class="empty">No problems found</div>
       <ul v-else class="problem-list">
         <li v-for="(p, i) in problems" :key="i">{{ p.message }}</li>
       </ul>

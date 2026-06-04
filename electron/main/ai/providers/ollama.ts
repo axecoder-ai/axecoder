@@ -37,7 +37,7 @@ export const chatOllama = async (
     })
     if (!res.ok) {
       const errText = await res.text()
-      return { ok: false, error: `请求失败 (${res.status}): ${errText.slice(0, 300)}` }
+      return { ok: false, error: `request failed (${res.status}): ${errText.slice(0, 300)}` }
     }
     const data = (await res.json()) as { message?: { content?: string } }
     const text = data.message?.content ?? ''

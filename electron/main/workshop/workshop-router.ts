@@ -27,44 +27,44 @@ export const findManager = (users: UserEntry[]): UserEntry | undefined =>
 
 export const parsePickSpeaker = (raw: string, users: UserEntry[]): PickSpeakerResult => {
   const block = jsonBlock(raw)
-  if (!block) return { ok: false, error: '路由选角：未找到 JSON' }
+  if (!block) return { ok: false, error: 'Casting route: JSON not found' }
   try {
     const o = JSON.parse(block) as { assigneeUserId?: string }
     const id = typeof o.assigneeUserId === 'string' ? o.assigneeUserId.trim() : ''
-    if (!id) return { ok: false, error: '路由选角：缺少 assigneeUserId' }
+    if (!id) return { ok: false, error: 'Casting route: missing assigneeUserId' }
     const u = users.find((x) => x.id === id)
-    if (!u) return { ok: false, error: `路由选角：用户 ${id} 不存在` }
+    if (!u) return { ok: false, error: `Casting route: user ${id} does not exist` }
     if (u.isBuiltin && u.builtinRole === 'manager') {
-      return { ok: false, error: '路由选角：不能指派技术经理执行成员任务' }
+      return { ok: false, error: 'Casting route: cannot assign Tech Lead to member tasks' }
     }
     return { ok: true, assigneeUserId: id }
   } catch {
-    return { ok: false, error: '路由选角：JSON 解析失败' }
+    return { ok: false, error: 'Casting route: JSON parse failed' }
   }
 }
 
 export const parseRouteTurn = (raw: string): RouteTurnResult | { ok: false; error: string } => {
   const block = jsonBlock(raw)
-  if (!block) return { ok: false, error: '路由话语权：未找到 JSON' }
+  if (!block) return { ok: false, error: 'Turn route: JSON not found' }
   try {
     const o = JSON.parse(block) as { next?: string; question?: string }
     const next = typeof o.next === 'string' ? o.next.trim() : ''
     if (next === 'boss_clarify') {
       const q = typeof o.question === 'string' ? o.question.trim() : ''
-      if (!q) return { ok: false, error: '路由话语权：boss_clarify 缺少 question' }
+      if (!q) return { ok: false, error: 'Turn route: boss_clarify missing question' }
       return { kind: 'boss_clarify', question: q }
     }
     if (next === 'manager') return { kind: 'manager' }
     if (next === 'done') return { kind: 'done' }
-    return { ok: false, error: `路由话语权：未知 next=${next}` }
+    return { ok: false, error: `Turn route: unknown next=${next}` }
   } catch {
-    return { ok: false, error: '路由话语权：JSON 解析失败' }
+    return { ok: false, error: 'Turn route: JSON parse failed' }
   }
 }
 
 export const parseManagerTurn = (raw: string, users: UserEntry[]): ManagerTurnResult => {
   const block = jsonBlock(raw)
-  if (!block) return { ok: false, error: '经理回合：未找到 JSON' }
+  if (!block) return { ok: false, error: 'Manager turn: JSON not found' }
   try {
     const o = JSON.parse(block) as {
       summary?: string
@@ -72,38 +72,38 @@ export const parseManagerTurn = (raw: string, users: UserEntry[]): ManagerTurnRe
       done?: boolean
     }
     const summary = typeof o.summary === 'string' ? o.summary.trim() : ''
-    if (!summary) return { ok: false, error: '经理回合：缺少 summary' }
+    if (!summary) return { ok: false, error: 'Manager turn: missing summary' }
     const done = !!o.done
     const assigneeUserId =
       typeof o.assigneeUserId === 'string' ? o.assigneeUserId.trim() : undefined
     if (!done && assigneeUserId) {
       const u = users.find((x) => x.id === assigneeUserId)
-      if (!u) return { ok: false, error: `经理回合：用户 ${assigneeUserId} 不存在` }
+      if (!u) return { ok: false, error: `Manager turn: user ${assigneeUserId} does not exist` }
       if (u.isBuiltin && u.builtinRole === 'manager') {
-        return { ok: false, error: '经理回合：不能指派技术经理为执行人' }
+        return { ok: false, error: 'Manager turn: cannot assign Tech Lead as executor' }
       }
     }
     if (!done && !assigneeUserId) {
-      return { ok: false, error: '经理回合：未结束时必须 assigneeUserId' }
+      return { ok: false, error: 'Manager turn: assigneeUserId required when not done' }
     }
     return { ok: true, summary, assigneeUserId, done }
   } catch {
-    return { ok: false, error: '经理回合：JSON 解析失败' }
+    return { ok: false, error: 'Manager turn: JSON parse failed' }
   }
 }
 
 export const buildPickSpeakerPrompt = (userBrief: string, priorSummary: string, users: UserEntry[]): string => {
   const roster = employeeUsers(users)
-    .map((u) => `- "${u.id}": ${u.displayName}（${u.role}）${u.expertise ? ` · ${u.expertise}` : ''}`)
+    .map((u) => `- "${u.id}": ${u.displayName} (${u.role})${u.expertise ? ` · ${u.expertise}` : ''}`)
     .join('\n')
   return [
-    '根据 BOSS 最新发言与讨论，选出下一个最应接话的成员。',
-    '只输出一个 JSON：{"assigneeUserId":"user-xxx"}',
+    'From the BOSS message and discussion, pick the next member who should speak.',
+    'Output one JSON only: {"assigneeUserId":"user-xxx"}',
     '',
-    `【任务】${userBrief}`,
-    priorSummary ? `【讨论】\n${priorSummary}` : '',
-    '【可选成员】',
-    roster || '（无）',
+    `[Task] ${userBrief}`,
+    priorSummary ? `[Discussion]\n${priorSummary}` : '',
+    '[Available members]',
+    roster || '(none)',
   ]
     .filter(Boolean)
     .join('\n')
@@ -115,15 +115,15 @@ export const buildRouteTurnPrompt = (
   memberSummary: string,
 ): string =>
   [
-    '某成员刚发言完毕。判断话语权交给谁：',
-    '- boss_clarify：必须向 BOSS 澄清/确认（输出 question）',
-    '- manager：交给技术经理协调/派活',
-    '- done：任务已全部完成',
-    '只输出 JSON：{"next":"manager|boss_clarify|done","question":""}',
+    'A member just finished speaking. Decide who gets the turn:',
+    '- boss_clarify: must clarify with BOSS (output question)',
+    '- manager: hand off to Tech Lead to coordinate',
+    '- done: all work is complete',
+    'Output JSON only: {"next":"manager|boss_clarify|done","question":""}',
     '',
-    `【任务】${userBrief}`,
-    priorSummary ? `【讨论】\n${priorSummary}` : '',
-    `【刚发言成员结论】\n${memberSummary}`,
+    `[Task] ${userBrief}`,
+    priorSummary ? `[Discussion]\n${priorSummary}` : '',
+    `[Latest member conclusion]\n${memberSummary}`,
   ]
     .filter(Boolean)
     .join('\n')
@@ -134,17 +134,17 @@ export const buildManagerTurnPrompt = (
   users: UserEntry[],
 ): string => {
   const roster = employeeUsers(users)
-    .map((u) => `- "${u.id}": ${u.displayName}（${u.role}）`)
+    .map((u) => `- "${u.id}": ${u.displayName} (${u.role})`)
     .join('\n')
   return [
-    '你是技术经理，代替 BOSS 发言并派活。',
-    '输出 JSON：{"summary":"对群说的中文","assigneeUserId":"user-xxx","done":false}',
-    '若任务已全部完成：{"summary":"结束语","done":true}（不要 assigneeUserId）',
+    'You are the Tech Lead, speaking for the BOSS and assigning work.',
+    'Output JSON: {"summary":"message to the group in English","assigneeUserId":"user-xxx","done":false}',
+    'If all work is done: {"summary":"closing message","done":true} (omit assigneeUserId)',
     '',
-    `【任务】${userBrief}`,
-    priorSummary ? `【讨论】\n${priorSummary}` : '',
-    '【可指派成员】',
-    roster || '（无）',
+    `[Task] ${userBrief}`,
+    priorSummary ? `[Discussion]\n${priorSummary}` : '',
+    '[Assignable members]',
+    roster || '(none)',
   ]
     .filter(Boolean)
     .join('\n')

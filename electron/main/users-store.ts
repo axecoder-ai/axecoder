@@ -4,8 +4,8 @@ import type { UserEntry, UserSaveInput, UsersFile } from './users-types'
 import { ensureAxecoderDir, axecoderPath, getAxecoderDir } from './axecoder-dir'
 
 export const BUILTIN_MANAGER_ID = 'builtin-manager'
-const MANAGER_ROLE = '技术经理'
-const MANAGER_EXPERTISE = '需求拆解、任务协调、技术评审'
+const MANAGER_ROLE = 'Tech Lead'
+const MANAGER_EXPERTISE = 'Requirements breakdown, coordination, technical review'
 
 const usersPath = () => axecoderPath('users.json')
 const avatarsDir = () => axecoderPath('user-avatars')
@@ -93,7 +93,7 @@ export const deleteUser = async (id: string): Promise<UsersFile> => {
   const data = await listUsers()
   const target = data.users.find((u) => u.id === id)
   if (!target) return data
-  if (target.isBuiltin) throw new Error('内置用户不可删除')
+  if (target.isBuiltin) throw new Error('Built-in user cannot be deleted')
   data.users = data.users.filter((u) => u.id !== id)
   await writeUsersFile(data)
   if (target.avatarPath) {

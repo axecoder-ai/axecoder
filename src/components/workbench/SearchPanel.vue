@@ -16,7 +16,7 @@ const query = ref('')
 const hits = ref<SearchHit[]>([])
 const searching = ref(false)
 const searchInput = ref<HTMLInputElement | null>(null)
-/** 用对象而非 Set，避免 Vue 对 Set.has 追踪不稳定导致展开区不刷新 */
+/** Use object not Set for stable Vue tracking of expand state */
 const expandedFiles = ref<Record<string, boolean>>({})
 
 type SearchFileGroup = {
@@ -122,21 +122,21 @@ defineExpose({ setHits, focusInput })
 <template>
   <aside v-show="visible" class="search-panel">
     <div class="panel-header">
-      <span class="panel-title">搜索</span>
-      <span class="sub" :title="projectName">{{ projectName || '未打开项目' }}</span>
+      <span class="panel-title">Search</span>
+      <span class="sub" :title="projectName">{{ projectName || 'No project open' }}</span>
     </div>
     <div class="search-box">
       <input
         ref="searchInput"
         v-model="query"
         type="text"
-        placeholder="在项目中搜索..."
+        placeholder="Search in project..."
         @keydown.enter="runSearch"
       />
-      <button type="button" :disabled="searching" @click="runSearch">搜索</button>
+      <button type="button" :disabled="searching" @click="runSearch">Search</button>
     </div>
     <div class="results">
-      <p v-if="!groups.length && query.trim()" class="empty">无结果</p>
+      <p v-if="!groups.length && query.trim()" class="empty">No results</p>
       <section v-for="group in groups" :key="group.file" class="file-group">
         <button
           type="button"

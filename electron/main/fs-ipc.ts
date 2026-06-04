@@ -120,7 +120,7 @@ const resolveDestForConflict = async (
     }
     return { destPath: next, skip: false }
   }
-  throw new Error('目标已存在')
+  throw new Error('Target already exists')
 }
 
 const runRipgrep = (rootPath: string, query: string): Promise<SearchHit[]> => {
@@ -158,7 +158,7 @@ const runRipgrep = (rootPath: string, query: string): Promise<SearchHit[]> => {
         if (hit && isPathInsideRoot(rootPath, hit.file)) hits.push(hit)
       }
       if (code === 0 || code === 1) resolve(hits.slice(0, 500))
-      else reject(new Error(`搜索失败 (code ${code})`))
+      else reject(new Error(`Search failed (code ${code})`))
     })
   })
 }
@@ -199,7 +199,7 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
     if (!folder) {
       const win = getMainWindow()
       const result = await dialog.showOpenDialog(win ?? undefined, {
-        title: '打开项目',
+        title: 'Open project',
         properties: ['openDirectory'],
       })
       if (result.canceled || !result.filePaths[0]) return null
@@ -218,9 +218,9 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
   ipcMain.handle('fs:openFile', async () => {
     const win = getMainWindow()
     const result = await dialog.showOpenDialog(win ?? undefined, {
-      title: '打开文件',
+      title: 'Open file',
       properties: ['openFile'],
-      filters: [{ name: '文本', extensions: ['md', 'txt', 'json'] }],
+      filters: [{ name: 'Text', extensions: ['md', 'txt', 'json'] }],
     })
     if (result.canceled || !result.filePaths[0]) return null
     const filePath = result.filePaths[0]
@@ -232,7 +232,7 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
   ipcMain.handle('fs:saveAs', async (_, content: string, defaultPath?: string) => {
     const win = getMainWindow()
     const result = await dialog.showSaveDialog(win ?? undefined, {
-      title: '另存为',
+      title: 'Save as',
       defaultPath: defaultPath ?? 'untitled.md',
       filters: [{ name: 'Markdown', extensions: ['md', 'txt'] }],
     })
@@ -261,14 +261,14 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
 
   ipcMain.handle('fs:createFile', async (_, parentPath: string, name: string) => {
     const filePath = path.join(parentPath, name)
-    if (await pathExists(filePath)) throw new Error('文件已存在')
+    if (await pathExists(filePath)) throw new Error('File already exists')
     await fs.writeFile(filePath, '', 'utf-8')
     return { path: filePath }
   })
 
   ipcMain.handle('fs:createDir', async (_, parentPath: string, name: string) => {
     const dirPath = path.join(parentPath, name)
-    if (await pathExists(dirPath)) throw new Error('文件夹已存在')
+    if (await pathExists(dirPath)) throw new Error('Folder already exists')
     await fs.mkdir(dirPath)
     return { path: dirPath }
   })
@@ -284,7 +284,7 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
   })
 
   ipcMain.handle('fs:rename', async (_, oldPath: string, newPath: string) => {
-    if (await pathExists(newPath)) throw new Error('目标已存在')
+    if (await pathExists(newPath)) throw new Error('Target already exists')
     await fs.rename(oldPath, newPath)
     return { path: newPath }
   })
@@ -343,7 +343,7 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
         const rootPath = JSON.parse(raw).rootPath as string
         if (rootPath) list = [rootPath]
       } catch {
-        // 无历史项目
+        // 无历史Project
       }
     }
     const valid: string[] = []
@@ -430,7 +430,7 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
     try {
       const win = getMainWindow()
       const result = await dialog.showOpenDialog(win ?? undefined, {
-        title: '选择头像',
+        title: 'Choose avatar',
         properties: ['openFile'],
         filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
       })

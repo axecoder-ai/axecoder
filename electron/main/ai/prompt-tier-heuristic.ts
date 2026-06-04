@@ -1,8 +1,8 @@
-/** 根据用户文本判断应用 fast 还是 deep API 模型 */
+/** 根据用户Text判断apply fast 还是 deep API 模型 */
 export type PromptTier = 'fast' | 'deep'
 
 const DEEP_KEYWORDS =
-  /重构|架构|审查|调试|全量|实现方案|设计文档|refactor|architect|implement|review|debug|migrate|security audit/i
+  /refactor|architecture|implement|review|debug|migrate|security audit|design doc|full codebase/i
 
 const FILE_PATH = /(?:^|\s)(?:[\w.-]+\/)+[\w.-]+|\b[\w.-]+\.(?:ts|tsx|js|vue|py|go|rs|md)\b/gi
 

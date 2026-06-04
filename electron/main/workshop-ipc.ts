@@ -80,7 +80,7 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
         : buildWorkshopRouterLlm(session.modelId)
     if (!useScripted && process.env.AXECODER_WORKSHOP_SCRIPTED !== '1') {
       const model = await getModelById(session.modelId)
-      if (!model) return { ok: false as const, error: '模型不存在' }
+      if (!model) return { ok: false as const, error: 'Model not found' }
     }
     const res = await sendWorkshopMessage(
       session,
@@ -154,7 +154,7 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
     ) => {
       const root = typeof projectRoot === 'string' ? projectRoot : ''
       const got = await getWorkshopSession(root, workshopId)
-      if (!got.session) return { ok: false as const, error: '会话不存在' }
+      if (!got.session) return { ok: false as const, error: 'Session not found' }
       return runSend(root, workshopId, answer, got.session.modelId, useScripted)
     },
   )
