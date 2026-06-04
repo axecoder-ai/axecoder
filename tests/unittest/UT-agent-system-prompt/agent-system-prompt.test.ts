@@ -227,11 +227,12 @@ describe('agent-system-prompt §13 default sub-agent', () => {
     expect(sub).not.toMatch(/You are AxeCoder, an interactive agent that helps users/)
   })
 
-  it('SUB_AGENT_TOOLS 不含 Agent 与 AskUserQuestion', () => {
+  it('SUB_AGENT_TOOLS 不含 Task/Agent 与 AskUserQuestion', () => {
     const names = SUB_AGENT_TOOLS.map((t) => t.name)
+    expect(names).not.toContain('Task')
     expect(names).not.toContain('Agent')
     expect(names).not.toContain('AskUserQuestion')
-    expect(AGENT_TOOLS.map((t) => t.name)).toContain('Agent')
+    expect(AGENT_TOOLS.map((t) => t.name)).toContain('Task')
   })
 })
 
@@ -240,6 +241,7 @@ describe('agent-system-prompt buildAgentSystemPrompt', () => {
     const full = await buildAgentSystemPrompt('/proj/BIAOSHU', {
       skipProjectMemory: true,
       modelId: 'claude-sonnet',
+      languagePreference: '中文',
     })
     expect(full).not.toContain(SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
     const intro = getSimpleIntroSection()

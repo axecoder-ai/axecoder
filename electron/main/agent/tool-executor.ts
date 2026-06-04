@@ -10,7 +10,13 @@ import type {
 } from './agent-types'
 import { PATH_OUTSIDE_PROJECT_ERROR, relativeInProject, resolvePathInProject } from './agent-path'
 import { applyStringReplace, patchToUnifiedDiff } from './edit-utils'
-import { formatBashToolContent, runAgentBash } from './agent-bash'
+import {
+  formatBackgroundBashStarted,
+  formatBashToolContent,
+  parseBashTimeoutMs,
+  runAgentBash,
+} from './agent-bash'
+import { startBackgroundBash } from './agent-bash-tasks'
 import {
   deleteProjectPath,
   globProject,
@@ -20,15 +26,22 @@ import {
   writeProjectFile,
 } from './agent-fs'
 import { executeExtendedAgentTool } from './agent-ext-executor'
+import { createSubagentAgentId } from './agent-subagent-store'
 import {
   createBackgroundRunId,
+  finalizeBackgroundRun,
   getBackgroundRun,
+  getBackgroundRunByAgentId,
+  interruptBackgroundRun,
   putBackgroundRun,
+  registerBackgroundAbort,
+  subagentOutputPath,
 } from './agent-subagent-tasks'
 import { buildSubAgentToolList } from './agent-tool-registry'
 import { trackCheckpointFileCtx } from './agent-checkpoint'
 import { writeScratchpadNote } from './agent-scratchpad'
-import { modelTaskKindForSubagentType, resolveModelIdForTask } from '../ai/model-resolve'
+import { resolveModelIdForTask } from '../ai/model-resolve'
+import { getSubagentTypeConfig, normalizeSubagentType } from './agent-subagent-types'
 import { normalizeAgentToolCall } from './agent-tool-aliases'
 export type AgentContext = {
   projectRoot: string
@@ -354,19 +367,31 @@ export const executeAgentTool = async (
         log: { name, summary: 'Bash', ok: false },
       }
     }
-    const timeoutRaw = args.timeout_ms
-    const timeoutMs =
-      typeof timeoutRaw === 'number' && timeoutRaw > 0 ? Math.min(timeoutRaw, 600_000) : undefined
+    const timeoutMs = parseBashTimeoutMs(args)
+    const description = str(args.description) || undefined
+    const runInBackground = args.run_in_background === true
+    const summary = description?.slice(0, 80) || command.slice(0, 80) || 'Bash'
     const id = nextPendingId()
     return {
       kind: 'bash_pending',
-      log: { name, summary: command.slice(0, 80) || 'Bash', ok: true },
+      log: { name, summary, ok: true },
       pendingBash: {
         id,
         toolCallId: call.id,
         command,
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+        ...(description ? { description } : {}),
+        ...(runInBackground ? { runInBackground: true } : {}),
         apply: async () => {
+          if (runInBackground) {
+            const bg = startBackgroundBash(ctx.projectRoot, command, { timeoutMs, description })
+            if (!bg.ok) return { ok: false as const, error: bg.error }
+            return {
+              ok: true as const,
+              content: formatBackgroundBashStarted(bg.taskId, description),
+              logOk: true,
+            }
+          }
           const res = await runAgentBash(ctx.projectRoot, command, timeoutMs)
           if (!res.ok) return { ok: false as const, error: res.error }
           return {
@@ -379,71 +404,114 @@ export const executeAgentTool = async (
     }
   }
 
-  if (name === 'Agent') {
+  if (name === 'Task') {
     if ((ctx.subAgentDepth ?? 0) >= 1) {
       return {
         kind: 'immediate',
         content: 'Error: Sub-agents cannot spawn further sub-agents.',
-        log: { name, summary: 'Agent (denied)', ok: false },
+        log: { name, summary: 'Task (denied)', ok: false },
       }
     }
+    const { runSubAgentTask, formatAgentToolSummary } = await import('./agent-subagent')
+    const summary = formatAgentToolSummary(args)
+
+    if (args.interrupt === true) {
+      const resumeId = str(args.resume)
+      const run = resumeId ? getBackgroundRunByAgentId(resumeId) : undefined
+      if (run) interruptBackgroundRun(run.id)
+      return {
+        kind: 'immediate',
+        content: run ?
+            `Interrupted background task ${run.id} (agent ${resumeId}).`
+          : 'Error: no running background task for resume id',
+        log: { name, summary: 'Task interrupt', ok: !!run },
+      }
+    }
+
     const taskPrompt = str(args.prompt)
     if (!taskPrompt) {
       return {
         kind: 'immediate',
         content: 'Error: prompt is required',
-        log: { name, summary: 'Agent', ok: false },
+        log: { name, summary: 'Task', ok: false },
       }
     }
     if (!ctx.modelId?.trim()) {
       return {
         kind: 'immediate',
-        content: 'Error: Agent tool requires an active model session',
-        log: { name, summary: 'Agent', ok: false },
+        content: 'Error: Task tool requires an active model session',
+        log: { name, summary: 'Task', ok: false },
       }
     }
-    const subagentType = str(args.subagent_type) || 'generalPurpose'
+
+    const subagentType = normalizeSubagentType(str(args.subagent_type) || 'generalPurpose')
+    const typeCfg = getSubagentTypeConfig(subagentType)
+    const modelOverride = str(args.model)
+    const subModelId = modelOverride || (await resolveModelIdForTask(typeCfg.modelTaskKind))
+    const readonly = args.readonly === true
     const runInBackground = args.run_in_background === true
-    const { runSubAgentTask, formatAgentToolSummary } = await import('./agent-subagent')
-    const subModelId = await resolveModelIdForTask(modelTaskKindForSubagentType(subagentType))
+    const resumeAgentId = str(args.resume)
+    const fileAttachments = Array.isArray(args.file_attachments) ?
+        args.file_attachments.filter((p): p is string => typeof p === 'string' && p.trim())
+      : []
+
+    const runOpts = {
+      subagentType,
+      tools: buildSubAgentToolList(subagentType, readonly),
+      readonly,
+      modelIdOverride: modelOverride || undefined,
+      sessionId: ctx.sessionId,
+      resumeAgentId: resumeAgentId || undefined,
+      fileAttachments,
+    }
 
     if (runInBackground && ctx.sessionId) {
       const taskId = createBackgroundRunId()
-      putBackgroundRun({
+      const agentId = resumeAgentId || createSubagentAgentId()
+      const controller = new AbortController()
+      const run = {
         id: taskId,
-        description: formatAgentToolSummary(args),
-        status: 'running',
+        description: summary,
+        status: 'running' as const,
         report: '',
         startedAt: Date.now(),
         sessionId: ctx.sessionId,
-      })
+        agentId,
+        outputFile: subagentOutputPath(ctx.projectRoot, taskId),
+      }
+      putBackgroundRun(run)
+      registerBackgroundAbort(taskId, controller)
       void runSubAgentTask(ctx.projectRoot, subModelId, taskPrompt, {
-        subagentType,
-        tools: buildSubAgentToolList(subagentType),
-      }).then((sub) => {
-        const run = getBackgroundRun(taskId)
-        if (!run) return
-        run.status = sub.ok ? 'completed' : 'failed'
-        run.report = sub.ok ? sub.report : ''
-        run.error = sub.ok ? undefined : sub.error
-        putBackgroundRun(run)
+        ...runOpts,
+        abortSignal: controller.signal,
+      }).then(async (sub) => {
+        const current = getBackgroundRun(taskId)
+        if (!current) return
+        current.status = sub.ok ? 'completed' : 'failed'
+        current.report = sub.ok ? sub.report : ''
+        current.error = sub.ok ? undefined : sub.error
+        if (sub.ok) current.agentId = sub.agentId
+        await finalizeBackgroundRun(ctx.projectRoot, current)
       })
       return {
         kind: 'immediate',
-        content: `Background sub-agent started. Task id: ${taskId}. Use TaskOutput to read results.`,
-        log: { name, summary: formatAgentToolSummary(args), ok: true },
+        content: [
+          `Background sub-agent started.`,
+          `Task id: ${taskId}`,
+          `Agent id: ${agentId}`,
+          `Output file (when done): ${run.outputFile}`,
+          `Use TaskOutput with block:true to wait for results.`,
+        ].join('\n'),
+        log: { name, summary, ok: true },
       }
     }
 
-    const sub = await runSubAgentTask(ctx.projectRoot, subModelId, taskPrompt, {
-      subagentType,
-      tools: buildSubAgentToolList(subagentType),
-    })
+    const sub = await runSubAgentTask(ctx.projectRoot, subModelId, taskPrompt, runOpts)
     if (!sub.ok) {
       return {
         kind: 'immediate',
         content: `Error: ${sub.error}`,
-        log: { name, summary: formatAgentToolSummary(args), ok: false },
+        log: { name, summary, ok: false },
       }
     }
     if (subagentType === 'explore' && ctx.sessionId?.trim()) {
@@ -451,8 +519,8 @@ export const executeAgentTool = async (
     }
     return {
       kind: 'immediate',
-      content: sub.report,
-      log: { name, summary: formatAgentToolSummary(args), ok: true },
+      content: `Agent id: ${sub.agentId}\n\n${sub.report}`,
+      log: { name, summary, ok: true },
     }
   }
 

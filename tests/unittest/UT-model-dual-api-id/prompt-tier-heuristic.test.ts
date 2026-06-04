@@ -19,7 +19,7 @@ describe('classifyPromptTier', () => {
   })
 
   it('含重构关键词为 deep', () => {
-    expect(classifyPromptTier('请重构 auth 模块')).toBe('deep')
+    expect(classifyPromptTier('refactor auth module')).toBe('deep')
   })
 
   it('长文本为 deep', () => {
@@ -33,7 +33,7 @@ describe('resolveApiModelId', () => {
   })
 
   it('auto 复杂问用 deep API', () => {
-    expect(resolveApiModelId(entry(), 'auto', '请做架构审查')).toBe('deep-model')
+    expect(resolveApiModelId(entry(), 'auto', 'architecture review for auth')).toBe('deep-model')
   })
 
   it('tier fast 强制快速', () => {

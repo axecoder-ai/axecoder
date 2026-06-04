@@ -227,9 +227,9 @@ const useMarkdown = computed(
   word-break: break-word;
 }
 .ws-bubble--user {
-  background: var(--wc-accent);
+  background: var(--wc-user-bubble-bg);
   border-color: transparent;
-  color: #fff;
+  color: var(--wc-user-bubble-fg);
 }
 .ws-bubble--system {
   background: transparent;

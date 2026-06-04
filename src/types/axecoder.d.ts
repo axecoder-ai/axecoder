@@ -187,6 +187,43 @@ export type RulesReadResult =
   | { ok: true; data: RuleDetail }
   | { ok: false; error: string }
 
+export type SkillScope = 'user' | 'project' | 'builtin'
+
+export type SkillListItem = {
+  scope: SkillScope
+  folderName: string
+  name: string
+  description: string
+  readOnly: boolean
+}
+
+export type SkillDetail = SkillListItem & {
+  body: string
+}
+
+export type SkillsListResult = {
+  skills: SkillListItem[]
+  projectRoot: string | null
+}
+
+export type SkillSaveInput = {
+  scope: 'user' | 'project'
+  folderName: string
+  name: string
+  description: string
+  body: string
+  projectRoot?: string
+  isNew?: boolean
+}
+
+export type SkillsMutationResult =
+  | { ok: true; data: SkillsListResult }
+  | { ok: false; error: string }
+
+export type SkillsReadResult =
+  | { ok: true; data: SkillDetail }
+  | { ok: false; error: string }
+
 export type AiChatMessage = {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -229,6 +266,8 @@ export type AgentPendingBash = {
   id: string
   command: string
   timeoutMs?: number
+  description?: string
+  runInBackground?: boolean
 }
 
 export type AgentToolLogEntry = {
@@ -480,6 +519,14 @@ export type AxeCoderFs = {
   deleteRule: (scope: RuleScope, fileName: string, projectRoot?: string) => Promise<RulesMutationResult>
   getRulesThirdPartyImport: () => Promise<{ ok: true; enabled: boolean } | { ok: false; error: string }>
   setRulesThirdPartyImport: (enabled: boolean) => Promise<{ ok: true } | { ok: false; error: string }>
+  listSkills: (projectRoot?: string | null) => Promise<SkillsMutationResult>
+  readSkill: (scope: SkillScope, folderName: string, projectRoot?: string) => Promise<SkillsReadResult>
+  saveSkill: (input: SkillSaveInput) => Promise<SkillsMutationResult>
+  deleteSkill: (
+    scope: 'user' | 'project',
+    folderName: string,
+    projectRoot?: string,
+  ) => Promise<SkillsMutationResult>
   expandChatUserWithFiles: (
     projectRoot: string,
     text: string,

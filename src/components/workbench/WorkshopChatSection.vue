@@ -16,11 +16,26 @@ import type { ChatFileRef } from '../../utils/chat-file-context'
 import { findUserById, inferWorkshopRoleId } from '../../utils/workshop-user-bind'
 import { useWorkbenchSession } from '../../composables/useWorkbenchSession'
 import { useChatAttachedImages } from '../../composables/useChatAttachedImages'
+import { workshopIdForAgentChat } from '../../utils/workshop-agent-link'
+import {
+  clearWorkshopLiveTurnState,
+  createWorkshopLiveTurnState,
+  markWorkshopAgentStreamKey,
+  markWorkshopLiveRole,
+} from '../../utils/workshop-live-turn'
 
 const props = defineProps<{
   projectRoot: string
   profileDisplayName?: string
   profileAvatarPath?: string
+  /** 嵌在 Agent 标签内：不触发侧栏 workshop 标签切换 */
+  embeddedInAgentChat?: boolean
+  /** 与 Agent 会话 1:1 绑定的 chat id */
+  linkedAgentChatId?: string
+  /** 嵌入 Agent 标签时，该 Agent 会话已有消息数（用于空状态提示） */
+  agentHistoryCount?: number
+  /** Multi-Agent 嵌入时与 Agent 底栏共用 activeModelId */
+  preferredModelId?: string
 }>()
 
 const emit = defineEmits<{
@@ -28,7 +43,12 @@ const emit = defineEmits<{
   openFile: [path: string]
   openModelsSettings: []
   activeChange: [id: string]
+  messageCountChange: [count: number]
 }>()
+
+const emitWorkshopActive = (id: string) => {
+  if (!props.embeddedInAgentChat) emit('activeChange', id)
+}
 
 const kind = ref<'workshop'>('workshop')
 const { sendWorkshop, loadWorkshop } = useWorkbenchSession(
@@ -70,12 +90,25 @@ let offProgress: (() => void) | undefined
 let offAgentProgress: (() => void) | undefined
 const progressSteps = ref<AgentProgressStep[]>([])
 const agentProgressActive = ref(false)
+const liveTurnState = createWorkshopLiveTurnState()
+
+/** 角色切换时冻结的进行中 Thinking/工具步骤（不是撤回聊天记录） */
+type PinnedLiveTurn = {
+  id: string
+  roleId: WorkshopRoleId
+  speakerUserId: string | null
+  steps: AgentProgressStep[]
+  streamText: string
+}
+const pinnedLiveTurns = ref<PinnedLiveTurn[]>([])
 
 const hasProject = computed(() => !!props.projectRoot?.trim())
 const pendingQuestion = computed(() => active.value?.pendingQuestion ?? '')
 const messages = computed(() => active.value?.messages.filter((m) => !m.hidden) ?? [])
 const liveRoleId = computed((): WorkshopRoleId | null => {
-  const r = streamRoleId.value ?? thinkingRole.value
+  const think = thinkingRole.value
+  if (think && think !== 'system' && think !== 'user') return think
+  const r = streamRoleId.value
   if (!r || r === 'system' || r === 'user') return null
   return r
 })
@@ -90,9 +123,24 @@ const showThinkingDots = computed(
     thinkingRole.value !== 'system' &&
     thinkingRole.value !== 'user',
 )
-const showStartComposer = computed(
-  () => !active.value || active.value.phase === 'idle' || active.value.phase === 'done',
+const showEmptyHint = computed(
+  () =>
+    hasProject.value &&
+    !messages.value.length &&
+    !loading.value &&
+    !showLiveAgentItem.value &&
+    !showThinkingDots.value,
 )
+const showAgentHistoryHint = computed(
+  () =>
+    !!props.embeddedInAgentChat &&
+    (props.agentHistoryCount ?? 0) > 0 &&
+    showEmptyHint.value,
+)
+const composerPlaceholder = computed(() => {
+  if (!active.value?.messages.length) return 'Describe the task to start Multi-Agent…'
+  return 'Add a follow-up or new task…'
+})
 
 const bossNickname = computed(() => props.profileDisplayName?.trim() || 'BOSS')
 const bossLetter = computed(() => bossNickname.value.slice(0, 1).toUpperCase() || 'B')
@@ -120,6 +168,40 @@ const clearStreamUi = () => {
   streamRoleId.value = null
   streamSpeakerUserId.value = null
   progressSteps.value = []
+  pinnedLiveTurns.value = []
+  clearWorkshopLiveTurnState(liveTurnState)
+}
+
+const pinCurrentLiveTurn = () => {
+  if (!progressSteps.value.length && !streamText.value.trim()) return
+  const role = streamRoleId.value ?? thinkingRole.value
+  if (!role || role === 'system' || role === 'user') return
+  pinnedLiveTurns.value.push({
+    id: `pin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    roleId: role,
+    speakerUserId: streamSpeakerUserId.value,
+    steps: [...progressSteps.value],
+    streamText: streamText.value,
+  })
+}
+
+const prunePinnedLiveTurns = (session: WorkshopSession) => {
+  const visible = session.messages.filter((m) => !m.hidden)
+  pinnedLiveTurns.value = pinnedLiveTurns.value.filter((pin) => {
+    const settled = visible.some(
+      (m) =>
+        m.roleId === pin.roleId &&
+        (!pin.speakerUserId || m.speakerUserId === pin.speakerUserId) &&
+        !!(m.text.trim() || m.reasoningContent?.trim()),
+    )
+    return !settled
+  })
+}
+
+const resetLiveProgressSteps = () => {
+  pinCurrentLiveTurn()
+  progressSteps.value = []
+  streamText.value = ''
 }
 
 const workshopAgentPrefix = () =>
@@ -133,6 +215,7 @@ const unbindWorkshopAgentProgress = () => {
 
 const bindWorkshopAgentProgress = () => {
   unbindWorkshopAgentProgress()
+  pinnedLiveTurns.value = []
   progressSteps.value = []
   streamText.value = ''
   agentProgressActive.value = true
@@ -144,6 +227,9 @@ const bindWorkshopAgentProgress = () => {
       ? parseWorkshopStreamRole(payload.sessionId, active.value.id)
       : null
     if (roleKey) {
+      if (markWorkshopAgentStreamKey(liveTurnState, roleKey)) {
+        resetLiveProgressSteps()
+      }
       if (roleKey.startsWith('u-')) {
         const uid = roleKey.slice(2)
         streamSpeakerUserId.value = uid
@@ -184,11 +270,22 @@ const loadWorkshopUsers = async () => {
 const loadModels = async () => {
   const data = await window.axecoder.listModels()
   enabledModels.value = data.models.filter((m) => m.enabled)
+  const preferred = props.preferredModelId?.trim()
   modelId.value =
-    enabledModels.value.find((m) => m.id === data.activeModelId)?.id ??
-    enabledModels.value[0]?.id ??
+    (preferred && enabledModels.value.find((m) => m.id === preferred)?.id) ||
+    enabledModels.value.find((m) => m.id === data.activeModelId)?.id ||
+    enabledModels.value[0]?.id ||
     ''
 }
+
+watch(
+  () => props.preferredModelId,
+  (id) => {
+    if (!id?.trim() || !props.embeddedInAgentChat) return
+    const hit = enabledModels.value.find((m) => m.id === id)
+    if (hit) modelId.value = hit.id
+  },
+)
 
 const messageRoleProps = (msg: WorkshopMessage) => {
   if (msg.roleId === 'user') {
@@ -283,6 +380,18 @@ const scrollBottom = async () => {
   if (el) el.scrollTop = el.scrollHeight
 }
 
+/** 协作进行中：每个角色 done 后从磁盘拉取最新消息，避免下一位接话时上一条「消失」 */
+const syncWorkshopSession = async () => {
+  const id = active.value?.id
+  if (!id || !props.projectRoot?.trim()) return
+  const session = await loadWorkshop(id)
+  if (!session || session.id !== id) return
+  active.value = session
+  activePersisted = true
+  prunePinnedLiveTurns(session)
+  await scrollBottom()
+}
+
 const newLocalWorkshopId = () =>
   `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -295,11 +404,14 @@ const pushOptimisticUser = (text: string): string => {
     createdAt: now,
   }
   if (!active.value) {
-    const id = newLocalWorkshopId()
+    const id =
+      props.embeddedInAgentChat && props.linkedAgentChatId?.trim()
+        ? workshopIdForAgentChat(props.linkedAgentChatId)
+        : newLocalWorkshopId()
     const title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
     active.value = {
       id,
-      title: title || 'Workshop',
+      title: title || 'Multi-Agent',
       updatedAt: now,
       userBrief: text,
       modelId: modelId.value,
@@ -307,7 +419,7 @@ const pushOptimisticUser = (text: string): string => {
       phase: 'running',
       mountedFiles: [],
     }
-    emit('activeChange', id)
+    emitWorkshopActive(id)
     return id
   }
   active.value = {
@@ -342,11 +454,49 @@ const expandWithFiles = async (text: string, filePaths: string[]) => {
   return window.axecoder.expandChatUserWithFiles(props.projectRoot, text, filePaths)
 }
 
+const pushLocalSystemMessage = (text: string) => {
+  const now = Date.now()
+  const sysMsg: WorkshopMessage = {
+    id: `local-system-${now}`,
+    roleId: 'system',
+    text,
+    createdAt: now,
+  }
+  if (!active.value) {
+    const id =
+      props.embeddedInAgentChat && props.linkedAgentChatId?.trim()
+        ? workshopIdForAgentChat(props.linkedAgentChatId)
+        : newLocalWorkshopId()
+    active.value = {
+      id,
+      title: 'Multi-Agent',
+      updatedAt: now,
+      userBrief: '',
+      modelId: modelId.value,
+      messages: [sysMsg],
+      phase: 'idle',
+      mountedFiles: [],
+    }
+    emitWorkshopActive(id)
+    return
+  }
+  active.value = {
+    ...active.value,
+    messages: [...active.value.messages, sysMsg],
+    updatedAt: now,
+  }
+}
+
 const sendText = async (raw: string, isClarify: boolean) => {
   if (!hasProject.value || loading.value) return
   const text = raw.trim()
   const imageRefs = imageRefsForPersist()
-  if ((!text && !imageRefs.length) || !modelId.value) return
+  if (!text && !imageRefs.length) return
+  if (!modelId.value) {
+    pushLocalSystemMessage('请先在设置中启用模型，或在输入框底部选择可用模型。')
+    void scrollBottom()
+    return
+  }
   const filePaths = attachedFiles.value.map((f) => f.path)
   if (isClarify) answerInput.value = ''
   else briefInput.value = ''
@@ -369,14 +519,20 @@ const sendText = async (raw: string, isClarify: boolean) => {
     )
     if (!res.ok) {
       rollbackOptimisticUser()
-      window.alert(res.error)
+      pushLocalSystemMessage(`协作请求失败：${res.error}`)
+      await scrollBottom()
       return
     }
     active.value = res.session
     activePersisted = true
-    emit('activeChange', res.session.id)
+    emitWorkshopActive(res.session.id)
     await scrollBottom()
     emit('sessionsChanged')
+  } catch (e) {
+    rollbackOptimisticUser()
+    const msg = e instanceof Error ? e.message : String(e)
+    pushLocalSystemMessage(`协作请求异常：${msg}`)
+    await scrollBottom()
   } finally {
     loading.value = false
     thinkingRole.value = null
@@ -388,16 +544,27 @@ const selectSession = async (id: string) => {
   const session = await loadWorkshop(id)
   active.value = session
   activePersisted = !!session
-  if (session) emit('activeChange', session.id)
+  if (session) emitWorkshopActive(session.id)
   await scrollBottom()
 }
 
-const newSession = () => {
-  const id = newLocalWorkshopId()
+const openForAgentChat = async (agentChatId: string) => {
+  if (!agentChatId.trim()) return
+  await loadModels()
+  const id = workshopIdForAgentChat(agentChatId)
+  const session = await loadWorkshop(id)
+  if (session) {
+    active.value = session
+    activePersisted = true
+    modelId.value = session.modelId || modelId.value
+    emitWorkshopActive(id)
+    await scrollBottom()
+    return
+  }
   const now = Date.now()
   active.value = {
     id,
-    title: 'Workshop',
+    title: 'Multi-Agent',
     updatedAt: now,
     userBrief: '',
     modelId: modelId.value,
@@ -409,7 +576,27 @@ const newSession = () => {
   briefInput.value = ''
   answerInput.value = ''
   attachedFiles.value = []
-  emit('activeChange', id)
+  emitWorkshopActive(id)
+}
+
+const newSession = () => {
+  const id = newLocalWorkshopId()
+  const now = Date.now()
+  active.value = {
+    id,
+    title: 'Multi-Agent',
+    updatedAt: now,
+    userBrief: '',
+    modelId: modelId.value,
+    messages: [],
+    phase: 'idle',
+    mountedFiles: [],
+  }
+  activePersisted = false
+  briefInput.value = ''
+  answerInput.value = ''
+  attachedFiles.value = []
+  emitWorkshopActive(id)
 }
 
 const openMountedFile = (rel: string) => {
@@ -433,22 +620,32 @@ onMounted(async () => {
     if (!active.value || p.workshopId !== active.value.id) return
     if (p.status === 'thinking') {
       if (p.roleId !== 'system' && p.roleId !== 'user') {
+        if (markWorkshopLiveRole(liveTurnState, p.roleId)) {
+          resetLiveProgressSteps()
+        }
         thinkingRole.value = p.roleId
         if (!agentProgressActive.value) {
           streamRoleId.value = null
-          clearStreamUi()
+          streamSpeakerUserId.value = null
+        } else {
+          streamRoleId.value = p.roleId
         }
       }
     } else if (p.status === 'speaking') {
-      thinkingRole.value = null
       if (p.roleId !== 'system' && p.roleId !== 'user') {
-        if (streamRoleId.value !== p.roleId) streamText.value = ''
+        if (markWorkshopLiveRole(liveTurnState, p.roleId)) {
+          resetLiveProgressSteps()
+        }
+        thinkingRole.value = null
         streamRoleId.value = p.roleId
+      } else {
+        thinkingRole.value = null
       }
       void scrollBottom()
     } else if (p.status === 'done') {
       thinkingRole.value = null
       if (!agentProgressActive.value) clearStreamUi()
+      void syncWorkshopSession()
     }
   })
 })
@@ -459,15 +656,27 @@ onUnmounted(() => {
 })
 
 const activeId = computed(() => active.value?.id ?? '')
-const activeTitle = computed(() => active.value?.title ?? 'Workshop')
+const activeTitle = computed(() => active.value?.title ?? 'Multi-Agent')
+
+const activeMessageCount = computed(() => active.value?.messages.length ?? 0)
+
+watch(
+  activeMessageCount,
+  (n) => {
+    emit('messageCountChange', n)
+  },
+  { immediate: true },
+)
 
 defineExpose({
   loadModels,
   loadWorkshopUsers,
   selectSession,
+  openForAgentChat,
   newSession,
   activeId,
   activeTitle,
+  activeMessageCount,
 })
 </script>
 
@@ -475,6 +684,15 @@ defineExpose({
   <div class="workshop-chat-section">
     <div v-if="!hasProject" class="workshop-empty">Open a project first</div>
     <div v-else ref="listEl" class="message-list">
+      <div v-if="showEmptyHint" class="workshop-empty-hint">
+        <p class="workshop-empty-title">Multi-Agent 协作</p>
+        <p class="workshop-empty-desc">在下方描述任务，Tech Lead 会协调各角色 Agent 协作完成。</p>
+        <p v-if="showAgentHistoryHint" class="workshop-empty-note">
+          此标签下曾有普通 Agent 对话；Multi-Agent 使用独立线程，不会显示那些记录。切换到
+          <strong>@ Agent</strong>
+          可查看原聊天。
+        </p>
+      </div>
       <WorkshopMessageItem
         v-for="msg in messages"
         :key="msg.id"
@@ -484,6 +702,15 @@ defineExpose({
         :related-files="msg.relatedFiles"
         v-bind="messageRoleProps(msg)"
         @open-file="openMountedFile"
+      />
+      <WorkshopMessageItem
+        v-for="pin in pinnedLiveTurns"
+        :key="pin.id"
+        :role-id="pin.roleId"
+        text=""
+        streaming
+        :live-progress="{ steps: pin.steps, streamText: pin.streamText }"
+        v-bind="roleProps(pin.roleId, pin.speakerUserId)"
       />
       <WorkshopMessageItem
         v-if="showLiveAgentItem && liveRoleId"
@@ -519,10 +746,15 @@ defineExpose({
           @send="() => void sendText(answerInput, true)"
           @select-model="(id) => (modelId = id)"
           @add-models="emit('openModelsSettings')"
-        />
+        >
+          <template v-if="embeddedInAgentChat" #footer-prefix>
+            <slot name="mode-picker" />
+          </template>
+        </WorkbenchChatInput>
       </template>
+      <template v-else>
+      <p v-if="loading" class="composer-hint">Collaboration in progress…</p>
       <WorkbenchChatInput
-        v-else-if="showStartComposer"
         v-model="briefInput"
         :project-root="projectRoot"
         :attached-files="attachedFiles"
@@ -530,15 +762,19 @@ defineExpose({
         :loading="loading"
         :enabled-models="enabledModels"
         :active-model-id="modelId"
-        placeholder="Describe the task to start Workshop…"
+        :placeholder="composerPlaceholder"
         @update:attached-files="attachedFiles = $event"
         @paste="onPasteImage"
         @remove-image="removeAttachedImage"
         @send="() => void sendText(briefInput, false)"
         @select-model="(id) => (modelId = id)"
         @add-models="emit('openModelsSettings')"
-      />
-      <p v-else-if="loading" class="composer-hint">Collaboration in progress…</p>
+      >
+        <template v-if="embeddedInAgentChat" #footer-prefix>
+          <slot name="mode-picker" />
+        </template>
+      </WorkbenchChatInput>
+      </template>
     </div>
   </div>
 </template>
@@ -579,5 +815,39 @@ defineExpose({
   padding: 24px;
   color: var(--wc-text-muted);
   font-size: 13px;
+}
+.workshop-empty-hint {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 32px;
+  text-align: center;
+  color: var(--wc-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  user-select: none;
+}
+.workshop-empty-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--wc-text);
+}
+.workshop-empty-desc,
+.workshop-empty-note {
+  margin: 0;
+  max-width: 420px;
+}
+.workshop-empty-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--wc-text-dim);
+}
+.workshop-empty-note strong {
+  font-weight: 600;
+  color: var(--wc-text-muted);
 }
 </style>

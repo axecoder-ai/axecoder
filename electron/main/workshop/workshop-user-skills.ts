@@ -48,7 +48,10 @@ export const enrichRoleSpeakInputWithSkills = async (
   input: RoleSpeakInput,
   projectRoot: string,
 ): Promise<RoleSpeakInput> => {
-  if (!input.assigneeUser || (input.speakMode !== 'member' && input.speakMode !== 'execute')) {
+  if (
+    !input.assigneeUser ||
+    (input.speakMode !== 'member' && input.speakMode !== 'execute' && input.speakMode !== 'manager_chat')
+  ) {
     return input
   }
   const skillPromptBlock = await resolveUserSkillPromptBlock(input.assigneeUser, projectRoot)

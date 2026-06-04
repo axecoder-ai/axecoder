@@ -15,10 +15,12 @@ describe('rppit-command', () => {
 
   it('wrapUserMessageAsRppitCommand matches slash sendPrompt shape', () => {
     const playbook = '# rppit\n\nDo steps.'
-    expect(wrapUserMessageAsRppitCommand(playbook, '')).toBe(playbook)
-    expect(wrapUserMessageAsRppitCommand(playbook, 'build login')).toBe(
-      `${playbook}\n\n---\n\nUser notes:\nbuild login`,
-    )
+    const wrapped = wrapUserMessageAsRppitCommand(playbook, '')
+    expect(wrapped).toContain(playbook)
+    expect(wrapped).toContain('AxeCoder 运行时')
+    expect(wrapped).toContain('/summary')
+    const withNotes = wrapUserMessageAsRppitCommand(playbook, 'build login')
+    expect(withNotes).toContain('User notes:\nbuild login')
   })
 
   it('applyRppitModeToLastUserMessage wraps only the last user turn', async () => {

@@ -5,8 +5,8 @@ import { chatWithToolsForModel } from '../ai/chat-with-tools'
 import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
 import { t } from '../i18n'
 import { AGENT_TOOLS, buildAgentSystemPrompt, buildFullAgentTools } from './agent-tool-defs'
-import { getSessionActiveTools } from './agent-ext-executor'
-import type { AgentToolCall } from './agent-types'
+import { filterToolsForSubagent, getSessionActiveTools } from './agent-ext-executor'
+import type { AgentToolCall, AgentToolDef } from './agent-types'
 import type {
   AgentContinueResult,
   AgentLoopMessage,
@@ -880,7 +880,11 @@ export const runWorkshopRoleAgentTurn = async (
   }
   const cfg = await getConfig()
   const revealedToolNames = new Set<AgentToolName>()
-  const activeTools = getSessionActiveTools(buildFullAgentTools(), revealedToolNames)
+  const allTools = buildFullAgentTools()
+  const activeTools =
+    options?.speakMode === 'manager_chat'
+      ? (filterToolsForSubagent(allTools, 'explore') as AgentToolDef[])
+      : getSessionActiveTools(allTools, revealedToolNames)
   const scratchpadDir = await ensureScratchpadDir(sid)
 
   const ctx: AgentContext = {
@@ -897,6 +901,8 @@ export const runWorkshopRoleAgentTurn = async (
 
   const isPlan = options?.speakMode === 'plan'
   const isVerify = options?.speakMode === 'verify'
+  const isManagerChat = options?.speakMode === 'manager_chat'
+  const isMember = options?.speakMode === 'member'
   const roleLead = isPlan
     ? [
         `[Collab Workshop · ${roleName}】`,
@@ -909,17 +915,23 @@ export const runWorkshopRoleAgentTurn = async (
           'Verification phase: first line must be VERIFY: approve|redo|abort; keep the rest brief in English.',
           '',
         ].join('\n')
-      : options?.speakMode === 'member'
+      : isManagerChat
         ? [
             `[Collab Workshop · ${roleName}】`,
-            'Use tools to inspect code first; final reply only: first line "Done."; then file paths (one per line, "- path"). No reasoning or long markdown.',
+            'Read-only codebase scan: use Read/Grep/Glob; no writes or shell. Final reply: brief English notes for routing (~800 chars).',
             '',
           ].join('\n')
-        : [
-            `[Collab Workshop · ${roleName}】`,
-            'Execute this step: inspect code with tools first; final reply is a brief English summary only, optional file paths.',
-            '',
-          ].join('\n')
+        : isMember
+          ? [
+              `[Collab Workshop · ${roleName}】`,
+              'Use tools to inspect code first; final reply: concise conclusion, then optional "- path" lines for touched files.',
+              '',
+            ].join('\n')
+          : [
+              `[Collab Workshop · ${roleName}】`,
+              'Execute this step: inspect code with tools first; final reply is a brief English summary only, optional file paths.',
+              '',
+            ].join('\n')
 
   const messages: AgentLoopMessage[] = [
     {

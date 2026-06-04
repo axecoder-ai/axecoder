@@ -16,7 +16,10 @@ const emit = defineEmits<{
   <div class="bash-card">
     <div class="bash-head">
       <span class="bash-tool">Bash</span>
-      <span class="bash-hint">Pending execution</span>
+      <span v-if="pending.description" class="bash-desc">{{ pending.description }}</span>
+      <span class="bash-hint">{{
+        pending.runInBackground ? 'Pending (background)' : 'Pending execution'
+      }}</span>
     </div>
     <pre class="bash-command">{{ pending.command }}</pre>
     <div class="bash-actions">
@@ -52,8 +55,14 @@ const emit = defineEmits<{
   color: var(--wc-accent, #7aa2f7);
 }
 
+.bash-desc {
+  color: var(--wc-text);
+  font-weight: 500;
+}
+
 .bash-hint {
   color: var(--wc-text-muted);
+  margin-left: auto;
 }
 
 .bash-command {

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import type { RuleDetail, RuleListItem, RuleScope } from '../../types/axecoder'
+import type { RuleDetail, RuleListItem, RuleScope, SkillDetail, SkillListItem } from '../../types/axecoder'
 import { fileNameFromPath } from '../../composables/workbench-state'
 import RuleFormDialog from './RuleFormDialog.vue'
+import SkillFormDialog from './SkillFormDialog.vue'
 
 const emit = defineEmits<{
   changed: []
@@ -18,6 +19,11 @@ const formVisible = ref(false)
 const editing = ref<RuleDetail | null>(null)
 const showAllRules = ref(false)
 const loading = ref(false)
+
+const skills = ref<SkillListItem[]>([])
+const skillFormVisible = ref(false)
+const skillEditing = ref<SkillDetail | null>(null)
+const showAllSkills = ref(false)
 
 const RULES_COLLAPSE = 5
 
@@ -42,12 +48,39 @@ const defaultScope = computed((): RuleScope =>
   filter.value === 'project' ? 'project' : 'user',
 )
 
+const filteredSkills = computed(() => {
+  if (filter.value === 'user') return skills.value.filter((s) => s.scope === 'user')
+  if (filter.value === 'project') return skills.value.filter((s) => s.scope === 'project')
+  return skills.value
+})
+
+const visibleSkills = computed(() => {
+  const list = filteredSkills.value
+  if (showAllSkills.value || list.length <= RULES_COLLAPSE) return list
+  return list.slice(0, RULES_COLLAPSE)
+})
+
+const hiddenSkillsCount = computed(() => {
+  const n = filteredSkills.value.length - RULES_COLLAPSE
+  return showAllSkills.value || n <= 0 ? 0 : n
+})
+
+const defaultSkillScope = computed((): 'user' | 'project' =>
+  filter.value === 'project' ? 'project' : 'user',
+)
+
 const projectTabLabel = computed(() =>
   projectRoot.value ? fileNameFromPath(projectRoot.value) : 'Project',
 )
 
 const scopeLabel = (r: RuleListItem) =>
   r.scope === 'user' ? 'User' : projectTabLabel.value
+
+const skillScopeLabel = (s: SkillListItem) => {
+  if (s.scope === 'user') return 'User'
+  if (s.scope === 'project') return projectTabLabel.value
+  return 'Built-in'
+}
 
 const reload = async () => {
   loading.value = true
@@ -61,6 +94,11 @@ const reload = async () => {
     }
     rules.value = res.data.rules
     projectRoot.value = res.data.projectRoot
+    const skillRes = await window.axecoder.listSkills(root)
+    if (skillRes.ok) {
+      skills.value = skillRes.data.skills
+      projectRoot.value = skillRes.data.projectRoot
+    }
     const imp = await window.axecoder.getRulesThirdPartyImport()
     if (imp.ok) thirdPartyImport.value = imp.enabled
   } finally {
@@ -75,6 +113,7 @@ onMounted(() => {
 const setFilter = (id: FilterId) => {
   filter.value = id
   showAllRules.value = false
+  showAllSkills.value = false
 }
 
 const onThirdPartyToggle = async () => {
@@ -150,6 +189,71 @@ const onDelete = async (item: RuleListItem) => {
     return
   }
   rules.value = res.data.rules
+  emit('changed')
+}
+
+const openNewSkill = () => {
+  if (filter.value === 'project' && !projectRoot.value) {
+    alert('Open a project first to create project skills')
+    return
+  }
+  skillEditing.value = null
+  skillFormVisible.value = true
+}
+
+const openEditSkill = async (item: SkillListItem) => {
+  const res = await window.axecoder.readSkill(
+    item.scope,
+    item.folderName,
+    item.scope === 'project' ? projectRoot.value ?? undefined : undefined,
+  )
+  if (!res.ok) {
+    alert(res.error)
+    return
+  }
+  skillEditing.value = res.data
+  skillFormVisible.value = true
+}
+
+const onSkillSaved = async (payload: {
+  scope: 'user' | 'project'
+  folderName: string
+  name: string
+  description: string
+  body: string
+  isNew: boolean
+}) => {
+  const res = await window.axecoder.saveSkill({
+    scope: payload.scope,
+    folderName: payload.folderName,
+    name: payload.name,
+    description: payload.description,
+    body: payload.body,
+    projectRoot: payload.scope === 'project' ? projectRoot.value ?? undefined : undefined,
+    isNew: payload.isNew,
+  })
+  if (!res.ok) {
+    alert(res.error)
+    return
+  }
+  skills.value = res.data.skills
+  projectRoot.value = res.data.projectRoot
+  emit('changed')
+}
+
+const onDeleteSkill = async (item: SkillListItem) => {
+  if (item.readOnly || item.scope === 'builtin') return
+  if (!confirm(`Delete skill "${item.description}"?`)) return
+  const res = await window.axecoder.deleteSkill(
+    item.scope,
+    item.folderName,
+    item.scope === 'project' ? projectRoot.value ?? undefined : undefined,
+  )
+  if (!res.ok) {
+    alert(res.error)
+    return
+  }
+  skills.value = res.data.skills
   emit('changed')
 }
 
@@ -246,17 +350,59 @@ defineExpose({ reload })
       </p>
     </section>
 
-    <section class="block block-muted">
+    <section class="block">
       <header class="block-head">
         <div>
-          <h3>Skills <span class="info">ⓘ</span></h3>
+          <h3>Skills <span class="info" title="Skills extend agent capabilities">ⓘ</span></h3>
           <p class="block-desc">
-            Skills are specialized capabilities that help the agent accomplish specific tasks.
-            Coming in a future release.
+            Skills are specialized capabilities for specific tasks. Load via slash commands or Agent
+            Skill tool. User: ~/.cursor/skills; project: .cursor/skills.
           </p>
         </div>
-        <button type="button" class="new-btn" disabled>+ New</button>
+        <button type="button" class="new-btn" @click="openNewSkill">+ New</button>
       </header>
+      <div v-if="loading" class="empty">Loading…</div>
+      <div v-else-if="visibleSkills.length" class="rule-list">
+        <div
+          v-for="s in visibleSkills"
+          :key="`${s.scope}:${s.folderName}`"
+          class="rule-row"
+          @click="openEditSkill(s)"
+        >
+          <div class="rule-main">
+            <span class="rule-title">{{ s.description }}</span>
+            <span class="rule-meta">
+              {{ skillScopeLabel(s) }} · {{ s.name }}
+              <template v-if="s.readOnly"> · read-only</template>
+            </span>
+          </div>
+          <div class="rule-actions" @click.stop>
+            <button type="button" class="link" @click="openEditSkill(s)">
+              {{ s.readOnly ? 'View' : 'Edit' }}
+            </button>
+            <button
+              v-if="!s.readOnly"
+              type="button"
+              class="link danger"
+              @click="onDeleteSkill(s)"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+        <button
+          v-if="hiddenSkillsCount > 0"
+          type="button"
+          class="show-all"
+          @click="showAllSkills = true"
+        >
+          Show all ({{ hiddenSkillsCount }} more)
+        </button>
+      </div>
+      <p v-else class="empty">No skills yet. Create one with + New.</p>
+      <p v-if="filter === 'project' && !projectRoot" class="warn">
+        No project open: user skills only; open a workspace for project skills.
+      </p>
     </section>
 
     <section class="block block-muted">
@@ -276,6 +422,15 @@ defineExpose({ reload })
       :default-scope="defaultScope"
       @close="formVisible = false"
       @save="onSaved"
+    />
+
+    <SkillFormDialog
+      :visible="skillFormVisible"
+      :editing="skillEditing"
+      :project-root="projectRoot"
+      :default-scope="defaultSkillScope"
+      @close="skillFormVisible = false"
+      @save="onSkillSaved"
     />
   </div>
 </template>

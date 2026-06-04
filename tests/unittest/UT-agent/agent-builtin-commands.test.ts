@@ -18,7 +18,7 @@ describe('agent-builtin-commands', () => {
     else process.env.APP_ROOT = prevAppRoot
   })
 
-  it('lists 9 built-in workflow commands', async () => {
+  it('lists built-in workflow commands', async () => {
     const list = await listBuiltinCommands()
     expect(list.map((c) => c.name)).toEqual([
       'research-codebase',
@@ -30,6 +30,8 @@ describe('agent-builtin-commands', () => {
       'implement',
       'code-review',
       'design_doc_template',
+      'rppit',
+      'summary',
     ])
   })
 

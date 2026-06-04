@@ -23,11 +23,23 @@ export const extractRelatedFiles = (text: string): string[] => {
 
 export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
   const name = input.assigneeUser?.displayName?.trim() || input.roleId
+  if (input.speakMode === 'manager_chat' && input.assigneeUser) {
+    return [
+      `[Collab Workshop · ${name} (${input.assigneeUser.role}) · Tech Lead codebase scan]`,
+      'Read-only: use Read, Grep, Glob, SemanticSearch on the repo. Do not write files or run shell.',
+      'Final reply: brief English notes for routing (what exists, key paths, risks) — max ~800 chars.',
+      '',
+      `[User request]\n${input.userBrief}`,
+      input.priorSummary ? `[Prior discussion]\n${input.priorSummary}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
   if (input.speakMode === 'member' && input.assigneeUser) {
     return [
       `[Collab Workshop · ${name} (${input.assigneeUser.role}) · group message]`,
-      'You must use Read, Grep, Glob, etc. on real code before delivering.',
-      'Final reply only: first line "Done."; then changed/touched paths (one "- path" per line). No reasoning, exploration, code blocks, or long analysis.',
+      'Use Read, Grep, Glob, etc. on real code before delivering.',
+      'Final reply: concise English conclusion (what you did/found), then changed/touched paths (one "- path" per line).',
       input.skillPromptBlock ?? '',
       '',
       `[User request]\n${input.userBrief}`,

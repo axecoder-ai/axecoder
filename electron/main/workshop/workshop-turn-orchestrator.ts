@@ -1,5 +1,8 @@
 import { listUsers } from '../users-store'
-import { priorSummaryFromMessages } from './workshop-api-messages'
+import {
+  lastMemberContextFromMessages,
+  priorSummaryFromMessages,
+} from './workshop-api-messages'
 import { inferWorkshopRoleId, findUserById } from './workshop-user-bind'
 import {
   pickNextSpeaker,
@@ -53,24 +56,63 @@ const runMemberSpeak = async (
   }
   onProgress?.(roleId, 'speaking')
   const out = await speaker(inp)
-  onProgress?.(roleId, 'done')
   const summary = out.summary.trim() || '(no conclusion)'
   pushMessage(session, roleId, summary, {
     relatedFiles: out.relatedFiles,
+    reasoningContent: out.reasoningContent,
     speakerUserId: assignee.id,
   })
-  return summary
+  onProgress?.(roleId, 'done')
+  return { summary, detail: out.reasoningContent ?? '' }
+}
+
+const runManagerCodeBrief = async (
+  session: WorkshopSession,
+  users: import('../users-types').UserEntry[],
+  speaker: RoleSpeaker,
+  onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
+): Promise<string> => {
+  const manager = findManager(users)
+  if (!manager) return ''
+  onProgress?.('manager', 'thinking')
+  const inp: RoleSpeakInput = {
+    roleId: 'manager',
+    userBrief: session.userBrief,
+    priorSummary: priorSummaryFromMessages(session.messages),
+    speakMode: 'manager_chat',
+    assigneeUser: manager,
+    users,
+  }
+  onProgress?.('manager', 'speaking')
+  let brief = ''
+  try {
+    const out = await speaker(inp)
+    brief = out.summary.trim()
+    if (brief) {
+      pushMessage(session, 'system', brief, {
+        hidden: true,
+        reasoningContent: out.reasoningContent,
+        speakerUserId: manager.id,
+      })
+    }
+  } catch {
+    /* 读码失败不阻塞 JSON 路由 */
+  }
+  onProgress?.('manager', 'done')
+  return brief
 }
 
 const runManagerSpeak = async (
   session: WorkshopSession,
   users: import('../users-types').UserEntry[],
   routerLlm: RouterLLM,
+  speaker: RoleSpeaker,
   onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
 ) => {
+  const codeBrief = await runManagerCodeBrief(session, users, speaker, onProgress)
   onProgress?.('manager', 'thinking')
   const prior = priorSummaryFromMessages(session.messages)
-  const mgr = await runManagerTurnLlm(routerLlm, session.userBrief, prior, users)
+  const mgr = await runManagerTurnLlm(routerLlm, session.userBrief, prior, users, codeBrief)
   if (!mgr.ok) {
     pushMessage(session, 'system', `Tech Lead routing failed: ${mgr.error}`)
     session.phase = 'done'
@@ -107,6 +149,7 @@ const runManagerFinalReport = async (
     session.userBrief,
     `${prior}\n[Note] All member work is done. Give BOSS a final report and end collaboration (done:true).`,
     users,
+    undefined,
   )
   onProgress?.('manager', 'speaking')
   const manager = findManager(users)
@@ -124,9 +167,17 @@ const afterMemberSummary = async (
   routerLlm: RouterLLM,
   speaker: RoleSpeaker,
   onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
+  memberDetail?: string,
 ): Promise<WorkshopRunResult> => {
   const prior = priorSummaryFromMessages(session.messages)
-  const routed = await routeTurnAfterMember(routerLlm, session.userBrief, prior, memberSummary)
+  const detail = memberDetail?.trim() || lastMemberContextFromMessages(session.messages)
+  const routed = await routeTurnAfterMember(
+    routerLlm,
+    session.userBrief,
+    prior,
+    memberSummary,
+    detail,
+  )
   if ('ok' in routed && routed.ok === false) {
     pushMessage(session, 'system', `Turn routing failed: ${routed.error}`)
     session.phase = 'done'
@@ -141,10 +192,18 @@ const afterMemberSummary = async (
     await runManagerFinalReport(session, users, routerLlm, onProgress)
     return { ok: true, session }
   }
-  const mgrRes = await runManagerSpeak(session, users, routerLlm, onProgress)
+  const mgrRes = await runManagerSpeak(session, users, routerLlm, speaker, onProgress)
   if (mgrRes.done) return { ok: true, session }
-  const summary = await runMemberSpeak(session, mgrRes.assignee, users, speaker, onProgress)
-  return afterMemberSummary(session, summary, users, routerLlm, speaker, onProgress)
+  const memberOut = await runMemberSpeak(session, mgrRes.assignee, users, speaker, onProgress)
+  return afterMemberSummary(
+    session,
+    memberOut.summary,
+    users,
+    routerLlm,
+    speaker,
+    onProgress,
+    memberOut.detail,
+  )
 }
 
 export const sendWorkshopMessage = async (
@@ -181,8 +240,16 @@ export const sendWorkshopMessage = async (
       session.phase = 'done'
       return { ok: true, session }
     }
-    const summary = await runMemberSpeak(session, assignee, users, speaker, onProgress)
-    return afterMemberSummary(session, summary, users, routerLlm, speaker, onProgress)
+    const memberOut = await runMemberSpeak(session, assignee, users, speaker, onProgress)
+    return afterMemberSummary(
+      session,
+      memberOut.summary,
+      users,
+      routerLlm,
+      speaker,
+      onProgress,
+      memberOut.detail,
+    )
   }
 
   if (session.phase === 'done') {
@@ -198,10 +265,18 @@ export const sendWorkshopMessage = async (
   pushMessage(session, 'user', userDisplay)
   session.phase = 'running'
 
-  const mgrRes = await runManagerSpeak(session, users, routerLlm, onProgress)
+  const mgrRes = await runManagerSpeak(session, users, routerLlm, speaker, onProgress)
   if (mgrRes.done) return { ok: true, session }
-  const summary = await runMemberSpeak(session, mgrRes.assignee, users, speaker, onProgress)
-  return afterMemberSummary(session, summary, users, routerLlm, speaker, onProgress)
+  const memberOut = await runMemberSpeak(session, mgrRes.assignee, users, speaker, onProgress)
+  return afterMemberSummary(
+    session,
+    memberOut.summary,
+    users,
+    routerLlm,
+    speaker,
+    onProgress,
+    memberOut.detail,
+  )
 }
 
 /** QA用：固定路由 */

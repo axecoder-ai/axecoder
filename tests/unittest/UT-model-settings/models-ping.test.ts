@@ -28,7 +28,7 @@ afterEach(async () => {
 describe('models-ping', () => {
   it('模型不存在时返回错误', async () => {
     const res = await pingModel('missing')
-    expect(res).toEqual({ ok: false, error: '模型不存在' })
+    expect(res).toEqual({ ok: false, error: 'Model not found' })
   })
 
   it('禁用模型时返回错误', async () => {
@@ -41,7 +41,7 @@ describe('models-ping', () => {
       enabled: false,
     })
     const res = await pingModel('m1')
-    expect(res).toEqual({ ok: false, error: '请先启用该模型' })
+    expect(res).toEqual({ ok: false, error: 'Enable the model first' })
   })
 
   it('Provider 成功时返回预览', async () => {

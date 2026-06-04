@@ -9,6 +9,7 @@ export type AgentToolName =
   | 'Move'
   | 'AskUserQuestion'
   | 'Bash'
+  | 'Task'
   | 'Agent'
   | 'TodoWrite'
   | 'TaskCreate'
@@ -37,7 +38,16 @@ export type AgentToolName =
   | 'Config'
   | 'Workflow'
 
-export type SubagentType = 'generalPurpose' | 'explore' | 'plan'
+export type SubagentType =
+  | 'generalPurpose'
+  | 'explore'
+  | 'plan'
+  | 'shell'
+  | 'cursor-guide'
+  | 'ci-investigator'
+  | 'best-of-n-runner'
+  | 'git-commit'
+  | 'docs-researcher'
 
 export type AskUserOption = { id: string; label: string }
 
@@ -87,6 +97,8 @@ export type PendingBashPublic = {
   id: string
   command: string
   timeoutMs?: number
+  description?: string
+  runInBackground?: boolean
 }
 
 export type AgentToolLogEntry = {
@@ -147,6 +159,7 @@ export const CORE_AGENT_TOOL_NAMES: AgentToolName[] = [
   'Delete',
   'Move',
   'Bash',
+  'Task',
   'Agent',
   'AskUserQuestion',
 ]

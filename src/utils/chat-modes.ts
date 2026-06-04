@@ -41,7 +41,7 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
   {
     id: 'multi-agent',
     label: 'Multi-Agent',
-    description: 'Split work and dispatch sub-agents via the Agent tool',
+    description: 'Collab workshop in this chat: roles discuss in turn',
   },
 ]
 
@@ -70,4 +70,17 @@ export const saveStoredChatMode = (id: ChatModeId) => {
   } catch {
     /* ignore */
   }
+}
+
+/** 会话已有消息后：multi-agent 不可切出；其他模式不可切入 multi-agent */
+export const canPickChatMode = (
+  current: ChatModeId,
+  next: ChatModeId,
+  hasMessages: boolean,
+): boolean => {
+  if (current === next) return true
+  if (!hasMessages) return true
+  if (current === 'multi-agent') return false
+  if (next === 'multi-agent') return false
+  return true
 }

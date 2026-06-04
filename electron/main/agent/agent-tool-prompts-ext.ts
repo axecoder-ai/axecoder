@@ -1,4 +1,6 @@
 import type { AgentToolDef } from './agent-types'
+import { LSP_TOOL_DESCRIPTION } from './agent-lsp-prompt'
+import { LSP_OPERATIONS } from '../lsp/types'
 
 const pad = (text: string, min = 420) => {
   let s = text.trim()
@@ -95,12 +97,16 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
   obj('ToolSearch', 'Search available tools by keyword when the tool pool is large.', {
     query: { type: 'string' },
   }, ['query']),
-  obj('LSP', 'Language server operation (goToDefinition, references). Requires agentFeatureLsp.', {
-    operation: { type: 'string' },
-    file_path: { type: 'string' },
-    line: { type: 'number' },
-    character: { type: 'number' },
-  }, ['operation', 'file_path', 'line', 'character']),
+  obj('LSP', LSP_TOOL_DESCRIPTION, {
+    operation: {
+      type: 'string',
+      enum: [...LSP_OPERATIONS],
+      description: 'The LSP operation to perform',
+    },
+    filePath: { type: 'string', description: 'The absolute or relative path to the file' },
+    line: { type: 'number', description: 'The line number (1-based, as shown in editors)' },
+    character: { type: 'number', description: 'The character offset (1-based, as shown in editors)' },
+  }, ['operation', 'filePath', 'line', 'character']),
   obj('EnterWorktree', 'Create/use a git worktree for isolated work. Requires agentFeatureWorktree.', {
     name: { type: 'string' },
   }, []),

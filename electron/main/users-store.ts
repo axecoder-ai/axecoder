@@ -41,17 +41,40 @@ const writeUsersFile = async (data: UsersFile) => {
   await fs.writeFile(usersPath(), JSON.stringify(data, null, 2), 'utf-8')
 }
 
-const ensureBuiltinManager = async (data: UsersFile): Promise<UsersFile> => {
+const OLD_MANAGER_ROLE = '技术经理'
+const OLD_MANAGER_EXPERTISE = '需求拆解、任务协调、技术评审'
+
+const ensureBuiltinManager = (data: UsersFile): UsersFile => {
   const has = data.users.some((u) => u.isBuiltin && u.builtinRole === 'manager')
   if (has) return data
   return { schemaVersion: 1, users: [seedBuiltinManager(), ...data.users] }
 }
 
+const syncBuiltinManager = (data: UsersFile): { data: UsersFile; changed: boolean } => {
+  const idx = data.users.findIndex((u) => u.isBuiltin && u.builtinRole === 'manager')
+  if (idx < 0) return { data, changed: false }
+  const u = data.users[idx]
+  const fromLegacy =
+    u.role === OLD_MANAGER_ROLE || u.expertise === OLD_MANAGER_EXPERTISE
+  const outOfSync = u.role !== MANAGER_ROLE || u.expertise !== MANAGER_EXPERTISE
+  if (!fromLegacy && !outOfSync) return { data, changed: false }
+  data.users[idx] = {
+    ...u,
+    role: MANAGER_ROLE,
+    expertise: MANAGER_EXPERTISE,
+    displayName: fromLegacy || u.displayName === OLD_MANAGER_ROLE ? MANAGER_ROLE : u.displayName,
+  }
+  return { data, changed: true }
+}
+
 export const listUsers = async (): Promise<UsersFile> => {
   let data = await readUsersFile()
-  data = await ensureBuiltinManager(data)
-  const before = await readUsersFile()
-  if (before.users.length !== data.users.length) await writeUsersFile(data)
+  data = ensureBuiltinManager(data)
+  const synced = syncBuiltinManager(data)
+  data = synced.data
+  if (synced.changed || (await readUsersFile()).users.length !== data.users.length) {
+    await writeUsersFile(data)
+  }
   return data
 }
 

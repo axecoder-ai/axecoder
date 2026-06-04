@@ -89,11 +89,17 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
       routerLlm,
       (roleId, status) => {
         emitWorkshopProgress({ workshopId: session!.id, roleId, status })
+        if (status === 'done') {
+          void saveWorkshopSession(root, session!).catch(() => {
+            /* 增量落盘失败不中断编排；终态 save 会再试并向前端报错 */
+          })
+        }
       },
       displayText,
       userImages,
     )
     if (!res.ok) return res
+    res.session.pendingUserImages = undefined
     const saved = await saveWorkshopSession(root, res.session)
     if (!saved.ok) return { ok: false as const, error: saved.error }
     return { ok: true as const, session: res.session }

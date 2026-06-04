@@ -4,13 +4,15 @@ import { ALL_AGENT_TOOL_NAMES } from './agent-types'
 /** 模型可能使用的工具名别名 → 规范名 */
 const ALIASES: Record<string, AgentToolName> = {
   AskQuestion: 'AskUserQuestion',
+  Agent: 'Task',
 }
 
 export const resolveAgentToolName = (raw: string): AgentToolName | undefined => {
+  if (ALIASES[raw]) return ALIASES[raw]
   if ((ALL_AGENT_TOOL_NAMES as readonly string[]).includes(raw)) {
     return raw as AgentToolName
   }
-  return ALIASES[raw]
+  return undefined
 }
 
 export const normalizeAgentToolCall = (call: AgentToolCall): AgentToolCall => {

@@ -84,6 +84,19 @@ describe('workshop-store', () => {
     expect(got.session?.messages[0].reasoningContent).toBe('想')
   })
 
+  it('并发 saveWorkshopSession 不触发 rename ENOENT', async () => {
+    const session = newWorkshopSession(projectRoot, '并发', 'm1')
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, i) => {
+        const s = { ...session, updatedAt: Date.now() + i }
+        return saveWorkshopSession(projectRoot, s)
+      }),
+    )
+    expect(results.every((r) => r.ok)).toBe(true)
+    const got = await getWorkshopSession(projectRoot, session.id)
+    expect(got.session?.userBrief).toBe('并发')
+  })
+
   it('deleteWorkshopSession 删除文件', async () => {
     const session = newWorkshopSession(projectRoot, 'x', 'm1')
     await saveWorkshopSession(projectRoot, session)

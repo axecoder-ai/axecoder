@@ -2,7 +2,10 @@ import { ipcRenderer, contextBridge } from 'electron'
 import type { MenuChannel } from '../../src/types/axecoder'
 
 /** Electron IPC 只能传可 structured clone 的值；Vue 响应式对象会报 could not be cloned */
-const cloneForIpc = <T>(value: T): T => JSON.parse(JSON.stringify(value))
+const cloneForIpc = <T>(value: T): T => {
+  if (value === undefined) return value
+  return JSON.parse(JSON.stringify(value)) as T
+}
 
 const menuChannels: MenuChannel[] = [
   'menu:save',
@@ -169,6 +172,30 @@ contextBridge.exposeInMainWorld('axecoder', {
   setRulesThirdPartyImport: (enabled: boolean) =>
     ipcRenderer.invoke('rules:setThirdPartyImport', enabled) as Promise<
       { ok: true } | { ok: false; error: string }
+    >,
+  listSkills: (projectRoot?: string | null) =>
+    ipcRenderer.invoke('skills:list', projectRoot) as Promise<
+      import('../../src/types/axecoder').SkillsMutationResult
+    >,
+  readSkill: (
+    scope: import('../../src/types/axecoder').SkillScope,
+    folderName: string,
+    projectRoot?: string,
+  ) =>
+    ipcRenderer.invoke('skills:read', scope, folderName, projectRoot) as Promise<
+      import('../../src/types/axecoder').SkillsReadResult
+    >,
+  saveSkill: (input: import('../../src/types/axecoder').SkillSaveInput) =>
+    ipcRenderer.invoke('skills:save', input) as Promise<
+      import('../../src/types/axecoder').SkillsMutationResult
+    >,
+  deleteSkill: (
+    scope: 'user' | 'project',
+    folderName: string,
+    projectRoot?: string,
+  ) =>
+    ipcRenderer.invoke('skills:delete', scope, folderName, projectRoot) as Promise<
+      import('../../src/types/axecoder').SkillsMutationResult
     >,
   expandChatUserWithFiles: (projectRoot: string, text: string, filePaths: string[]) =>
     ipcRenderer.invoke(

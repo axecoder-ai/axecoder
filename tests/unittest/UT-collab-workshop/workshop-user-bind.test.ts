@@ -15,7 +15,7 @@ const users: UserEntry[] = [
   {
     id: 'u2',
     displayName: '小陈',
-    role: '后端',
+    role: 'Backend',
     expertise: '',
     avatarPath: '',
   },

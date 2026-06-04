@@ -113,6 +113,7 @@ export const buildRouteTurnPrompt = (
   userBrief: string,
   priorSummary: string,
   memberSummary: string,
+  memberDetail?: string,
 ): string =>
   [
     'A member just finished speaking. Decide who gets the turn:',
@@ -124,6 +125,7 @@ export const buildRouteTurnPrompt = (
     `[Task] ${userBrief}`,
     priorSummary ? `[Discussion]\n${priorSummary}` : '',
     `[Latest member conclusion]\n${memberSummary}`,
+    memberDetail?.trim() ? `[Latest member detail]\n${memberDetail.trim()}` : '',
   ]
     .filter(Boolean)
     .join('\n')
@@ -132,6 +134,7 @@ export const buildManagerTurnPrompt = (
   userBrief: string,
   priorSummary: string,
   users: UserEntry[],
+  codeBrief?: string,
 ): string => {
   const roster = employeeUsers(users)
     .map((u) => `- "${u.id}": ${u.displayName} (${u.role})`)
@@ -143,6 +146,7 @@ export const buildManagerTurnPrompt = (
     '',
     `[Task] ${userBrief}`,
     priorSummary ? `[Discussion]\n${priorSummary}` : '',
+    codeBrief?.trim() ? `[Tech Lead codebase notes]\n${codeBrief.trim()}` : '',
     '[Assignable members]',
     roster || '(none)',
   ]
@@ -167,8 +171,9 @@ export const routeTurnAfterMember = async (
   userBrief: string,
   priorSummary: string,
   memberSummary: string,
+  memberDetail?: string,
 ): Promise<RouteTurnResult | { ok: false; error: string }> => {
-  const raw = await llm(buildRouteTurnPrompt(userBrief, priorSummary, memberSummary))
+  const raw = await llm(buildRouteTurnPrompt(userBrief, priorSummary, memberSummary, memberDetail))
   return parseRouteTurn(raw)
 }
 
@@ -177,7 +182,8 @@ export const runManagerTurnLlm = async (
   userBrief: string,
   priorSummary: string,
   users: UserEntry[],
+  codeBrief?: string,
 ): Promise<ManagerTurnResult> => {
-  const raw = await llm(buildManagerTurnPrompt(userBrief, priorSummary, users))
+  const raw = await llm(buildManagerTurnPrompt(userBrief, priorSummary, users, codeBrief))
   return parseManagerTurn(raw, users)
 }

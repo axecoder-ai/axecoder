@@ -144,6 +144,7 @@ defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
       />
       <div class="chat-input-footer">
         <div class="footer-left">
+          <slot name="footer-prefix" />
           <ModelPickerDropdown
             v-if="enabledModels.length"
             :models="enabledModels"

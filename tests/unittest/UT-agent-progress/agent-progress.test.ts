@@ -12,13 +12,13 @@ import {
 describe('agent-progress labels', () => {
   it('model turn label', () => {
     expect(labelForModelTurn(2)).toContain('2')
-    expect(labelForModelTurn(2)).toContain('模型')
+    expect(labelForModelTurn(2)).toMatch(/model/i)
   })
 
   it('tool start/done labels', () => {
     expect(labelForToolStart('Read', 'a.md')).toContain('Read')
-    expect(labelForToolDone('Read', 'a.md', true)).toContain('完成')
-    expect(labelForToolDone('Edit', 'x', false)).toContain('失败')
+    expect(labelForToolDone('Read', 'a.md', true)).toMatch(/done/i)
+    expect(labelForToolDone('Edit', 'x', false)).toMatch(/failed/i)
   })
 })
 

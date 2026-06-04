@@ -2,12 +2,15 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
   CHAT_MODE_OPTIONS,
+  canPickChatMode,
   chatModeLabel,
   type ChatModeId,
 } from '../../utils/chat-modes'
 
 const props = defineProps<{
   activeModeId: ChatModeId
+  /** 当前 Agent/Workshop 会话是否已有消息（有则锁定 multi-agent 互切） */
+  hasSessionMessages?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -42,7 +45,11 @@ watch(open, (v) => {
   if (v) void nextTick(syncPopoverPos)
 })
 
+const isModeDisabled = (id: ChatModeId) =>
+  !canPickChatMode(props.activeModeId, id, !!props.hasSessionMessages)
+
 const pick = (id: ChatModeId) => {
+  if (isModeDisabled(id)) return
   emit('select', id)
   open.value = false
 }
@@ -87,7 +94,18 @@ onUnmounted(() => {
       >
         <ul class="mode-list">
           <li v-for="m in CHAT_MODE_OPTIONS" :key="m.id">
-            <button type="button" class="mode-row" @click="pick(m.id)">
+            <button
+              type="button"
+              class="mode-row"
+              :class="{ disabled: isModeDisabled(m.id) }"
+              :disabled="isModeDisabled(m.id)"
+              :title="
+                isModeDisabled(m.id)
+                  ? 'Cannot change Multi-Agent mode after messages in this session'
+                  : undefined
+              "
+              @click="pick(m.id)"
+            >
               <span class="mode-text">
                 <span class="mode-name">{{ m.label }}</span>
                 <span class="mode-desc">{{ m.description }}</span>
@@ -218,8 +236,14 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.mode-row:hover {
+.mode-row:hover:not(:disabled) {
   background: var(--wc-hover);
+}
+
+.mode-row.disabled,
+.mode-row:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .mode-text {

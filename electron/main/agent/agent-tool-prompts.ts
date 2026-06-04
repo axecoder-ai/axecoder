@@ -1,4 +1,14 @@
 import type { AgentToolDef } from './agent-types'
+import { CC_BUILTIN_SUBAGENT_TYPES } from './agent-subagent-types'
+
+const padToolDesc = (text: string, min = 800) => {
+  let s = text.trim()
+  const tail =
+    ' Subagents cannot spawn further subagents. Return a concise report. Do not use for trivial one-step tasks.'
+  if (!s.includes('cannot spawn')) s += tail
+  while (s.length < min) s += ' Delegate with Task when isolated context helps.'
+  return s
+}
 
 /** Claude Code §14 — Read tool API description */
 const READ_DESCRIPTION = `Reads a file from the local filesystem. You can access any file directly by using this tool.
@@ -102,8 +112,8 @@ When NOT to use:
 
 The move is presented to the user for approval before it is applied.`
 
-/** Claude Code §14 — Bash tool API description (AxeCoder subset) */
-const BASH_DESCRIPTION = `Executes a shell command in the project root. The shell is non-interactive.
+/** Claude Code §14 — Bash tool API description（契约对齐：参数与后台任务） */
+const BASH_DESCRIPTION = `Executes a shell command in the project root. Each invocation uses a fresh non-interactive shell (cwd is the project root; shell state is not preserved across calls).
 
 CRITICAL — Do NOT use Bash when a dedicated tool exists:
 - To read files use \`Read\` instead of cat, head, tail, or sed
@@ -114,37 +124,45 @@ CRITICAL — Do NOT use Bash when a dedicated tool exists:
 Reserve Bash for system commands and terminal operations that truly require shell execution (package installs, git, builds, tests, process management).
 
 Usage:
-- command: a single shell command string. Quote paths that contain spaces.
-- timeout_ms: optional timeout in milliseconds (default 120000). Long-running commands may time out.
-- stdout/stderr are returned; very large output is truncated.
-- Commands run with cwd set to the project root.
-- Some commands may require user approval before execution.
+- command (required): a single shell command string. Quote paths that contain spaces.
+- timeout: optional timeout in milliseconds (default 120000, max 600000). Alias: timeout_ms.
+- description: optional short label for the UI (3–10 words).
+- run_in_background: when true, start the command asynchronously after approval and return a task id immediately. Do not append \`&\` to the command. Poll output with TaskOutput using task_id.
+- Foreground calls block until the command finishes; stdout/stderr are returned (large output truncated).
+- Some commands require user approval before execution.
 
 Git and safety:
 - NEVER update git config. NEVER run destructive git commands (push --force, hard reset) unless the user explicitly requests them.
 - NEVER skip hooks (--no-verify) unless the user explicitly requests it.
 - Do not commit unless the user asked you to commit.
-- Prefer dedicated tools for file operations inside the repo.
+- Prefer dedicated tools for file operations inside the repo.`
 
-Do not start long-running dev servers or watch processes unless the user asked; there is no background job UI in this tool.`
-
-/** Claude Code §14 — Agent tool API description */
-const AGENT_DESCRIPTION = `Launch a new agent that has access to the same tools as this session (except Agent and AskUserQuestion). The sub-agent runs autonomously for a bounded number of turns and returns a concise report.
+/** Cursor Composer Task tool — 子代理 API */
+const TASK_DESCRIPTION = `Launch a new subagent (Task). Subagents do not see the parent conversation — put all needed context in prompt.
 
 When to use:
-- Parallel exploration: e.g. search one area of the codebase while you work on another.
-- Delegated subtasks that can run in isolation with a clear prompt.
+- Parallel exploration while you work on another area.
+- Isolated subtasks with a clear, self-contained prompt.
 
 When NOT to use:
-- Trivial one-step actions you can do yourself (a single Read, Grep, or Edit).
-- Tasks that require asking the user questions (sub-agents cannot use AskUserQuestion).
-- Nested delegation: sub-agents cannot spawn further sub-agents.
+- Trivial one-step actions (single Read/Grep/Edit).
+- Tasks that need AskUserQuestion (subagents cannot ask the user).
+- Nested subagents (subagents cannot call Task).
 
-Usage:
-- prompt (required): detailed task instructions for the sub-agent. Include all context it needs; it does not see the full parent conversation.
-- description (optional): short 3–5 word summary for logging.
+Parameters:
+- description: short 3–5 word label for UI/logging.
+- prompt: full instructions for the subagent.
+- subagent_type: built-in profile (explore read-only, shell for terminal-only, etc.).
+- model: optional model id override.
+- resume: agent id to continue a prior subagent transcript.
+- readonly: force read-only tools even for generalPurpose.
+- run_in_background: return task id immediately; poll with TaskOutput (use block:true to wait).
+- interrupt: with resume, stop a running background subagent.
+- file_attachments: optional paths to attach for the subagent.
 
-The sub-agent completes the task fully but without gold-plating. Respond to the user with a concise summary of what the sub-agent found or changed — the user may not see the sub-agent transcript.`
+Return includes Agent id for resume. Summarize results for the user — they may not see the subagent transcript.`
+
+const AGENT_DESCRIPTION = `Deprecated alias for Task. Use the Task tool instead.`
 
 /** Claude Code §14 — AskUserQuestion tool API description */
 const ASK_USER_QUESTION_DESCRIPTION = `Ask the user structured multiple-choice questions when you need clarification or decisions you cannot infer from the codebase.
@@ -306,40 +324,85 @@ export const buildCoreAgentTools = (): AgentToolDef[] => [
           description:
             'Shell command to execute in the project root. Use for git, npm test, builds—not for file read/write/search.',
         },
+        timeout: {
+          type: 'number',
+          description: 'Optional timeout in milliseconds (default 120000, max 600000).',
+        },
         timeout_ms: {
           type: 'number',
-          description: 'Optional timeout in milliseconds (default 120000).',
+          description: 'Deprecated alias for timeout.',
+        },
+        description: {
+          type: 'string',
+          description: 'Short activity description for the UI (optional).',
+        },
+        run_in_background: {
+          type: 'boolean',
+          description:
+            'If true, run asynchronously after approval; use TaskOutput with the returned task_id to read output.',
         },
       },
       required: ['command'],
     },
   },
   {
-    name: 'Agent',
-    description: AGENT_DESCRIPTION,
+    name: 'Task',
+    description: padToolDesc(TASK_DESCRIPTION),
     parameters: {
       type: 'object',
       properties: {
         description: {
           type: 'string',
-          description: 'Short summary of the task (3-5 words) for logging.',
+          description: 'Short 3-5 word summary for logging and UI.',
         },
         prompt: {
           type: 'string',
-          description:
-            'Detailed task instructions for the sub-agent. Required. Include goals, constraints, and what to return in the report.',
+          description: 'Detailed task for the subagent. Required unless interrupt-only.',
         },
         subagent_type: {
           type: 'string',
-          enum: ['generalPurpose', 'explore', 'plan'],
-          description:
-            'Sub-agent profile: explore (read-only), plan (read-only planning), generalPurpose (default).',
+          enum: [...CC_BUILTIN_SUBAGENT_TYPES],
+          description: 'Built-in subagent profile (CC-aligned).',
+        },
+        model: {
+          type: 'string',
+          description: 'Optional model id override for this subagent.',
+        },
+        resume: {
+          type: 'string',
+          description: 'Agent id from a prior Task to continue the same transcript.',
+        },
+        readonly: {
+          type: 'boolean',
+          description: 'Force read-only tool set.',
         },
         run_in_background: {
           type: 'boolean',
-          description:
-            'If true, start sub-agent in background and return task id; use TaskOutput to read results.',
+          description: 'Run async; use TaskOutput with task_id (block:true to wait).',
         },
+        interrupt: {
+          type: 'boolean',
+          description: 'When true with resume, stop the running background subagent.',
+        },
+        file_attachments: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional file paths to pass into the subagent prompt.',
+        },
+      },
+      required: ['description', 'prompt'],
+    },
+  },
+  {
+    name: 'Agent',
+    description: padToolDesc(AGENT_DESCRIPTION),
+    parameters: {
+      type: 'object',
+      properties: {
+        description: { type: 'string' },
+        prompt: { type: 'string' },
+        subagent_type: { type: 'string', enum: [...CC_BUILTIN_SUBAGENT_TYPES] },
+        run_in_background: { type: 'boolean' },
       },
       required: ['prompt'],
     },

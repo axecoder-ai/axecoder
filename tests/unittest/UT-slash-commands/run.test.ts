@@ -25,6 +25,6 @@ describe('runSlashCommand', () => {
   it('未知斜杠命令返回错误', async () => {
     const res = await runSlashCommand('/foo', makeCtx())
     expect(res?.ok).toBe(false)
-    if (res && !res.ok) expect(res.message).toContain('未知命令')
+    if (res && !res.ok) expect(res.message).toMatch(/unknown command/i)
   })
 })

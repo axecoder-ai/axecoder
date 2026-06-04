@@ -1,7 +1,28 @@
 import { spawn } from 'node:child_process'
 
-const DEFAULT_TIMEOUT_MS = 120_000
+export const DEFAULT_BASH_TIMEOUT_MS = 120_000
+export const MAX_BASH_TIMEOUT_MS = 600_000
+const DEFAULT_TIMEOUT_MS = DEFAULT_BASH_TIMEOUT_MS
 const MAX_OUTPUT_CHARS = 200_000
+
+/** CC 参数 `timeout`（毫秒）；兼容旧 `timeout_ms` */
+export const parseBashTimeoutMs = (args: Record<string, unknown>): number | undefined => {
+  const raw = args.timeout ?? args.timeout_ms
+  if (typeof raw !== 'number' || raw <= 0) return undefined
+  return Math.min(raw, MAX_BASH_TIMEOUT_MS)
+}
+
+export const trimBashOutput = (text: string) => {
+  if (text.length <= MAX_OUTPUT_CHARS) return text
+  return `${text.slice(0, MAX_OUTPUT_CHARS)}\n...[output truncated]`
+}
+
+export const formatBackgroundBashStarted = (taskId: string, description?: string): string => {
+  const lines = ['Background shell task started.', `Task id: ${taskId}`]
+  if (description?.trim()) lines.push(`Description: ${description.trim()}`)
+  lines.push('Use TaskOutput with task_id to read output while running or after completion.')
+  return lines.join('\n')
+}
 
 /** 危险 git 命令（对齐 Claude Code Bash 约束） */
 export const isDangerousGitCommand = (command: string) => {
@@ -14,10 +35,7 @@ export const isDangerousGitCommand = (command: string) => {
   return ''
 }
 
-const trimOutput = (text: string) => {
-  if (text.length <= MAX_OUTPUT_CHARS) return text
-  return `${text.slice(0, MAX_OUTPUT_CHARS)}\n...[output truncated]`
-}
+const trimOutput = trimBashOutput
 
 /** 在 projectRoot 下非交互执行 shell 命令（Agent Bash 工具） */
 export const runAgentBash = async (

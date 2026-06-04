@@ -11,6 +11,7 @@ import { registerAgentIpc } from './agent-ipc'
 import { registerModelsIpc } from './models-ipc'
 import { registerUsersIpc } from './users-ipc'
 import { registerRulesIpc } from './rules/rules-ipc'
+import { registerSkillsIpc } from './skills/skills-ipc'
 import { runMigrate } from './migrate-axecoder'
 import { refreshMainLocale } from './i18n'
 import Store from 'electron-store'
@@ -288,6 +289,7 @@ app.whenReady().then(async () => {
   registerModelsIpc()
   registerUsersIpc(() => win)
   registerRulesIpc()
+  registerSkillsIpc()
   registerAiIpc()
   registerAgentIpc(() => win)
   registerWorkshopIpc(() => win)
@@ -304,7 +306,9 @@ app.on('before-quit', (e) => {
   target.webContents.send('app:beforeQuit')
 })
 
-ipcMain.on('app:confirmQuit', () => {
+ipcMain.on('app:confirmQuit', async () => {
+  const { shutdownLspServerManager } = await import('./lsp/lsp-manager')
+  await shutdownLspServerManager()
   allowQuit = true
   app.quit()
 })

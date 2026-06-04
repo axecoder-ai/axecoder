@@ -76,4 +76,6 @@ export const pendingBashToPublic = (p: PendingBashInternal): PendingBashPublic =
   id: p.id,
   command: p.command,
   ...(p.timeoutMs !== undefined ? { timeoutMs: p.timeoutMs } : {}),
+  ...(p.description ? { description: p.description } : {}),
+  ...(p.runInBackground ? { runInBackground: true } : {}),
 })

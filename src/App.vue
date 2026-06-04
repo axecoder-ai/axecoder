@@ -17,6 +17,7 @@ import { useWorkbench } from './composables/useWorkbench'
 import {
   clampAgentsWidth,
   clampAiPanelWidth,
+  clampPanelWidth,
   clampSidebarWidth,
   minAiPanelWidth,
   WC_AGENTS_DEFAULT,
@@ -111,11 +112,18 @@ const hasOpenEditorTabs = computed(() => openFiles.value.length > 0)
 const showEditorArea = computed(() => hasOpenEditorTabs.value)
 /** Right Chat column (Agent / Workshop shared) */
 const showChatAside = computed(() => aiPanelVisible.value)
+/** Chat body: landing or active session; hidden when editor open with no session */
+const showChatPane = computed(
+  () => showChatAside.value && (!showEditorArea.value || !!activeChatSessionId.value),
+)
 /** Unified session list */
 const showAgentsAside = computed(
   () => agentsSidebarVisible.value && showChatAside.value,
 )
-const showSessionAside = computed(() => showChatAside.value || showAgentsAside.value)
+const showSessionAside = computed(() => showChatPane.value || showAgentsAside.value)
+const aiSidePanelAgentsOnly = computed(
+  () => showEditorArea.value && showAgentsAside.value && !showChatPane.value,
+)
 /** Welcome page when no project is open */
 const showWelcomePage = computed(
   () =>
@@ -128,15 +136,18 @@ const aiPanelFillsCenter = computed(
   () => showChatAside.value && !showWelcomePage.value && !showEditorArea.value,
 )
 const aiPanelUsesFixedWidth = computed(
-  () => showChatAside.value && (showWelcomePage.value || showEditorArea.value),
+  () => showSessionAside.value && (showWelcomePage.value || showEditorArea.value),
 )
+
+const aiAsideMinWidth = () => {
+  if (!showSessionAside.value) return 0
+  if (aiSidePanelAgentsOnly.value) return agentsWidth.value
+  return minAiPanelWidth(agentsSidebarVisible.value, agentsWidth.value)
+}
 
 const minCenterWorkbenchWidth = () => {
   if (showEditorArea.value) {
-    const aiMin = showSessionAside.value
-      ? minAiPanelWidth(agentsSidebarVisible.value, agentsWidth.value)
-      : 0
-    return WC_EDITOR_MIN + aiMin
+    return WC_EDITOR_MIN + aiAsideMinWidth()
   }
   if (showSessionAside.value) {
     return minAiPanelWidth(agentsSidebarVisible.value, agentsWidth.value)
@@ -196,6 +207,23 @@ const onAiPanelSplitPointerDown = (e: PointerEvent) => {
   if (!body) return
   aiPanelSplitDragging.value = true
   const startX = e.clientX
+  if (aiSidePanelAgentsOnly.value) {
+    const startW = agentsWidth.value
+    const sidebar = primarySidebarVisible.value ? sidebarWidth.value : 0
+    trackColumnDrag(
+      e,
+      (ev) => {
+        const delta = ev.clientX - startX
+        const maxW = body.getBoundingClientRect().width - sidebar - WC_EDITOR_MIN
+        agentsWidth.value = clampPanelWidth(startW - delta, maxW, 0, WC_AGENTS_MIN)
+        clampLayoutWidths()
+      },
+      () => {
+        aiPanelSplitDragging.value = false
+      },
+    )
+    return
+  }
   const startW = aiPanelWidth.value
   trackColumnDrag(
     e,
@@ -636,19 +664,25 @@ onUnmounted(() => {
           class="ai-side-panel"
           :class="{
             'ai-side-panel--fill': aiPanelFillsCenter,
+            'ai-side-panel--agents-only': aiSidePanelAgentsOnly,
           }"
           :style="
             aiPanelUsesFixedWidth
-              ? { width: `${aiPanelWidth}px` }
+              ? {
+                  width: aiSidePanelAgentsOnly
+                    ? `${agentsWidth}px`
+                    : `${aiPanelWidth}px`,
+                }
               : undefined
           "
         >
           <ChatPane
-            v-show="showChatAside"
+            v-show="showChatPane"
             ref="chatPaneRef"
             :session-kind="activeSessionKind"
             :project-root="projectRoot"
             :context-file-path="activePath"
+            :has-open-editor-tabs="hasOpenEditorTabs"
             :agents-sidebar-visible="agentsSidebarVisible"
             :agent-auto-apply-writes="settings.agentAutoApplyWrites"
             :agent-completion-sound-enabled="settings.agentCompletionSoundEnabled"
@@ -668,7 +702,7 @@ onUnmounted(() => {
             @files-changed="fileExplorerRef?.refresh?.()"
           />
           <div
-            v-show="showChatAside && showAgentsAside"
+            v-show="showChatPane && showAgentsAside"
             class="agents-split-handle"
             :class="{ dragging: agentsSplitDragging }"
             @pointerdown="onAgentsSplitPointerDown"

@@ -15,12 +15,14 @@ import { discoverSkills, findSkillByName, readSkillContent } from './agent-skill
 import { callMcpTool, listMcpResources, loadMcpConfig, readMcpResource } from './agent-mcp'
 import { fetchUrl, webSearchStub } from './agent-web'
 import { editNotebookCell } from './agent-notebook'
+import { formatShellTaskOutput, getShellTask } from './agent-bash-tasks'
 import {
   createBackgroundRunId,
   formatTaskOutput,
   getBackgroundRun,
   putBackgroundRun,
   stopBackgroundRun,
+  waitForBackgroundRun,
 } from './agent-subagent-tasks'
 import { getConfig } from '../config-store'
 import { ALL_AGENT_TOOL_NAMES } from './agent-types'
@@ -224,9 +226,15 @@ export const executeExtendedAgentTool = async (
   }
 
   if (name === 'TaskOutput') {
-    const run = getBackgroundRun(str(args.task_id))
-    if (!run) return immediate(name, 'TaskOutput', 'Error: task not found', false)
-    return immediate(name, 'TaskOutput', formatTaskOutput(run), true)
+    const taskId = str(args.task_id)
+    const block = args.block === true
+    const subRun = block ? await waitForBackgroundRun(taskId) : getBackgroundRun(taskId)
+    if (subRun) return immediate(name, 'TaskOutput', formatTaskOutput(subRun), true)
+    const shellRun = getShellTask(taskId)
+    if (shellRun) {
+      return immediate(name, 'TaskOutput', formatShellTaskOutput(shellRun), true)
+    }
+    return immediate(name, 'TaskOutput', 'Error: task not found', false)
   }
 
   if (name === 'TaskStop') {
@@ -263,12 +271,9 @@ export const executeExtendedAgentTool = async (
     if (!cfg.agentFeatureLsp) {
       return immediate(name, 'LSP', 'Error: LSP tool disabled. Enable agentFeatureLsp in config.', false)
     }
-    return immediate(
-      name,
-      'LSP',
-      `LSP stub: operation=${str(args.operation)} file=${str(args.file_path)}:${args.line}:${args.character}. Wire language server in a future release.`,
-      true,
-    )
+    const { executeAgentLsp } = await import('./agent-lsp')
+    const res = await executeAgentLsp(ctx.projectRoot, args as Record<string, unknown>)
+    return immediate(name, 'LSP', res.text, res.ok)
   }
 
   if (name === 'EnterWorktree') {
@@ -336,22 +341,7 @@ export const executeExtendedAgentTool = async (
   return immediate(name, String(name), `Error: unhandled extended tool ${name}`, false)
 }
 
-export const filterToolsForSubagent = (
-  tools: readonly { name: AgentToolName }[],
-  subagentType?: string,
-) => {
-  const t = (subagentType || 'generalPurpose').toLowerCase()
-  const readOnly = t === 'explore' || t === 'plan'
-  const blocked = new Set<AgentToolName>(['Agent', 'AskUserQuestion'])
-  if (readOnly) {
-    for (const n of ['Edit', 'Write', 'Delete', 'Move', 'Bash'] as AgentToolName[]) blocked.add(n)
-  }
-  if (t === 'plan') {
-    blocked.add('EnterPlanMode')
-    blocked.add('ExitPlanMode')
-  }
-  return tools.filter((tool) => !blocked.has(tool.name))
-}
+export { filterToolsForCcSubagent as filterToolsForSubagent } from './agent-subagent-types'
 
 export const getSessionActiveTools = (
   allTools: { name: AgentToolName }[],

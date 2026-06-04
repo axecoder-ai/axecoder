@@ -30,12 +30,13 @@ describe('users-store', () => {
     expect(m.id).toBe(BUILTIN_MANAGER_ID)
     expect(m.isBuiltin).toBe(true)
     expect(m.builtinRole).toBe('manager')
-    expect(m.role).toBe('技术经理')
+    expect(m.role).toBe('Tech Lead')
+    expect(m.expertise).toBe('Requirements breakdown, coordination, technical review')
   })
 
   it('内置技术经理不可删除', async () => {
     await listUsers()
-    await expect(deleteUser(BUILTIN_MANAGER_ID)).rejects.toThrow('内置用户不可删除')
+    await expect(deleteUser(BUILTIN_MANAGER_ID)).rejects.toThrow('Built-in user cannot be deleted')
   })
 
   it('内置技术经理不可改角色与擅长', async () => {
@@ -48,8 +49,8 @@ describe('users-store', () => {
     })
     const m = saved.users.find((u) => u.id === BUILTIN_MANAGER_ID)!
     expect(m.displayName).toBe('张经理')
-    expect(m.role).toBe('技术经理')
-    expect(m.expertise).not.toBe('写 PRD')
+    expect(m.role).toBe('Tech Lead')
+    expect(m.expertise).toBe('Requirements breakdown, coordination, technical review')
   })
 
   it('可添加并删除普通用户', async () => {
@@ -65,5 +66,29 @@ describe('users-store', () => {
     data = await deleteUser('u1')
     expect(data.users).toHaveLength(1)
     expect(data.users[0].id).toBe(BUILTIN_MANAGER_ID)
+  })
+
+  it('旧版中文内置经理 list 时迁移为英文', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'users.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        users: [
+          {
+            id: BUILTIN_MANAGER_ID,
+            displayName: '徐然',
+            role: '技术经理',
+            expertise: '需求拆解、任务协调、技术评审',
+            avatarPath: '',
+            isBuiltin: true,
+            builtinRole: 'manager',
+          },
+        ],
+      }),
+    )
+    const m = (await listUsers()).users[0]
+    expect(m.displayName).toBe('Tech Lead')
+    expect(m.role).toBe('Tech Lead')
+    expect(m.expertise).toBe('Requirements breakdown, coordination, technical review')
   })
 })

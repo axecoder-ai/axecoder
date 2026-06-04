@@ -16,6 +16,12 @@ import { parseWorkshopStreamRole } from '../../utils/workshop-stream'
 import type { ChatFileRef } from '../../utils/chat-file-context'
 import { findUserById, findUserForWorkshopRole, inferWorkshopRoleId } from '../../utils/workshop-user-bind'
 import { useChatAttachedImages } from '../../composables/useChatAttachedImages'
+import {
+  clearWorkshopLiveTurnState,
+  createWorkshopLiveTurnState,
+  markWorkshopAgentStreamKey,
+  markWorkshopLiveRole,
+} from '../../utils/workshop-live-turn'
 
 const props = defineProps<{
   projectRoot: string
@@ -64,11 +70,50 @@ let offProgress: (() => void) | undefined
 let offAgentProgress: (() => void) | undefined
 const progressSteps = ref<AgentProgressStep[]>([])
 const agentProgressActive = ref(false)
+const liveTurnState = createWorkshopLiveTurnState()
+
+type PinnedLiveTurn = {
+  id: string
+  roleId: WorkshopRoleId
+  steps: AgentProgressStep[]
+  streamText: string
+}
+const pinnedLiveTurns = ref<PinnedLiveTurn[]>([])
 
 const clearStreamUi = () => {
   streamText.value = ''
   streamRoleId.value = null
   progressSteps.value = []
+  pinnedLiveTurns.value = []
+  clearWorkshopLiveTurnState(liveTurnState)
+}
+
+const pinCurrentLiveTurn = () => {
+  if (!progressSteps.value.length && !streamText.value.trim()) return
+  const role = streamRoleId.value ?? thinkingRole.value
+  if (!role || role === 'system' || role === 'user') return
+  pinnedLiveTurns.value.push({
+    id: `pin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    roleId: role,
+    steps: [...progressSteps.value],
+    streamText: streamText.value,
+  })
+}
+
+const prunePinnedLiveTurns = (session: WorkshopSession) => {
+  const visible = session.messages.filter((m) => !m.hidden)
+  pinnedLiveTurns.value = pinnedLiveTurns.value.filter((pin) => {
+    const settled = visible.some(
+      (m) => m.roleId === pin.roleId && !!(m.text.trim() || m.reasoningContent?.trim()),
+    )
+    return !settled
+  })
+}
+
+const resetLiveProgressSteps = () => {
+  pinCurrentLiveTurn()
+  progressSteps.value = []
+  streamText.value = ''
 }
 
 const workshopAgentPrefix = () =>
@@ -82,6 +127,7 @@ const unbindWorkshopAgentProgress = () => {
 
 const bindWorkshopAgentProgress = () => {
   unbindWorkshopAgentProgress()
+  pinnedLiveTurns.value = []
   progressSteps.value = []
   streamText.value = ''
   agentProgressActive.value = true
@@ -93,6 +139,9 @@ const bindWorkshopAgentProgress = () => {
       ? parseWorkshopStreamRole(payload.sessionId, active.value.id)
       : null
     if (roleKey) {
+      if (markWorkshopAgentStreamKey(liveTurnState, roleKey)) {
+        resetLiveProgressSteps()
+      }
       if (roleKey.startsWith('u-')) {
         const uid = roleKey.slice(2)
         const u = findUserById(usersList.value, uid)
@@ -301,6 +350,17 @@ const scrollBottom = async () => {
   if (el) el.scrollTop = el.scrollHeight
 }
 
+const syncWorkshopSession = async () => {
+  const id = active.value?.id
+  if (!id || !props.projectRoot?.trim()) return
+  const res = await window.axecoder.getWorkshopSession(props.projectRoot, id)
+  if (!res.session || res.session.id !== id) return
+  active.value = res.session
+  activePersisted = true
+  prunePinnedLiveTurns(res.session)
+  await scrollBottom()
+}
+
 const selectSession = async (id: string) => {
   const res = await window.axecoder.getWorkshopSession(props.projectRoot, id)
   active.value = res.session
@@ -433,18 +493,32 @@ onMounted(async () => {
   offProgress = window.axecoder.onWorkshopProgress((p) => {
     if (!active.value || p.workshopId !== active.value.id) return
     if (p.status === 'thinking') {
-      thinkingRole.value = p.roleId
-      clearStreamUi()
-    } else if (p.status === 'speaking') {
-      thinkingRole.value = null
       if (p.roleId !== 'system' && p.roleId !== 'user') {
+        if (markWorkshopLiveRole(liveTurnState, p.roleId)) {
+          resetLiveProgressSteps()
+        }
+        thinkingRole.value = p.roleId
+        if (!agentProgressActive.value) {
+          streamRoleId.value = null
+        } else {
+          streamRoleId.value = p.roleId
+        }
+      }
+    } else if (p.status === 'speaking') {
+      if (p.roleId !== 'system' && p.roleId !== 'user') {
+        if (markWorkshopLiveRole(liveTurnState, p.roleId)) {
+          resetLiveProgressSteps()
+        }
+        thinkingRole.value = null
         streamRoleId.value = p.roleId
-        streamText.value = ''
+      } else {
+        thinkingRole.value = null
       }
       void scrollBottom()
     } else if (p.status === 'done') {
       thinkingRole.value = null
-      clearStreamUi()
+      if (!agentProgressActive.value) clearStreamUi()
+      void syncWorkshopSession()
     }
   })
 })
@@ -501,6 +575,15 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
           :related-files="msg.relatedFiles"
           v-bind="messageRoleProps(msg)"
           @open-file="openMountedFile"
+        />
+        <WorkshopMessageItem
+          v-for="pin in pinnedLiveTurns"
+          :key="pin.id"
+          :role-id="pin.roleId"
+          text=""
+          streaming
+          :live-progress="{ steps: pin.steps, streamText: pin.streamText }"
+          v-bind="roleProps(pin.roleId)"
         />
         <WorkshopMessageItem
           v-if="

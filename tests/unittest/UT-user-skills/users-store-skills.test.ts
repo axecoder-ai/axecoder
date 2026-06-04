@@ -54,7 +54,7 @@ describe('users-store skillSlugs', () => {
       skillSlugs: ['make-plan'],
     })
     const m = (await listUsers()).users.find((u) => u.id === BUILTIN_MANAGER_ID)!
-    expect(m.role).toBe('技术经理')
+    expect(m.role).toBe('Tech Lead')
     expect(m.skillSlugs).toEqual(['make-plan'])
   })
 })

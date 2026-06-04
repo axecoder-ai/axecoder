@@ -10,12 +10,12 @@ describe('agent-tool-level-prompts', () => {
     const names = AGENT_TOOLS.map((t) => t.name).sort()
     expect(built).toEqual(names)
     expect(names).toEqual([...ALL_AGENT_TOOL_NAMES].sort())
-    expect(names.length).toBe(36)
+    expect(names.length).toBe(37)
   })
 
   it('strict：各工具 description 达到长文下限', () => {
     for (const t of AGENT_TOOLS) {
-      const min = t.name === 'Bash' || t.name === 'Agent' ? 800 : 400
+      const min = t.name === 'Bash' || t.name === 'Task' || t.name === 'Agent' ? 800 : 400
       expect(t.description.length, t.name).toBeGreaterThanOrEqual(min)
     }
   })
@@ -44,9 +44,9 @@ describe('agent-tool-level-prompts', () => {
     expect(d).toMatch(/timeout/i)
   })
 
-  it('Agent：不可嵌套、需简洁报告', () => {
-    const d = tool('Agent').description
-    expect(d).toMatch(/cannot spawn/i)
+  it('Task：不可嵌套、需简洁报告', () => {
+    const d = tool('Task').description
+    expect(d).toMatch(/cannot spawn|Nested subagents/i)
     expect(d).toMatch(/concise report/i)
     expect(d).toMatch(/trivial/i)
   })

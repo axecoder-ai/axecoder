@@ -5,20 +5,40 @@ import type { RoleSpeakMode } from './workshop-types'
 
 const cjkCount = (s: string) => (s.match(/[\u4e00-\u9fff]/g) ?? []).length
 
-/** Member group body: Done + files only; full report in reasoningContent */
+/** 群聊可见正文：保留实质结论（供后续角色 priorSummary 使用） */
+export const summarizeReportForChat = (report: string, maxLen = 1000): string => {
+  const raw = report.trim()
+  if (!raw) return '(no conclusion)'
+  const withoutFences = raw.replace(/```[\s\S]*?```/g, '').trim()
+  const body = withoutFences || raw
+  if (body.length <= maxLen) return body
+  return `${body.slice(0, maxLen)}…`
+}
+
+/** Member 群聊：结论 + 文件列表；完整 report 进 reasoningContent */
 export const formatMemberChatSummary = (
   report: string,
   relatedFiles?: string[],
 ): { summary: string; reasoningContent?: string } => {
   const files = relatedFiles?.length ? relatedFiles : extractRelatedFiles(report)
-  const summary =
-    files.length > 0
-      ? `Completed this segment.\n\nFiles touched:\n${files.map((f) => `- ${f}`).join('\n')}`
-      : 'Completed this segment.'
   const raw = report.trim()
+  const conclusion = summarizeReportForChat(raw, 1000)
+  const fileBlock =
+    files.length > 0 ? `\n\nFiles touched:\n${files.map((f) => `- ${f}`).join('\n')}` : ''
+  const summary = `${conclusion}${fileBlock}`.trim()
   return {
     summary,
     reasoningContent: raw.length > summary.length + 20 ? raw.slice(0, 8000) : undefined,
+  }
+}
+
+/** Tech Lead 读码摘要（hidden，供路由） */
+export const formatManagerCodeBrief = (report: string): { summary: string; reasoningContent?: string } => {
+  const raw = report.trim()
+  const summary = summarizeReportForChat(raw, 800)
+  return {
+    summary: summary ? `[Codebase notes] ${summary}` : '',
+    reasoningContent: raw.length > summary.length + 20 ? raw.slice(0, 4000) : undefined,
   }
 }
 

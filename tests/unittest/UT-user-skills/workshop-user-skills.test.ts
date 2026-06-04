@@ -48,7 +48,7 @@ describe('resolveUserSkillPromptBlock', () => {
       skillSlugs: ['demo-skill'],
     }
     const block = await resolveUserSkillPromptBlock(user, projectRoot)
-    expect(block).toContain('【绑定 Skill / 命令】')
+    expect(block).toMatch(/Bound skills|绑定 Skill/i)
     expect(block).toContain('demo-skill')
     expect(block).toContain('Demo Skill')
     expect(block).toContain('按此 Skill 执行演示任务')

@@ -32,7 +32,7 @@ describe('workshop-subagent-speaker', () => {
     const r = detectNeedsUserClarification(
       'manager',
       '实现功能',
-      '需要澄清业务场景，尚未阅读代码。',
+      'NEED_CLARIFICATION: please clarify the business scenario. No codebase inspection yet.',
     )
     expect(r.needsUser).toBe(true)
   })

@@ -38,10 +38,12 @@ import {
   type AttachedImageView,
 } from '../../composables/useChatAttachedImages'
 import {
+  canPickChatMode,
   loadStoredChatMode,
   saveStoredChatMode,
   type ChatModeId,
 } from '../../utils/chat-modes'
+import { workshopIdForAgentChat } from '../../utils/workshop-agent-link'
 
 const md = new MarkdownIt()
 
@@ -52,6 +54,8 @@ const props = defineProps<{
   /** Agent/Workshop session kind from App; tab uses ChatPane activeTabKind */
   sessionKind?: SessionKind
   contextFilePath?: string | null
+  /** Hide landing welcome when editor has open file tabs */
+  hasOpenEditorTabs?: boolean
   agentsSidebarVisible: boolean
   agentAutoApplyWrites: boolean
   agentCompletionSoundEnabled?: boolean
@@ -84,6 +88,12 @@ const activeId = ref('')
 const sessionCache = ref<Record<string, ChatSession>>({})
 
 const isWorkshopMode = computed(() => activeTabKind.value === 'workshop')
+const isMultiAgentInAgentChat = computed(
+  () => activeTabKind.value === 'agent' && chatModeId.value === 'multi-agent',
+)
+const showWorkshopPanel = computed(
+  () => isWorkshopMode.value || isMultiAgentInAgentChat.value,
+)
 
 const wsMetas = ref<WorkshopSessionMeta[]>([])
 const wsTitleById = ref<Record<string, string>>({})
@@ -111,8 +121,8 @@ const addUnifiedTab = (id: string, kind: SessionKind) => {
 
 const wsTabTitleFor = (id: string) => {
   const liveId = workshopSectionRef.value?.activeId
-  if (id === liveId) return workshopSectionRef.value?.activeTitle ?? 'Workshop'
-  return wsTitleById.value[id] ?? wsMetas.value.find((m) => m.id === id)?.title ?? 'Workshop'
+  if (id === liveId) return workshopSectionRef.value?.activeTitle ?? 'Multi-Agent'
+  return wsTitleById.value[id] ?? wsMetas.value.find((m) => m.id === id)?.title ?? 'Multi-Agent'
 }
 
 const agentTabTitleFor = (id: string) => {
@@ -186,6 +196,7 @@ const closeUnifiedTab = async (t: OpenChatTab) => {
 }
 
 const onWorkshopActiveChange = (id: string) => {
+  if (isMultiAgentInAgentChat.value) return
   if (id) {
     addUnifiedTab(id, 'workshop')
     setActiveTab(id, 'workshop')
@@ -197,6 +208,73 @@ const onWorkshopActiveChange = (id: string) => {
   }
 }
 
+let lastMultiAgentSyncKey = ''
+
+const syncMultiAgentWorkshop = async () => {
+  if (!isMultiAgentInAgentChat.value || !hasProject.value || !activeId.value) return
+  const key = activeId.value
+  if (lastMultiAgentSyncKey === key) return
+  lastMultiAgentSyncKey = key
+  await nextTick()
+  await workshopSectionRef.value?.openForAgentChat(activeId.value)
+  await syncMultiAgentAgentSessionTitle()
+}
+
+const AGENT_TITLE_PLACEHOLDERS = new Set(['New Agent', 'New chat', '新对话'])
+const WS_TITLE_PLACEHOLDER = 'Multi-Agent'
+
+/** Multi-Agent 对话在 Workshop 线程；侧栏/标签仍显示 Agent 会话，需把 Workshop 标题写回 */
+const syncMultiAgentAgentSessionTitle = async () => {
+  if (!isMultiAgentInAgentChat.value || !hasProject.value || !activeSession.value || !activeId.value)
+    return
+  const wsTitle = workshopSectionRef.value?.activeTitle?.trim()
+  if (!wsTitle || wsTitle === WS_TITLE_PLACEHOLDER) return
+  const s = activeSession.value
+  if (!AGENT_TITLE_PLACEHOLDERS.has(s.title) && s.title !== wsTitle) return
+  if (s.title === wsTitle) {
+    void maybeRefreshMultiAgentSessionTitle()
+    return
+  }
+  s.title = wsTitle
+  s.updatedAt = Date.now()
+  await persist({ skipTitleSuggest: true })
+  void maybeRefreshMultiAgentSessionTitle()
+}
+
+const workshopMessagesForTitleSuggest = (
+  messages: { roleId: string; text: string; hidden?: boolean }[],
+) =>
+  messages
+    .filter((m) => !m.hidden && m.roleId !== 'system' && m.text.trim())
+    .map((m) => ({
+      role: (m.roleId === 'user' || m.roleId === 'manager' ? 'user' : 'assistant') as
+        | 'user'
+        | 'assistant',
+      text: m.text,
+    }))
+
+const maybeRefreshMultiAgentSessionTitle = async () => {
+  if (titleSuggestInFlight || !isMultiAgentInAgentChat.value || !hasProject.value || !activeSession.value)
+    return
+  const modelId = modelsFile.value.activeModelId
+  if (!modelId) return
+  const wsId = workshopIdForAgentChat(activeId.value)
+  const { session } = await window.axecoder.getWorkshopSession(props.projectRoot, wsId)
+  if (!session?.messages.length) return
+  const payload = workshopMessagesForTitleSuggest(session.messages)
+  const s = activeSession.value
+  titleSuggestInFlight = true
+  try {
+    const res = await window.axecoder.suggestChatSessionTitle(modelId, payload, s.title)
+    if (!res.ok || !res.title || res.title === s.title) return
+    s.title = res.title
+    s.updatedAt = Date.now()
+    await persist({ skipTitleSuggest: true })
+  } finally {
+    titleSuggestInFlight = false
+  }
+}
+
 const onWorkshopSessionsChanged = async () => {
   await loadWsMetas()
   const id = workshopSectionRef.value?.activeId
@@ -204,6 +282,7 @@ const onWorkshopSessionsChanged = async () => {
     const title = workshopSectionRef.value?.activeTitle
     if (title) wsTitleById.value = { ...wsTitleById.value, [id]: title }
   }
+  await syncMultiAgentAgentSessionTitle()
   emit('sessionsChanged')
 }
 
@@ -273,10 +352,24 @@ const agentProgressActive = ref(false)
 const runningAgentSessionId = ref('')
 
 const chatModeId = ref<ChatModeId>(loadStoredChatMode())
+const workshopMessageCount = ref(0)
+
+const hasSessionMessagesForModeLock = computed(() => {
+  if ((activeSession.value?.messages.length ?? 0) > 0) return true
+  if (chatModeId.value === 'multi-agent' && workshopMessageCount.value > 0) return true
+  return false
+})
 
 const onChatModePick = (id: ChatModeId) => {
+  if (!canPickChatMode(chatModeId.value, id, hasSessionMessagesForModeLock.value)) return
   chatModeId.value = id
   saveStoredChatMode(id)
+  if (id !== 'multi-agent') {
+    lastMultiAgentSyncKey = ''
+    return
+  }
+  lastMultiAgentSyncKey = ''
+  void syncMultiAgentWorkshop()
 }
 
 const agentMode = computed(() => {
@@ -532,6 +625,9 @@ const deleteSession = async (id: string) => {
     activeId.value = ''
   }
   removeUnifiedTab(id, 'agent')
+  const linkedWs = workshopIdForAgentChat(id)
+  removeUnifiedTab(linkedWs, 'workshop')
+  await window.axecoder.deleteWorkshopSession(props.projectRoot, linkedWs)
   await window.axecoder.deleteChatSession(props.projectRoot, id)
   sessionMetas.value = sessionMetas.value.filter((s) => s.id !== id)
   if (!sessionMetas.value.length) {
@@ -1061,11 +1157,17 @@ const buildSlashContext = (): SlashContext => ({
 
 const ensureChatSession = async (): Promise<boolean> => {
   if (activeSession.value) return true
+  if (isMultiAgentInAgentChat.value) {
+    if (activeId.value) return selectSession(activeId.value)
+    if (sessionMetas.value.length) return selectSession(sessionMetas.value[0].id)
+    return false
+  }
   await newChat()
   return !!activeSession.value
 }
 
 const send = async () => {
+  if (isMultiAgentInAgentChat.value) return
   const text = input.value.trim()
   const hasPendingImages = attachedImages.value.length > 0
   if (!hasProject.value || (!text && !hasPendingImages)) return
@@ -1396,10 +1498,33 @@ watch(
   },
 )
 
-onMounted(() => {
+watch(
+  () => chatModeId.value,
+  (mode, prev) => {
+    if (mode === 'multi-agent' && prev !== 'multi-agent') void syncMultiAgentWorkshop()
+  },
+)
+
+watch(
+  () => activeId.value,
+  (id, prev) => {
+    if (id !== prev) workshopMessageCount.value = 0
+    if (!isMultiAgentInAgentChat.value || !id || id === prev) return
+    lastMultiAgentSyncKey = ''
+    void syncMultiAgentWorkshop()
+  },
+)
+
+watch(workshopMessageCount, (n, prev) => {
+  if (!isMultiAgentInAgentChat.value || n <= 0 || n === prev) return
+  void syncMultiAgentAgentSessionTitle()
+})
+
+onMounted(async () => {
   void loadModels()
-  void load()
+  await load()
   void loadWsMetas()
+  if (chatModeId.value === 'multi-agent') await syncMultiAgentWorkshop()
   void refreshSlashCommandRegistry(props.projectRoot ?? '')
 })
 
@@ -1416,7 +1541,9 @@ onUnmounted(() => {
 
 const showProgressBubble = computed(() => loading.value || pendingBusy.value)
 
-const showNoSessionLanding = computed(() => hasProject.value && !activeSession.value)
+const showNoSessionLanding = computed(
+  () => hasProject.value && !activeSession.value && !props.hasOpenEditorTabs,
+)
 
 const isEmptyChat = computed(
   () =>
@@ -1479,10 +1606,10 @@ defineExpose({
   <section
     class="chat-pane"
     :class="{
-      'workshop-in-chat': isWorkshopMode,
+      'workshop-in-chat': showWorkshopPanel,
       'agents-hidden': !agentsSidebarVisible,
-      'chat-empty': !isWorkshopMode && isEmptyChat,
-      'chat-no-session': !isWorkshopMode && showNoSessionLanding,
+      'chat-empty': !showWorkshopPanel && isEmptyChat,
+      'chat-no-session': !showWorkshopPanel && showNoSessionLanding,
     }"
   >
     <div class="chat-tabs">
@@ -1518,18 +1645,31 @@ defineExpose({
       </button>
     </div>
     <WorkshopChatSection
-      v-show="isWorkshopMode"
+      v-show="showWorkshopPanel"
       ref="workshopSectionRef"
       class="workshop-chat-host"
       :project-root="projectRoot"
       :profile-display-name="profileDisplayName"
       :profile-avatar-path="profileAvatarPath"
+      :embedded-in-agent-chat="isMultiAgentInAgentChat"
+      :linked-agent-chat-id="isMultiAgentInAgentChat ? activeId : ''"
+      :agent-history-count="isMultiAgentInAgentChat ? (activeSession?.messages.length ?? 0) : 0"
+      :preferred-model-id="isMultiAgentInAgentChat ? modelsFile.activeModelId : undefined"
       @sessions-changed="onWorkshopSessionsChanged"
+      @message-count-change="(n) => (workshopMessageCount = n)"
       @open-file="(p) => emit('openFile', p)"
       @open-models-settings="emit('openModelsSettings')"
       @active-change="onWorkshopActiveChange"
-    />
-    <div v-show="!isWorkshopMode" class="agent-chat-body">
+    >
+      <template v-if="isMultiAgentInAgentChat" #mode-picker>
+        <ChatModePickerDropdown
+          :active-mode-id="chatModeId"
+          :has-session-messages="hasSessionMessagesForModeLock"
+          @select="onChatModePick"
+        />
+      </template>
+    </WorkshopChatSection>
+    <div v-show="!showWorkshopPanel" class="agent-chat-body">
     <div
       ref="messagesEl"
       :key="activeId"
@@ -1808,6 +1948,7 @@ defineExpose({
           <div class="footer-left">
             <ChatModePickerDropdown
               :active-mode-id="chatModeId"
+              :has-session-messages="hasSessionMessagesForModeLock"
               @select="onChatModePick"
             />
             <ModelPickerDropdown
@@ -2188,7 +2329,8 @@ defineExpose({
 .user-bubble {
   max-width: 85%;
   padding: 10px 14px;
-  background: var(--wc-input-bg);
+  background: var(--wc-user-bubble-bg);
+  color: var(--wc-user-bubble-fg);
   border-radius: 12px;
   font-size: 13px;
   line-height: 1.5;

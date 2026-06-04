@@ -147,7 +147,7 @@ export const getAgentDelegationSection = (
   enabledToolNames: readonly string[] | Set<string>,
 ): string | null => {
   const enabled = enabledToolNames instanceof Set ? enabledToolNames : new Set(enabledToolNames)
-  if (!enabled.has('Agent')) return null
+  if (!enabled.has('Task') && !enabled.has('Agent')) return null
   const searchTools =
     enabled.has('Glob') && enabled.has('Grep')
       ? 'Glob or Grep'
@@ -157,10 +157,10 @@ export const getAgentDelegationSection = (
           ? 'Grep'
           : null
   const exploreLine = searchTools
-    ? `For simple, directed codebase searches use ${searchTools} directly. For broader exploration or when you expect more than ${EXPLORE_AGENT_MIN_QUERIES} search/read steps, use the Agent tool with subagent_type "explore" instead of many repeated searches yourself.`
-    : `For broad codebase exploration, use the Agent tool with subagent_type "explore".`
+    ? `For simple, directed codebase searches use ${searchTools} directly. For broader exploration or when you expect more than ${EXPLORE_AGENT_MIN_QUERIES} search/read steps, use the Task tool with subagent_type "explore" instead of many repeated searches yourself.`
+    : `For broad codebase exploration, use the Task tool with subagent_type "explore".`
   return `# Sub-agents
-Use the Agent tool to delegate isolated subtasks. Avoid duplicating work that sub-agents already did — if you delegate research to an explore sub-agent, do not run the same searches yourself. ${exploreLine}`
+Use the Task tool to delegate isolated subtasks. Avoid duplicating work that sub-agents already did — if you delegate research to an explore sub-agent, do not run the same searches yourself. ${exploreLine}`
 }
 
 /** Claude Code `getFunctionResultClearingSection`（简化，无 GrowthBook） */
@@ -330,6 +330,7 @@ const AGENT_TOOL_NAMES_FOR_PROMPT = [
   'Delete',
   'Move',
   'Bash',
+  'Task',
   'Agent',
   'AskUserQuestion',
   'TodoWrite',

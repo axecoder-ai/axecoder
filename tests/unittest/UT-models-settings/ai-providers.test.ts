@@ -84,6 +84,6 @@ describe('chatWithProvider', () => {
     }
     const res = await chatWithProvider(model, 'sk-x', [{ role: 'user', content: 'hi' }])
     expect(res.ok).toBe(false)
-    if (!res.ok) expect(res.error).toContain('禁用')
+    if (!res.ok) expect(res.error).toMatch(/disabled/i)
   })
 })

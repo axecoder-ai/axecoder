@@ -2,7 +2,6 @@ import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
 import { chatWithToolsForModel } from '../ai/chat-with-tools'
-import { modelTaskKindForSubagentType } from '../ai/model-resolve'
 import type { OpenAiStreamDelta } from '../ai/providers/openai'
 import type { AgentToolDef } from './agent-types'
 import { buildDefaultSubAgentSystemPrompt } from './agent-tool-defs'
@@ -15,6 +14,13 @@ import {
   type PendingBashInternal,
   type PendingWriteInternal,
 } from './tool-executor'
+import { getSubagentTypeConfig, normalizeSubagentType } from './agent-subagent-types'
+import {
+  createSubagentAgentId,
+  loadSubagentRecord,
+  saveSubagentRecord,
+} from './agent-subagent-store'
+import type { AiChatImagePart } from '../models-types'
 
 const DEFAULT_MAX_SUB_TURNS = 6
 const MAX_SUB_TURNS_CAP = 24
@@ -71,59 +77,98 @@ export type RunSubAgentOptions = {
   subagentType?: string
   tools?: AgentToolDef[]
   onDelta?: (delta: OpenAiStreamDelta) => void
-  /** 默认 6；Workshop 等探索型任务可加大 */
   maxTurns?: number
-  /** 用尽轮次时若有 assistant Text则返回阶段性报告，而非硬failed */
   partialReportOnMaxTurns?: boolean
+  readonly?: boolean
+  modelIdOverride?: string
+  sessionId?: string
+  resumeAgentId?: string
+  abortSignal?: AbortSignal
+  fileAttachments?: string[]
+  images?: AiChatImagePart[]
 }
+
+export type RunSubAgentResult =
+  | { ok: true; report: string; agentId: string }
+  | { ok: false; error: string }
 
 export const runSubAgentTask = async (
   projectRoot: string,
   modelId: string,
   taskPrompt: string,
   options?: RunSubAgentOptions,
-): Promise<{ ok: true; report: string } | { ok: false; error: string }> => {
+): Promise<RunSubAgentResult> => {
   const prompt = taskPrompt.trim()
   if (!prompt) return { ok: false, error: 'Sub-agent prompt is required' }
 
-  const model = await getModelById(modelId)
+  const subagentType = normalizeSubagentType(options?.subagentType || 'generalPurpose')
+  const typeCfg = getSubagentTypeConfig(subagentType)
+  const resolvedModelId = options?.modelIdOverride?.trim() || modelId
+  const model = await getModelById(resolvedModelId)
   if (!model) return { ok: false, error: 'Model not found' }
-  const apiKey = await getSecret(modelId)
-  const subagentType = options?.subagentType || 'generalPurpose'
-  const tools = options?.tools ?? buildSubAgentToolList(subagentType)
+  const apiKey = await getSecret(resolvedModelId)
+  const tools =
+    options?.tools ??
+    buildSubAgentToolList(subagentType, options?.readonly === true || typeCfg.readOnly)
 
+  const readOnly = options?.readonly === true || typeCfg.readOnly
   const ctx: AgentContext = {
     projectRoot,
     readCache: new Set<string>(),
-    modelId,
+    modelId: resolvedModelId,
     subAgentDepth: 1,
-    planMode: subagentType === 'plan' || subagentType === 'explore',
+    planMode: readOnly || subagentType === 'plan' || subagentType === 'explore',
+    sessionId: options?.sessionId,
   }
 
-  const messages: AgentLoopMessage[] = [
-    {
-      role: 'system',
-      content: await buildDefaultSubAgentSystemPrompt(projectRoot, {
-        modelId: model.modelId,
-      }),
-    },
-    { role: 'user', content: prompt },
-  ]
+  let agentId = options?.resumeAgentId?.trim() || ''
+  let messages: AgentLoopMessage[] = []
+
+  if (agentId && options?.sessionId) {
+    const stored = await loadSubagentRecord(projectRoot, options.sessionId, agentId)
+    if (stored?.messages?.length) {
+      messages = [...stored.messages]
+    } else {
+      agentId = ''
+    }
+  }
+  if (!agentId) agentId = createSubagentAgentId()
+
+  if (!messages.length) {
+    const prefix = typeCfg.promptPrefix.trim()
+    const systemBase = await buildDefaultSubAgentSystemPrompt(projectRoot, {
+      modelId: model.modelId,
+    })
+    const systemContent = prefix ? `${prefix}\n\n${systemBase}` : systemBase
+    messages = [{ role: 'system', content: systemContent }]
+  }
+
+  const attachmentNote =
+    options?.fileAttachments?.length ?
+      `\n\n<file_attachments>\n${options.fileAttachments.join('\n')}\n</file_attachments>`
+    : ''
+  messages.push({
+    role: 'user',
+    content: prompt + attachmentNote,
+    ...(options?.images?.length ? { images: options.images } : {}),
+  })
 
   const pendingById = new Map<string, PendingWriteInternal>()
   const pendingBashById = new Map<string, PendingBashInternal>()
   const pendingAskById = new Map<string, PendingAskUserInternal>()
 
   const maxTurns = Math.min(
-    Math.max(options?.maxTurns ?? DEFAULT_MAX_SUB_TURNS, 1),
+    Math.max(options?.maxTurns ?? typeCfg.maxTurns ?? DEFAULT_MAX_SUB_TURNS, 1),
     MAX_SUB_TURNS_CAP,
   )
 
-  const taskKind = modelTaskKindForSubagentType(subagentType)
-  const apiModelId = await resolveApiModelIdForTask(model, taskKind, prompt)
+  const apiModelId = await resolveApiModelIdForTask(model, typeCfg.modelTaskKind, prompt)
 
   let turn = 0
   while (turn < maxTurns) {
+    if (options?.abortSignal?.aborted) {
+      return { ok: false, error: 'Sub-agent interrupted' }
+    }
     turn += 1
     const res = await chatWithToolsForModel(
       model,
@@ -200,20 +245,36 @@ export const runSubAgentTask = async (
     }
 
     const report = res.text.trim() || res.content.trim() || '(sub-agent returned no content)'
-    return { ok: true, report }
+    if (options?.sessionId) {
+      await saveSubagentRecord(projectRoot, {
+        agentId,
+        sessionId: options.sessionId,
+        subagentType,
+        messages,
+        updatedAt: Date.now(),
+      })
+    }
+    return { ok: true, report, agentId }
   }
 
   if (options?.partialReportOnMaxTurns) {
     const partial = lastAssistantReport(messages)
     if (partial) {
-      return {
-        ok: true,
-        report: `${partial}\n\n(max tool turns ${maxTurns} reached; partial conclusion above—continue or split the task.)`,
+      const report = `${partial}\n\n(max tool turns ${maxTurns} reached; partial conclusion above—continue or split the task.)`
+      if (options?.sessionId) {
+        await saveSubagentRecord(projectRoot, {
+          agentId,
+          sessionId: options.sessionId,
+          subagentType,
+          messages,
+          updatedAt: Date.now(),
+        })
       }
+      return { ok: true, report, agentId }
     }
   }
   return { ok: false, error: `Sub-agent exceeded max tool turns (${maxTurns})` }
 }
 
 export const formatAgentToolSummary = (args: Record<string, unknown>) =>
-  strArg(args, 'description') || strArg(args, 'prompt').slice(0, 80) || 'Agent'
+  strArg(args, 'description') || strArg(args, 'prompt').slice(0, 80) || 'Task'

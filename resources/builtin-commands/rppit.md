@@ -75,8 +75,9 @@
 
 #### 0a. 切换模式
 
-1. 调用 **SwitchMode** 工具：`target_mode_id` = **`agent`**。
-2. 切换完成后再继续 0b。
+1. **Cursor**：调用 **SwitchMode** 工具，`target_mode_id` = **`agent`**。
+2. **AxeCoder**：无 SwitchMode；已在 Agent/rppit 模式则跳过，需要只读规划时用 **EnterPlanMode** / **ExitPlanMode**。
+3. 完成后继续 0b。
 
 #### 0b. 确定任务名 `[slug]`
 
@@ -188,6 +189,8 @@
 ### 7. 合并交付与归档（全流程最后一步，不可跳过）
 
 在步骤 5 单测全绿且步骤 6 完成后执行。
+
+**AxeCoder**：本步等价于执行 **`/summary`**（内置命令 `summary.md`），**不要**使用其它不存在的斜杠名；产出文件为 **`[slug]-交付总结.md`**（非 `/summary` 这个单词本身）。
 
 #### 7a. 归档中间稿
 

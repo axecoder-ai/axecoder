@@ -63,7 +63,7 @@ defineEmits<{
         type="button"
         class="icon-btn"
         :class="{ active: workshopVisible }"
-        title="Collab Workshop"
+        title="Multi-Agent (Collab Workshop)"
         @click="$emit('toggleWorkshop')"
       >
         <svg

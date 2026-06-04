@@ -54,8 +54,24 @@ export const normalizeWorkshopMessages = (messages: WorkshopMessage[]): Workshop
 
 type StoreResult = { ok: true } | { ok: false; error: string }
 
+/** 同一 workshop 文件串行保存，避免增量 done 与终态 save 并发 rename 同一 .tmp */
+const workshopSaveTails = new Map<string, Promise<unknown>>()
+
+const runWorkshopSaveSerialized = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+  const prev = workshopSaveTails.get(key) ?? Promise.resolve()
+  const next = prev.catch(() => {}).then(fn)
+  workshopSaveTails.set(
+    key,
+    next.then(
+      () => undefined,
+      () => undefined,
+    ),
+  )
+  return next
+}
+
 const writeFileAtomic = async (filePath: string, content: string) => {
-  const tmp = `${filePath}.tmp.${process.pid}`
+  const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
   await fs.writeFile(tmp, content, 'utf-8')
   await fs.rename(tmp, filePath)
 }
@@ -121,22 +137,25 @@ export const saveWorkshopSession = async (
   const root = await normalizeProjectRoot(projectRoot)
   if (!root) return { ok: false, error: 'No project open' }
   if (!session?.id?.trim()) return { ok: false, error: 'Invalid workshop id' }
-  try {
-    await ensureProjectWorkshopsDir(root)
-    const meta: SessionRegistryEntry = {
-      id: session.id,
-      title: session.title,
-      updatedAt: session.updatedAt,
-      kind: 'workshop',
+  const filePath = projectWorkshopFilePath(root, session.id)
+  return runWorkshopSaveSerialized(filePath, async () => {
+    try {
+      await ensureProjectWorkshopsDir(root)
+      const meta: SessionRegistryEntry = {
+        id: session.id,
+        title: session.title,
+        updatedAt: session.updatedAt,
+        kind: 'workshop',
+      }
+      const index = upsertRegistryEntry(await readRegistry(root), meta)
+      await writeFileAtomic(filePath, JSON.stringify(session))
+      await writeRegistry(root, index)
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Save failed'
+      return { ok: false as const, error: msg }
     }
-    const index = upsertRegistryEntry(await readRegistry(root), meta)
-    await writeFileAtomic(projectWorkshopFilePath(root, session.id), JSON.stringify(session))
-    await writeRegistry(root, index)
-    return { ok: true }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Save failed'
-    return { ok: false, error: msg }
-  }
+  })
 }
 
 export const deleteWorkshopSession = async (

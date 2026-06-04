@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { axecoderPath, getAxecoderDir } from '../axecoder-dir'
+import { axeCoderRppitRuntimeAddon } from './rppit-axecoder-addon'
 
 let rppitPathsOverride: string[] | null = null
 let rppitCache: { path: string; mtimeMs: number; text: string } | null = null
@@ -51,8 +52,9 @@ export const loadRppitCommandText = async (): Promise<
 
 /** 与 workflow-builtin / registry-refresh 中自定义斜杠命令的 sendPrompt 格式一致 */
 export const wrapUserMessageAsRppitCommand = (rppitText: string, userContent: string): string => {
+  const playbook = `${rppitText.trim()}\n\n${axeCoderRppitRuntimeAddon()}`
   const userPart = userContent.trim()
-  return userPart ? `${rppitText}\n\n---\n\nUser notes:\n${userPart}` : rppitText
+  return userPart ? `${playbook}\n\n---\n\nUser notes:\n${userPart}` : playbook
 }
 
 export const applyRppitModeToLastUserMessage = async (

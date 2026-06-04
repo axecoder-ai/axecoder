@@ -6,6 +6,7 @@ import {
   sliceGroupItems,
   AGENTS_GROUP_LIMIT,
 } from '../../utils/agents-panel'
+import { isAgentLinkedWorkshopId } from '../../utils/workshop-agent-link'
 
 const props = defineProps<{
   visible: boolean
@@ -29,7 +30,9 @@ const expandedGroups = ref<Record<string, boolean>>({})
 
 const filtered = computed(() => {
   const q = filter.value.trim().toLowerCase()
-  const list = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
+  const list = [...sessions.value]
+    .filter((s) => !(s.kind === 'workshop' && isAgentLinkedWorkshopId(s.id)))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
   if (!q) return list
   return list.filter((s) => s.title.toLowerCase().includes(q))
 })
@@ -69,7 +72,7 @@ const load = async () => {
 const isActive = (s: SessionListItem) =>
   s.id === props.activeSessionId && s.kind === (props.activeSessionKind ?? 'agent')
 
-const kindLabel = (kind: SessionKind) => (kind === 'workshop' ? 'Workshop' : 'Chat')
+const kindLabel = (kind: SessionKind) => (kind === 'workshop' ? 'Multi-Agent' : 'Chat')
 
 watch(
   () => props.projectRoot,
@@ -100,7 +103,7 @@ defineExpose({ load })
         <input v-model="filter" type="text" class="search-agents" placeholder="Search sessions…" />
         <div class="new-session-row">
           <button type="button" class="new-agent" @click="emit('newSession')">New Agent</button>
-          <button type="button" class="new-workshop" @click="emit('newWorkshop')">Workshop</button>
+          <button type="button" class="new-workshop" @click="emit('newWorkshop')">Multi-Agent</button>
         </div>
       </div>
     </div>
@@ -421,14 +424,12 @@ defineExpose({ load })
   justify-content: center;
   border-radius: 4px;
   color: var(--wc-text-dim);
-  opacity: 0;
-  pointer-events: none;
+  opacity: 0.55;
 }
 
 .agent-item:hover .agent-delete,
 .agent-item.active .agent-delete {
   opacity: 1;
-  pointer-events: auto;
 }
 
 .agent-delete:hover {
