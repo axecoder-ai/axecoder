@@ -10,6 +10,7 @@ import SettingsProfileCard from './SettingsProfileCard.vue'
 const props = defineProps<{
   visible: boolean
   settings: AppSettings
+  projectRoot?: string
 }>()
 
 const emit = defineEmits<{
@@ -91,6 +92,7 @@ defineExpose({
         <GeneralTab
           v-show="activeTab === 'general'"
           :settings="settings"
+          :project-root="projectRoot"
           @save="onGeneralSave"
         />
         <ModelsTab v-show="activeTab === 'models'" ref="modelsTabRef" @changed="onChanged" />

@@ -99,6 +99,16 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
     },
   },
   {
+    name: 'commit-push-pr',
+    aliases: ['pr'],
+    description: 'Commit, push, and create/update pull request (GitHub gh / Gitee API)',
+    run: async (ctx) => {
+      const res = await window.axecoder.gitCommitPushPrPrompt(ctx.projectRoot)
+      if (!res.ok) return { ok: false, message: res.error ?? 'Could not build PR prompt' }
+      return { ok: true, message: 'Starting commit-push-PR workflow…', sendPrompt: res.text }
+    },
+  },
+  {
     name: 'rewind',
     description: 'Rewind to Agent checkpoint or show Git status',
     run: async (ctx, args) => {

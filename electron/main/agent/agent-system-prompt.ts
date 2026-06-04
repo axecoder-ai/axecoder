@@ -11,6 +11,9 @@ import {
 import { getMcpInstructionsSection } from './agent-mcp-instructions'
 import { getMainLocale } from '../i18n'
 import { agentLanguageForLocale } from '../../../shared/i18n'
+import { getConfig } from '../config-store'
+import { buildGitForgeContext } from '../git-forge/detect-forge'
+import { formatForgeEnvLines, getGitForgePromptSection } from '../git-forge/forge-prompt'
 
 /** Claude Code — 静态/动态分界；仅用于组装，不写入发给模型的字符串 */
 export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY = '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
@@ -231,6 +234,8 @@ export const computeSimpleEnvInfo = async (
 ): Promise<string> => {
   const root = path.resolve(projectRoot.trim())
   const isGit = await isGitRepository(root)
+  const cfg = await getConfig()
+  const forgeCtx = isGit ? await buildGitForgeContext(root, cfg) : null
   const modelLine = modelId?.trim()
     ? `You are powered by the model ${modelId.trim()}.`
     : null
@@ -241,6 +246,7 @@ export const computeSimpleEnvInfo = async (
     shellInfoLine(),
     `OS Version: ${osVersionLine()}`,
     modelLine,
+    ...(forgeCtx ? formatForgeEnvLines(forgeCtx) : []),
   ].filter((item): item is string => item !== null)
   return `# Environment
 You have been invoked in the following environment:
@@ -358,6 +364,9 @@ export const buildAgentSystemPrompt = async (
   }
   const workspaceRules = await loadAlwaysApplyRulesPrompt(root)
   const envInfo = await computeSimpleEnvInfo(root, options.modelId)
+  const cfg = await getConfig()
+  const forgeCtx = await buildGitForgeContext(root, cfg)
+  const gitForgeSection = getGitForgePromptSection(forgeCtx)
   const language =
     getLanguageSection(
       options.languagePreference ?? agentLanguageForLocale(getMainLocale()),
@@ -394,6 +403,7 @@ export const buildAgentSystemPrompt = async (
     getScratchpadInstructionsSection(options.scratchpadDir),
     getFunctionResultClearingSection(frcKeep),
     getAgentToolPathRulesSection(),
+    gitForgeSection,
     `- Project root (only files under here are accessible): ${root}`,
   ].filter((part): part is string => part !== null && part !== '')
 

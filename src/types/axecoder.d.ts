@@ -36,6 +36,10 @@ export type AppSettings = {
   rulesIncludeThirdPartyPlugins?: boolean
   profileDisplayName?: string
   profileAvatarPath?: string
+  gitForgeProvider?: 'auto' | 'github' | 'gitee' | 'custom'
+  gitForgeApiBase?: string
+  gitForgeWebBase?: string
+  gitForgeAccessToken?: string
 }
 
 export type PickProfileAvatarResult =
@@ -436,6 +440,19 @@ export type GitStatusResult =
   | { ok: true; branch: string; changes: { code: string; file: string }[] }
   | { ok: false; error: string }
 
+export type GitForgeStatusResult =
+  | {
+      ok: true
+      kind: 'github' | 'gitee' | 'custom' | 'unknown'
+      repoSlug: string | null
+      ghAuth: 'authenticated' | 'not_authenticated' | 'not_installed'
+      webBase: string | null
+      apiBase: string | null
+      defaultBranch: string | null
+      remoteUrl: string | null
+    }
+  | { ok: false; error: string }
+
 export type MenuChannel =
   | 'menu:save'
   | 'menu:saveAs'
@@ -712,6 +729,11 @@ export type AxeCoderFs = {
   ) => Promise<AgentContinueResult>
   onAgentProgress: (callback: (payload: AgentProgressPayload) => void) => () => void
   gitStatus: (cwd: string) => Promise<GitStatusResult>
+  gitForgeStatus: (cwd: string) => Promise<GitForgeStatusResult>
+  gitCommitPushPrPrompt: (
+    cwd: string,
+  ) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  gitOpenUrl: (url: string) => Promise<{ ok: true } | { ok: false; error: string }>
   terminalStart: (cwd: string) => Promise<{ ok: true }>
   terminalWrite: (data: string) => Promise<{ ok: boolean }>
   terminalInterrupt: () => Promise<{ ok: boolean }>

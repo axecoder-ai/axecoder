@@ -448,6 +448,18 @@ contextBridge.exposeInMainWorld('axecoder', {
   },
   gitStatus: (cwd: string) =>
     ipcRenderer.invoke('git:status', cwd) as Promise<import('../../src/types/axecoder').GitStatusResult>,
+  gitForgeStatus: (cwd: string) =>
+    ipcRenderer.invoke('git:forgeStatus', cwd) as Promise<
+      import('../../src/types/axecoder').GitForgeStatusResult
+    >,
+  gitCommitPushPrPrompt: (cwd: string) =>
+    ipcRenderer.invoke('git:commitPushPrPrompt', cloneForIpc(cwd)) as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
+  gitOpenUrl: (url: string) =>
+    ipcRenderer.invoke('git:openUrl', url) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
   terminalStart: (cwd: string) => ipcRenderer.invoke('terminal:start', cwd) as Promise<{ ok: true }>,
   terminalWrite: (data: string) => ipcRenderer.invoke('terminal:write', data) as Promise<{ ok: boolean }>,
   terminalInterrupt: () => ipcRenderer.invoke('terminal:interrupt') as Promise<{ ok: boolean }>,

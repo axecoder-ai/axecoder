@@ -4,9 +4,11 @@ import { useI18n } from '../../i18n'
 import type { AgentOutputStyleId, AppLocale, AppSettings, AppTheme } from '../../types/axecoder'
 import { LOCALE_OPTIONS } from '@shared/i18n'
 import SwitchToggle from './SwitchToggle.vue'
+import GitForgeSettingsCard from './GitForgeSettingsCard.vue'
 
 const props = defineProps<{
   settings: AppSettings
+  projectRoot?: string
 }>()
 
 const emit = defineEmits<{
@@ -265,6 +267,8 @@ const clearCompletionSound = () => {
         </div>
       </div>
     </section>
+
+    <GitForgeSettingsCard :settings="settings" :project-root="projectRoot" @save="emit('save', $event)" />
   </div>
 </template>
 

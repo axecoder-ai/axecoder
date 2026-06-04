@@ -42,6 +42,7 @@ export const runAgentBash = async (
   projectRoot: string,
   command: string,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  envOverride?: NodeJS.ProcessEnv,
 ): Promise<
   | { ok: true; stdout: string; stderr: string; exitCode: number | null }
   | { ok: false; error: string }
@@ -64,7 +65,7 @@ export const runAgentBash = async (
 
     const proc = spawn(shell, shellArgs, {
       cwd: projectRoot,
-      env: process.env,
+      env: envOverride ? { ...process.env, ...envOverride } : process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 

@@ -745,6 +745,7 @@ onUnmounted(() => {
       ref="settingsPanelRef"
       :visible="settingsPanelVisible"
       :settings="settings"
+      :project-root="projectRoot"
       @close="settingsPanelVisible = false"
       @changed="onSettingsModelsChanged"
       @save="onSettingsSave"

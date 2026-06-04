@@ -78,6 +78,14 @@ export type AppConfig = {
   profileDisplayName?: string
   /** ~/.axecoder 下头像相对路径 */
   profileAvatarPath?: string
+  /** Git 托管：auto 从 remote 推断 | github | gitee | custom */
+  gitForgeProvider?: 'auto' | 'github' | 'gitee' | 'custom'
+  /** API 根地址，如 https://gitee.com/api/v5 或企业 GitHub API */
+  gitForgeApiBase?: string
+  /** Web 根地址，如 https://gitee.com 或 https://git.company.com */
+  gitForgeWebBase?: string
+  /** GitHub PAT 或 Gitee access token（存本地 config，慎用） */
+  gitForgeAccessToken?: string
 }
 
 export type AiChatMessage = {

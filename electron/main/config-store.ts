@@ -28,6 +28,10 @@ const defaults: AppConfig = {
   rulesIncludeThirdPartyPlugins: false,
   profileDisplayName: '',
   profileAvatarPath: '',
+  gitForgeProvider: 'auto',
+  gitForgeApiBase: '',
+  gitForgeWebBase: '',
+  gitForgeAccessToken: '',
 }
 
 const configPath = () => axecoderPath('config.json')
@@ -81,6 +85,10 @@ export const getConfig = async (): Promise<AppConfig> => {
       raw.rulesIncludeThirdPartyPlugins ?? defaults.rulesIncludeThirdPartyPlugins,
     profileDisplayName: raw.profileDisplayName ?? defaults.profileDisplayName,
     profileAvatarPath: raw.profileAvatarPath ?? defaults.profileAvatarPath,
+    gitForgeProvider: raw.gitForgeProvider ?? defaults.gitForgeProvider,
+    gitForgeApiBase: raw.gitForgeApiBase ?? defaults.gitForgeApiBase,
+    gitForgeWebBase: raw.gitForgeWebBase ?? defaults.gitForgeWebBase,
+    gitForgeAccessToken: raw.gitForgeAccessToken ?? defaults.gitForgeAccessToken,
   }
 }
 
@@ -138,6 +146,16 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
       partial.profileAvatarPath !== undefined
         ? partial.profileAvatarPath
         : cur.profileAvatarPath,
+    gitForgeProvider:
+      partial.gitForgeProvider !== undefined ? partial.gitForgeProvider : cur.gitForgeProvider,
+    gitForgeApiBase:
+      partial.gitForgeApiBase !== undefined ? partial.gitForgeApiBase : cur.gitForgeApiBase,
+    gitForgeWebBase:
+      partial.gitForgeWebBase !== undefined ? partial.gitForgeWebBase : cur.gitForgeWebBase,
+    gitForgeAccessToken:
+      partial.gitForgeAccessToken !== undefined
+        ? partial.gitForgeAccessToken
+        : cur.gitForgeAccessToken,
   }
   await fs.writeFile(configPath(), JSON.stringify(next, null, 2), 'utf-8')
   invalidateMainLocaleCache()

@@ -31,6 +31,8 @@ export type StoredAgentSession = {
   proactiveTick: number
   scratchpadDir: string
   compactedOnce: boolean
+  /** 最近一次 Bash 创建的 PR/MR URL */
+  linkedPrUrl?: string
   /** 用户请求Stop Agent 循环 */
   abortRequested?: boolean
 }

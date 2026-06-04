@@ -36,6 +36,9 @@ import { executeAgentTool, type AgentContext, type ToolRunResult } from './tool-
 import { emitAgentProgress } from './agent-progress-emit'
 import { getConfig } from '../config-store'
 import { resolveToolPermission } from './agent-permissions'
+import { isReadOnlyBashCommand } from './agent-bash-readonly'
+import { extractPullRequestFromOutput } from '../git-forge/git-operation-tracking'
+import { buildGitForgeContext } from '../git-forge/detect-forge'
 import { runHooks } from './agent-hooks'
 import { clearOldToolResults, dropOrphanToolMessages } from './agent-frc'
 import { compactAgentMessages, shouldAutoCompact } from './agent-context-compact'
@@ -332,7 +335,11 @@ export const runAgentLoopUntilDoneOrPending = async (
           summary: toolSummary,
         })
 
+        const bashCommand = tc.name === 'Bash' ? strArg(tc.arguments as Record<string, unknown>, 'command') : ''
+        const bashReadOnly = bashCommand ? isReadOnlyBashCommand(bashCommand) : false
+
         const perm = resolveToolPermission(cfg, tc.name as AgentToolName)
+        const effectivePerm = bashReadOnly && perm === 'ask' ? 'allow' : perm
         if (perm === 'deny') {
           const denied: ToolRunResult = {
             kind: 'immediate',
@@ -395,7 +402,7 @@ export const runAgentLoopUntilDoneOrPending = async (
         }
 
         if (
-          (perm === 'allow' || cfg.agentAutoApplyWrites || session.ctx.workshopAutoApply) &&
+          (effectivePerm === 'allow' || cfg.agentAutoApplyWrites || session.ctx.workshopAutoApply) &&
           (run.kind === 'pending' || run.kind === 'bash_pending')
         ) {
           const applied = await applyPendingToolRun(session, run)
@@ -427,6 +434,22 @@ export const runAgentLoopUntilDoneOrPending = async (
           summary: run.log.summary,
           ok: run.log.ok,
         })
+
+        if (
+          tc.name === 'Bash' &&
+          run.kind === 'immediate' &&
+          run.log.ok &&
+          bashCommand
+        ) {
+          const forgeCtx = await buildGitForgeContext(session.projectRoot, cfg)
+          const pr = extractPullRequestFromOutput(
+            bashCommand,
+            run.content,
+            forgeCtx.kind === 'gitee' ? 'gitee' : 'github',
+          )
+          if (pr?.url) session.linkedPrUrl = pr.url
+        }
+
         return { tc, run }
       }
 

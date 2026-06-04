@@ -383,6 +383,11 @@ export const executeAgentTool = async (
         ...(description ? { description } : {}),
         ...(runInBackground ? { runInBackground: true } : {}),
         apply: async () => {
+          const { getConfig } = await import('../config-store')
+          const { buildGitForgeContext, forgeEnvForBash } = await import('../git-forge/detect-forge')
+          const cfg = await getConfig()
+          const forgeCtx = await buildGitForgeContext(ctx.projectRoot, cfg)
+          const bashEnv = forgeEnvForBash(cfg, forgeCtx)
           if (runInBackground) {
             const bg = startBackgroundBash(ctx.projectRoot, command, { timeoutMs, description })
             if (!bg.ok) return { ok: false as const, error: bg.error }
@@ -392,7 +397,7 @@ export const executeAgentTool = async (
               logOk: true,
             }
           }
-          const res = await runAgentBash(ctx.projectRoot, command, timeoutMs)
+          const res = await runAgentBash(ctx.projectRoot, command, timeoutMs, bashEnv)
           if (!res.ok) return { ok: false as const, error: res.error }
           return {
             ok: true as const,
