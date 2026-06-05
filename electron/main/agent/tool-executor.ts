@@ -38,9 +38,12 @@ import {
   subagentOutputPath,
 } from './agent-subagent-tasks'
 import { buildSubAgentToolList } from './agent-tool-registry'
+import { getAgentRunAbortSignal } from './agent-run-abort'
 import { trackCheckpointFileCtx } from './agent-checkpoint'
 import { writeScratchpadNote } from './agent-scratchpad'
 import { resolveModelIdForTask } from '../ai/model-resolve'
+import { getConfig } from '../config-store'
+import { buildGitForgeContext, forgeEnvForBash } from '../git-forge/detect-forge'
 import { getSubagentTypeConfig, normalizeSubagentType } from './agent-subagent-types'
 import { normalizeAgentToolCall } from './agent-tool-aliases'
 export type AgentContext = {
@@ -383,8 +386,6 @@ export const executeAgentTool = async (
         ...(description ? { description } : {}),
         ...(runInBackground ? { runInBackground: true } : {}),
         apply: async () => {
-          const { getConfig } = await import('../config-store')
-          const { buildGitForgeContext, forgeEnvForBash } = await import('../git-forge/detect-forge')
           const cfg = await getConfig()
           const forgeCtx = await buildGitForgeContext(ctx.projectRoot, cfg)
           const bashEnv = forgeEnvForBash(cfg, forgeCtx)
@@ -511,7 +512,10 @@ export const executeAgentTool = async (
       }
     }
 
-    const sub = await runSubAgentTask(ctx.projectRoot, subModelId, taskPrompt, runOpts)
+    const sub = await runSubAgentTask(ctx.projectRoot, subModelId, taskPrompt, {
+      ...runOpts,
+      abortSignal: ctx.sessionId ? getAgentRunAbortSignal(ctx.sessionId) : undefined,
+    })
     if (!sub.ok) {
       return {
         kind: 'immediate',

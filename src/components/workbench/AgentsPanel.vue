@@ -21,7 +21,6 @@ const emit = defineEmits<{
   selectSession: [payload: { id: string; kind: SessionKind }]
   deleteSession: [payload: { id: string; kind: SessionKind }]
   newSession: []
-  newWorkshop: []
 }>()
 
 const sessions = ref<SessionListItem[]>([])
@@ -72,8 +71,6 @@ const load = async () => {
 const isActive = (s: SessionListItem) =>
   s.id === props.activeSessionId && s.kind === (props.activeSessionKind ?? 'agent')
 
-const kindLabel = (kind: SessionKind) => (kind === 'workshop' ? 'Multi-Agent' : 'Chat')
-
 watch(
   () => props.projectRoot,
   () => {
@@ -101,10 +98,7 @@ defineExpose({ load })
       </div>
       <div class="panel-top-box">
         <input v-model="filter" type="text" class="search-agents" placeholder="Search sessions…" />
-        <div class="new-session-row">
-          <button type="button" class="new-agent" @click="emit('newSession')">New Agent</button>
-          <button type="button" class="new-workshop" @click="emit('newWorkshop')">Multi-Agent</button>
-        </div>
+        <button type="button" class="new-agent" @click="emit('newSession')">New Agent</button>
       </div>
     </div>
     <div class="panel-list">
@@ -146,10 +140,7 @@ defineExpose({ load })
                 </svg>
               </span>
               <div class="agent-text">
-                <div class="agent-title-row">
-                  <span class="agent-title">{{ s.title }}</span>
-                  <span class="session-kind">{{ kindLabel(s.kind) }}</span>
-                </div>
+                <div class="agent-title">{{ s.title }}</div>
                 <div class="agent-sub">{{ formatTime(s.updatedAt) }}</div>
               </div>
               <button
@@ -344,52 +335,6 @@ defineExpose({ load })
 
 .agent-item.active .agent-title {
   font-weight: 600;
-}
-
-.new-session-row {
-  display: flex;
-  gap: 6px;
-}
-
-.new-session-row .new-agent,
-.new-session-row .new-workshop {
-  flex: 1;
-  padding: 8px 6px;
-  font-size: 12px;
-}
-
-.new-workshop {
-  border: 1px solid var(--wc-border-light);
-  border-radius: 6px;
-  font-weight: 500;
-  color: var(--wc-text);
-  background: var(--wc-bg-dark);
-}
-
-.new-workshop:hover {
-  background: var(--wc-hover);
-  border-color: var(--wc-text-muted);
-}
-
-.agent-title-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.agent-title-row .agent-title {
-  flex: 1;
-  min-width: 0;
-}
-
-.session-kind {
-  flex-shrink: 0;
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--wc-muted-surface);
-  color: var(--wc-text-dim);
 }
 
 .agent-sub {

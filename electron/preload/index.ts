@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('fs:openProject', rootPath) as Promise<{ rootPath: string; tree: import('../main/fs-ipc').FileNode } | null>,
   openFolder: () =>
     ipcRenderer.invoke('fs:openFolder') as Promise<{ rootPath: string; tree: import('../main/fs-ipc').FileNode } | null>,
+  codeGraphStatus: (projectRoot: string) =>
+    ipcRenderer.invoke('codegraph:status', projectRoot) as Promise<import('../../src/types/axecoder').CodeGraphPublicStatus>,
+  codeGraphIndex: (projectRoot: string) =>
+    ipcRenderer.invoke('codegraph:index', projectRoot) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
   openFile: () =>
     ipcRenderer.invoke('fs:openFile') as Promise<{ path: string; content: string } | null>,
   onOpenProject: (callback: () => void) => {
@@ -246,6 +252,8 @@ contextBridge.exposeInMainWorld('axecoder', {
     modelId: string,
     messages: import('../../src/types/axecoder').AiChatMessage[],
     chatMode?: import('../../src/types/axecoder').ChatModeId,
+    assigneeUserId?: string,
+    roleWorkflowInvoke?: boolean,
   ) =>
     ipcRenderer.invoke(
       'agent:send',
@@ -253,6 +261,8 @@ contextBridge.exposeInMainWorld('axecoder', {
       modelId,
       cloneForIpc(messages),
       chatMode,
+      cloneForIpc(assigneeUserId),
+      roleWorkflowInvoke === true,
     ) as Promise<import('../../src/types/axecoder').AgentSendResult>,
   agentStop: (sessionId: string) =>
     ipcRenderer.invoke('agent:stop', sessionId) as Promise<
@@ -536,6 +546,7 @@ contextBridge.exposeInMainWorld('axecoder', {
     modelId: string,
     displayText?: string,
     imageRefs?: import('../../src/types/axecoder').ChatImageRef[],
+    preferredAssigneeUserId?: string,
   ) =>
     ipcRenderer.invoke(
       'workshop:sendMessage',
@@ -546,6 +557,7 @@ contextBridge.exposeInMainWorld('axecoder', {
       undefined,
       cloneForIpc(displayText),
       cloneForIpc(imageRefs),
+      cloneForIpc(preferredAssigneeUserId),
     ) as Promise<import('../../src/types/axecoder').WorkshopRunResult>,
   workshopSendUserAnswer: (projectRoot: string, workshopId: string, answer: string) =>
     ipcRenderer.invoke(

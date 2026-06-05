@@ -1,11 +1,16 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import {
+  BUILTIN_MANAGER_ID,
+  BUILTIN_WORKFLOW_ROLES,
+  getBuiltinWorkflowRoleDef,
+  isBuiltinWorkflowUser,
+  seedBuiltinWorkflowUser,
+} from './builtin-workflow-roles'
 import type { UserEntry, UserSaveInput, UsersFile } from './users-types'
 import { ensureAxecoderDir, axecoderPath, getAxecoderDir } from './axecoder-dir'
 
-export const BUILTIN_MANAGER_ID = 'builtin-manager'
-const MANAGER_ROLE = 'Tech Lead'
-const MANAGER_EXPERTISE = 'Requirements breakdown, coordination, technical review'
+export { BUILTIN_MANAGER_ID } from './builtin-workflow-roles'
 
 const usersPath = () => axecoderPath('users.json')
 const avatarsDir = () => axecoderPath('user-avatars')
@@ -13,16 +18,6 @@ const avatarsDir = () => axecoderPath('user-avatars')
 const emptyUsers = (): UsersFile => ({
   schemaVersion: 1,
   users: [],
-})
-
-const seedBuiltinManager = (): UserEntry => ({
-  id: BUILTIN_MANAGER_ID,
-  displayName: MANAGER_ROLE,
-  role: MANAGER_ROLE,
-  expertise: MANAGER_EXPERTISE,
-  avatarPath: '',
-  isBuiltin: true,
-  builtinRole: 'manager',
 })
 
 const readUsersFile = async (): Promise<UsersFile> => {
@@ -44,58 +39,102 @@ const writeUsersFile = async (data: UsersFile) => {
 const OLD_MANAGER_ROLE = '技术经理'
 const OLD_MANAGER_EXPERTISE = '需求拆解、任务协调、技术评审'
 
-const ensureBuiltinManager = (data: UsersFile): UsersFile => {
-  const has = data.users.some((u) => u.isBuiltin && u.builtinRole === 'manager')
-  if (has) return data
-  return { schemaVersion: 1, users: [seedBuiltinManager(), ...data.users] }
+const builtinRoleOrder = new Map(BUILTIN_WORKFLOW_ROLES.map((d, i) => [d.builtinRole, i]))
+
+/** Tech Lead 置顶，其余内置角色按流水线顺序，自定义用户保持原相对顺序 */
+const sortUsersList = (users: UserEntry[]): UserEntry[] => {
+  const custom: UserEntry[] = []
+  const builtins: UserEntry[] = []
+  for (const u of users) {
+    if (isBuiltinWorkflowUser(u)) builtins.push(u)
+    else custom.push(u)
+  }
+  builtins.sort(
+    (a, b) =>
+      (builtinRoleOrder.get(a.builtinRole!) ?? 99) - (builtinRoleOrder.get(b.builtinRole!) ?? 99),
+  )
+  return [...builtins, ...custom]
 }
 
-const syncBuiltinManager = (data: UsersFile): { data: UsersFile; changed: boolean } => {
-  const idx = data.users.findIndex((u) => u.isBuiltin && u.builtinRole === 'manager')
-  if (idx < 0) return { data, changed: false }
-  const u = data.users[idx]
-  const fromLegacy =
-    u.role === OLD_MANAGER_ROLE || u.expertise === OLD_MANAGER_EXPERTISE
-  const outOfSync = u.role !== MANAGER_ROLE || u.expertise !== MANAGER_EXPERTISE
-  if (!fromLegacy && !outOfSync) return { data, changed: false }
-  data.users[idx] = {
-    ...u,
-    role: MANAGER_ROLE,
-    expertise: MANAGER_EXPERTISE,
-    displayName: fromLegacy || u.displayName === OLD_MANAGER_ROLE ? MANAGER_ROLE : u.displayName,
+const usersListEqual = (a: UserEntry[], b: UserEntry[]) =>
+  a.length === b.length && a.every((u, i) => u.id === b[i]?.id)
+
+const ensureBuiltinWorkflowUsers = (data: UsersFile): UsersFile => {
+  let users = [...data.users]
+  for (const def of BUILTIN_WORKFLOW_ROLES) {
+    const idx = users.findIndex((u) => u.isBuiltin && u.builtinRole === def.builtinRole)
+    if (idx < 0) {
+      users = [seedBuiltinWorkflowUser(def), ...users]
+    }
   }
-  return { data, changed: true }
+  return { schemaVersion: 1, users }
+}
+
+const syncBuiltinWorkflowUsers = (data: UsersFile): { data: UsersFile; changed: boolean } => {
+  let changed = false
+  const users = data.users.map((u) => {
+    if (!isBuiltinWorkflowUser(u) || !u.builtinRole) return u
+    const def = getBuiltinWorkflowRoleDef(u.builtinRole)!
+    const fromLegacyManager =
+      u.builtinRole === 'manager' &&
+      (u.role === OLD_MANAGER_ROLE || u.expertise === OLD_MANAGER_EXPERTISE)
+    const outOfSync =
+      u.role !== def.role ||
+      u.expertise !== def.expertise ||
+      JSON.stringify(u.skillSlugs ?? []) !== JSON.stringify(def.skillSlugs)
+    if (!fromLegacyManager && !outOfSync) return u
+    changed = true
+    return {
+      ...u,
+      id: def.id,
+      role: def.role,
+      expertise: def.expertise,
+      skillSlugs: [...def.skillSlugs],
+      displayName:
+        fromLegacyManager || (u.builtinRole === 'manager' && u.displayName === OLD_MANAGER_ROLE)
+          ? def.displayName
+          : u.displayName || def.displayName,
+    }
+  })
+  return { data: { schemaVersion: 1, users }, changed }
 }
 
 export const listUsers = async (): Promise<UsersFile> => {
   let data = await readUsersFile()
-  data = ensureBuiltinManager(data)
-  const synced = syncBuiltinManager(data)
+  const beforeLen = data.users.length
+  data = ensureBuiltinWorkflowUsers(data)
+  const synced = syncBuiltinWorkflowUsers(data)
   data = synced.data
-  if (synced.changed || (await readUsersFile()).users.length !== data.users.length) {
+  const sorted = sortUsersList(data.users)
+  const orderChanged = !usersListEqual(data.users, sorted)
+  if (orderChanged) data = { schemaVersion: 1, users: sorted }
+  if (synced.changed || beforeLen !== data.users.length || orderChanged) {
     await writeUsersFile(data)
   }
   return data
 }
 
-const isBuiltinManager = (u: UserEntry | undefined) =>
-  Boolean(u?.isBuiltin && u.builtinRole === 'manager')
-
 export const saveUser = async (input: UserSaveInput): Promise<UsersFile> => {
   const data = await listUsers()
   const existing = data.users.find((u) => u.id === input.id)
   let entry: UserEntry
-  const skillSlugs = (input.skillSlugs ?? existing?.skillSlugs ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean)
-  if (isBuiltinManager(existing)) {
+  const def = existing?.builtinRole ? getBuiltinWorkflowRoleDef(existing.builtinRole) : undefined
+  if (def) {
     entry = {
       ...existing!,
-      displayName: input.displayName.trim() || MANAGER_ROLE,
+      id: def.id,
+      displayName: input.displayName.trim() || def.displayName,
       avatarPath: input.avatarPath !== undefined ? input.avatarPath : existing!.avatarPath,
-      role: MANAGER_ROLE,
-      expertise: MANAGER_EXPERTISE,
-      skillSlugs,
+      role: def.role,
+      expertise: def.expertise,
+      skillSlugs: [...def.skillSlugs],
+      isBuiltin: true,
+      builtinRole: def.builtinRole,
     }
   } else {
+    const skillSlugs = (input.skillSlugs ?? existing?.skillSlugs ?? [])
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
     entry = {
       id: input.id,
       displayName: input.displayName.trim(),

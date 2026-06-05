@@ -20,6 +20,9 @@ export type WorkshopMessage = {
   speakerUserId?: string
   text: string
   relatedFiles?: string[]
+  imageRefs?: import('../chat-attachments').ChatImageRef[]
+  /** 用户气泡展示用 data URL（与 imageRefs 一一对应） */
+  imagePreviews?: string[]
   createdAt: number
   /** 可折叠思考快照，展示在正文 text 下方 */
   reasoningContent?: string

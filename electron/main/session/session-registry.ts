@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import path from 'node:path'
 import {
   ensureProjectSessionsDir,
   normalizeProjectRoot,
@@ -9,9 +10,26 @@ import {
 import type { SessionKind, SessionRegistryEntry } from './session-types'
 
 const writeFileAtomic = async (filePath: string, content: string) => {
-  const tmp = `${filePath}.tmp.${process.pid}`
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
   await fs.writeFile(tmp, content, 'utf-8')
   await fs.rename(tmp, filePath)
+}
+
+/** 同一项目 index.json 串行写入，避免并发 rename ENOENT */
+const registryWriteTails = new Map<string, Promise<unknown>>()
+
+const runRegistryWriteSerialized = <T>(projectRoot: string, fn: () => Promise<T>): Promise<T> => {
+  const prev = registryWriteTails.get(projectRoot) ?? Promise.resolve()
+  const next = prev.catch(() => {}).then(fn)
+  registryWriteTails.set(
+    projectRoot,
+    next.then(
+      () => undefined,
+      () => undefined,
+    ),
+  )
+  return next
 }
 
 const normalizeEntry = (raw: unknown): SessionRegistryEntry | null => {
@@ -99,8 +117,7 @@ export const ensureRegistryMigrated = async (projectRoot: string): Promise<void>
   }
   if (!changed) return
 
-  await ensureProjectSessionsDir(root)
-  await writeFileAtomic(projectSessionsIndexPath(root), JSON.stringify(registry))
+  await writeRegistry(root, registry)
 }
 
 export const readRegistry = async (projectRoot: string): Promise<SessionRegistryEntry[]> => {
@@ -113,8 +130,10 @@ export const readRegistry = async (projectRoot: string): Promise<SessionRegistry
 export const writeRegistry = async (projectRoot: string, list: SessionRegistryEntry[]) => {
   const root = await normalizeProjectRoot(projectRoot)
   if (!root) throw new Error('No project open')
-  await ensureProjectSessionsDir(root)
-  await writeFileAtomic(projectSessionsIndexPath(root), JSON.stringify(sortEntries(list)))
+  return runRegistryWriteSerialized(root, async () => {
+    await ensureProjectSessionsDir(root)
+    await writeFileAtomic(projectSessionsIndexPath(root), JSON.stringify(sortEntries(list)))
+  })
 }
 
 export const listRegistryByKind = async (

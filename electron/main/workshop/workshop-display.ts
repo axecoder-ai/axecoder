@@ -35,7 +35,7 @@ export const formatMemberChatSummary = (
 /** Tech Lead 读码摘要（hidden，供路由） */
 export const formatManagerCodeBrief = (report: string): { summary: string; reasoningContent?: string } => {
   const raw = report.trim()
-  const summary = summarizeReportForChat(raw, 800)
+  const summary = summarizeReportForChat(raw, 2000)
   return {
     summary: summary ? `[Codebase notes] ${summary}` : '',
     reasoningContent: raw.length > summary.length + 20 ? raw.slice(0, 4000) : undefined,

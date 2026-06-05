@@ -23,20 +23,40 @@ afterEach(async () => {
 })
 
 describe('users-store', () => {
-  it('首次 list 种子技术经理', async () => {
+  it('首次 list 种子全部内置工作流角色', async () => {
     const data = await listUsers()
-    expect(data.users).toHaveLength(1)
-    const m = data.users[0]
-    expect(m.id).toBe(BUILTIN_MANAGER_ID)
+    expect(data.users.length).toBeGreaterThanOrEqual(7)
+    const m = data.users.find((u) => u.id === BUILTIN_MANAGER_ID)!
     expect(m.isBuiltin).toBe(true)
     expect(m.builtinRole).toBe('manager')
     expect(m.role).toBe('Tech Lead')
     expect(m.expertise).toBe('Requirements breakdown, coordination, technical review')
+    const dev = data.users.find((u) => u.builtinRole === 'developer')!
+    expect(dev.skillSlugs).toEqual(['implement'])
+    const reviewer = data.users.find((u) => u.builtinRole === 'reviewer')!
+    expect(reviewer.skillSlugs).toEqual(['code-review'])
+    expect(data.users[0].id).toBe(BUILTIN_MANAGER_ID)
   })
 
   it('内置技术经理不可删除', async () => {
     await listUsers()
     await expect(deleteUser(BUILTIN_MANAGER_ID)).rejects.toThrow('Built-in user cannot be deleted')
+  })
+
+  it('内置角色不可改角色、擅长与绑定命令', async () => {
+    await listUsers()
+    const saved = await saveUser({
+      id: 'builtin-developer',
+      displayName: '小李',
+      role: '全栈',
+      expertise: '什么都干',
+      skillSlugs: ['code-review', 'implement'],
+    })
+    const dev = saved.users.find((u) => u.builtinRole === 'developer')!
+    expect(dev.displayName).toBe('小李')
+    expect(dev.role).toBe('Developer')
+    expect(dev.expertise).toBe('TDD implementation, unit tests')
+    expect(dev.skillSlugs).toEqual(['implement'])
   })
 
   it('内置技术经理不可改角色与擅长', async () => {
@@ -62,10 +82,10 @@ describe('users-store', () => {
       expertise: 'Node.js',
     })
     let data = await listUsers()
-    expect(data.users).toHaveLength(2)
+    expect(data.users.length).toBeGreaterThanOrEqual(7)
     data = await deleteUser('u1')
-    expect(data.users).toHaveLength(1)
-    expect(data.users[0].id).toBe(BUILTIN_MANAGER_ID)
+    expect(data.users.length).toBeGreaterThanOrEqual(6)
+    expect(data.users.some((u) => u.id === BUILTIN_MANAGER_ID)).toBe(true)
   })
 
   it('旧版中文内置经理 list 时迁移为英文', async () => {
@@ -86,7 +106,7 @@ describe('users-store', () => {
         ],
       }),
     )
-    const m = (await listUsers()).users[0]
+    const m = (await listUsers()).users.find((u) => u.id === BUILTIN_MANAGER_ID)!
     expect(m.displayName).toBe('Tech Lead')
     expect(m.role).toBe('Tech Lead')
     expect(m.expertise).toBe('Requirements breakdown, coordination, technical review')

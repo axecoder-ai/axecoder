@@ -113,6 +113,24 @@ describe('workshop-turn-orchestrator', () => {
     expect(res.session.pendingQuestion).toBe('要支持移动端吗？')
   })
 
+  it('@指定成员时跳过经理首轮派活', async () => {
+    const session = newWorkshopSession('/tmp/p', '', 'm1')
+    const router = scriptedRouterLlm({
+      turns: ['done'],
+      manager: [{ summary: '收尾', done: true }],
+    })
+    const res = await sendWorkshopMessage(session, '写登录 API', scriptedMemberSpeaker, router, undefined, {
+      preferredAssigneeUserId: 'u-backend',
+    })
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    const firstAgent = res.session.messages.find((m) => m.roleId !== 'user' && m.roleId !== 'system')
+    expect(firstAgent?.speakerUserId).toBe('u-backend')
+    const backendIdx = res.session.messages.findIndex((m) => m.speakerUserId === 'u-backend')
+    const managerIdx = res.session.messages.findIndex((m) => m.roleId === 'manager')
+    if (managerIdx >= 0) expect(backendIdx).toBeLessThan(managerIdx)
+  })
+
   it('澄清回答后继续选角', async () => {
     let session = newWorkshopSession('/tmp/p', '', 'm1')
     const router = scriptedRouterLlm({

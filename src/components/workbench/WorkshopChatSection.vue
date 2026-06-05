@@ -23,6 +23,10 @@ import {
   markWorkshopAgentStreamKey,
   markWorkshopLiveRole,
 } from '../../utils/workshop-live-turn'
+import {
+  prepareRoleWorkflowSendPlan,
+} from '../../utils/role-workflow-send'
+import { parseCommittedRoleMention } from '../../utils/role-mention'
 
 const props = defineProps<{
   projectRoot: string
@@ -138,8 +142,8 @@ const showAgentHistoryHint = computed(
     showEmptyHint.value,
 )
 const composerPlaceholder = computed(() => {
-  if (!active.value?.messages.length) return 'Describe the task to start Multi-Agent…'
-  return 'Add a follow-up or new task…'
+  if (!active.value?.messages.length) return 'Describe the task, or @ a role to assign directly…'
+  return '@ a role or add a follow-up…'
 })
 
 const bossNickname = computed(() => props.profileDisplayName?.trim() || 'BOSS')
@@ -395,13 +399,19 @@ const syncWorkshopSession = async () => {
 const newLocalWorkshopId = () =>
   `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
-const pushOptimisticUser = (text: string): string => {
+const pushOptimisticUser = (
+  text: string,
+  imageRefs?: import('../../types/axecoder').ChatImageRef[],
+  imagePreviews?: string[],
+): string => {
   const now = Date.now()
   const userMsg: WorkshopMessage = {
     id: `opt-user-${now}`,
     roleId: 'user',
     text,
     createdAt: now,
+    ...(imageRefs?.length ? { imageRefs } : {}),
+    ...(imagePreviews?.length ? { imagePreviews } : {}),
   }
   if (!active.value) {
     const id =
@@ -487,52 +497,64 @@ const pushLocalSystemMessage = (text: string) => {
   }
 }
 
-const sendText = async (raw: string, isClarify: boolean) => {
-  if (!hasProject.value || loading.value) return
-  const text = raw.trim()
-  const imageRefs = imageRefsForPersist()
-  if (!text && !imageRefs.length) return
-  if (!modelId.value) {
+const sendPayload = async (opts: {
+  text: string
+  apiText?: string
+  displayText?: string
+  filePaths?: string[]
+  imageRefs?: import('../../types/axecoder').ChatImageRef[]
+  imagePreviews?: string[]
+  modelIdOverride?: string
+  isClarify?: boolean
+  preferredAssigneeUserId?: string
+}): Promise<{ ok: true } | { ok: false; error: string }> => {
+  if (!hasProject.value || loading.value) return { ok: false, error: 'Busy' }
+  const text = opts.text.trim()
+  const imageRefs = opts.imageRefs ?? []
+  if (!text && !imageRefs.length) return { ok: false, error: 'Empty message' }
+  const useModelId = opts.modelIdOverride?.trim() || modelId.value
+  if (!useModelId) {
     pushLocalSystemMessage('请先在设置中启用模型，或在输入框底部选择可用模型。')
     void scrollBottom()
-    return
+    return { ok: false, error: 'No model' }
   }
-  const filePaths = attachedFiles.value.map((f) => f.path)
-  if (isClarify) answerInput.value = ''
-  else briefInput.value = ''
-  attachedFiles.value = []
-  clearAttachedImages()
-  const workshopId = pushOptimisticUser(text || '(image)')
+  const filePaths = opts.filePaths ?? []
+  const displayText = opts.displayText?.trim() || text || '(image)'
+  const workshopId = pushOptimisticUser(displayText, imageRefs, opts.imagePreviews)
   await scrollBottom()
   loading.value = true
   thinkingRole.value = 'manager'
   clearStreamUi()
   bindWorkshopAgentProgress()
   try {
-    const payload = await expandWithFiles(text, filePaths)
+    const payload = await expandWithFiles(opts.apiText ?? text, filePaths)
     const res = await sendWorkshop(
       workshopId,
       payload,
-      modelId.value,
-      text || '(image)',
+      useModelId,
+      displayText,
       imageRefs.length ? imageRefs : undefined,
+      opts.preferredAssigneeUserId,
     )
     if (!res.ok) {
       rollbackOptimisticUser()
       pushLocalSystemMessage(`协作请求失败：${res.error}`)
       await scrollBottom()
-      return
+      return { ok: false, error: res.error }
     }
     active.value = res.session
     activePersisted = true
     emitWorkshopActive(res.session.id)
+    await hydrateWorkshopImagePreviews(res.session.messages)
     await scrollBottom()
     emit('sessionsChanged')
+    return { ok: true }
   } catch (e) {
     rollbackOptimisticUser()
     const msg = e instanceof Error ? e.message : String(e)
     pushLocalSystemMessage(`协作请求异常：${msg}`)
     await scrollBottom()
+    return { ok: false, error: msg }
   } finally {
     loading.value = false
     thinkingRole.value = null
@@ -540,8 +562,75 @@ const sendText = async (raw: string, isClarify: boolean) => {
   }
 }
 
+const sendText = async (raw: string, isClarify: boolean) => {
+  const text = raw.trim()
+  const imageRefs = imageRefsForPersist()
+  const imagePreviews = attachedImages.value.map((x) => x.previewUrl)
+  if (!text && !imageRefs.length) return
+  const plan = await prepareRoleWorkflowSendPlan(text, usersList.value, props.projectRoot)
+  if (plan.kind === 'error') {
+    pushLocalSystemMessage(plan.message)
+    void scrollBottom()
+    return
+  }
+  const mention = parseCommittedRoleMention(text, usersList.value)
+  let apiText = mention?.args.trim() || text
+  if (plan.kind === 'workflow') apiText = plan.prompt
+  if (isClarify) answerInput.value = ''
+  else briefInput.value = ''
+  attachedFiles.value = []
+  clearAttachedImages()
+  await sendPayload({
+    text: apiText || text || '(image)',
+    apiText: apiText || text,
+    displayText: text || '(image)',
+    imageRefs: imageRefs.length ? imageRefs : undefined,
+    imagePreviews: imagePreviews.length ? imagePreviews : undefined,
+    isClarify,
+    preferredAssigneeUserId: mention?.userId,
+  })
+}
+
+const sendWithPayload = async (opts: {
+  text: string
+  apiText?: string
+  displayText?: string
+  filePaths?: string[]
+  imageRefs?: import('../../types/axecoder').ChatImageRef[]
+  imagePreviews?: string[]
+  modelId?: string
+  preferredAssigneeUserId?: string
+}) => {
+  const mention = opts.displayText
+    ? parseCommittedRoleMention(opts.displayText, usersList.value)
+    : null
+  return sendPayload({
+    text: opts.text,
+    apiText: opts.apiText,
+    displayText: opts.displayText,
+    filePaths: opts.filePaths,
+    imageRefs: opts.imageRefs,
+    imagePreviews: opts.imagePreviews,
+    modelIdOverride: opts.modelId,
+    preferredAssigneeUserId: opts.preferredAssigneeUserId ?? mention?.userId,
+  })
+}
+
+const hydrateWorkshopImagePreviews = async (messages: WorkshopMessage[]) => {
+  for (const m of messages) {
+    if (!m.imageRefs?.length || m.imagePreviews?.length) continue
+    const urls: string[] = []
+    for (const ref of m.imageRefs) {
+      const res = await window.axecoder.getChatImagePreview(ref)
+      if (res.ok) urls.push(res.dataUrl)
+    }
+    if (urls.length) m.imagePreviews = urls
+  }
+}
+
 const selectSession = async (id: string) => {
   const session = await loadWorkshop(id)
+  if (session) await hydrateWorkshopImagePreviews(session.messages)
   active.value = session
   activePersisted = !!session
   if (session) emitWorkshopActive(session.id)
@@ -554,6 +643,7 @@ const openForAgentChat = async (agentChatId: string) => {
   const id = workshopIdForAgentChat(agentChatId)
   const session = await loadWorkshop(id)
   if (session) {
+    await hydrateWorkshopImagePreviews(session.messages)
     active.value = session
     activePersisted = true
     modelId.value = session.modelId || modelId.value
@@ -674,9 +764,11 @@ defineExpose({
   selectSession,
   openForAgentChat,
   newSession,
+  sendWithPayload,
   activeId,
   activeTitle,
   activeMessageCount,
+  loading,
 })
 </script>
 
@@ -700,6 +792,7 @@ defineExpose({
         :text="msg.text"
         :reasoning-content="msg.reasoningContent"
         :related-files="msg.relatedFiles"
+        :image-previews="msg.imagePreviews"
         v-bind="messageRoleProps(msg)"
         @open-file="openMountedFile"
       />
@@ -728,7 +821,7 @@ defineExpose({
         v-bind="roleProps(thinkingRole)"
       />
     </div>
-    <div v-if="hasProject" class="composer">
+    <div v-if="hasProject && !embeddedInAgentChat" class="composer">
       <template v-if="pendingQuestion">
         <p class="clarify-prompt">{{ pendingQuestion }}</p>
         <WorkbenchChatInput
@@ -739,6 +832,7 @@ defineExpose({
           :loading="loading"
           :enabled-models="enabledModels"
           :active-model-id="modelId"
+          :mention-users="usersList"
           placeholder="Type clarification…"
           @update:attached-files="attachedFiles = $event"
           @paste="onPasteImage"
@@ -762,6 +856,7 @@ defineExpose({
         :loading="loading"
         :enabled-models="enabledModels"
         :active-model-id="modelId"
+        :mention-users="usersList"
         :placeholder="composerPlaceholder"
         @update:attached-files="attachedFiles = $event"
         @paste="onPasteImage"

@@ -54,17 +54,15 @@ describe('resolveUserSkillPromptBlock', () => {
     expect(block).toContain('按此 Skill 执行演示任务')
   })
 
-  it('无效 slug 跳过不报错', async () => {
+  it('Researcher 岗位无 skillSlugs 时继承 research-codebase 内置命令', async () => {
     const user: UserEntry = {
-      id: 'u1',
-      displayName: '小李',
-      role: '后端',
+      id: 'lois',
+      displayName: 'Lois·Lane',
+      role: 'Researcher',
       expertise: '',
       avatarPath: '',
-      skillSlugs: ['missing-skill', 'demo-skill'],
     }
     const block = await resolveUserSkillPromptBlock(user, projectRoot)
-    expect(block).toContain('demo-skill')
-    expect(block).not.toContain('missing-skill')
+    expect(block).toContain('research-codebase')
   })
 })

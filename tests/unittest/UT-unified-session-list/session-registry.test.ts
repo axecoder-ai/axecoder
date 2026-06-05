@@ -107,6 +107,25 @@ describe('session-registry', () => {
     expect((await listAllSessions(projectRoot)).sessions.some((s) => s.id === 'ws-del')).toBe(false)
   })
 
+  it('并发 save 不抛 ENOENT', async () => {
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, i) =>
+        saveWorkshopSession(projectRoot, {
+          id: `ws-${i}`,
+          title: `W${i}`,
+          updatedAt: 100 + i,
+          userBrief: 't',
+          modelId: 'm1',
+          messages: [],
+          phase: 'idle',
+          mountedFiles: [],
+        }),
+      ),
+    )
+    expect(results.every((r) => r.ok)).toBe(true)
+    await fs.access(projectSessionsIndexPath(projectRoot))
+  })
+
   it('删除 agent 不影响 workshop 条目', async () => {
     await saveChatSession(projectRoot, {
       id: 'chat-x',

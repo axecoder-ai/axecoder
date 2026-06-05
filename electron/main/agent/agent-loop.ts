@@ -5,7 +5,7 @@ import { chatWithToolsForModel } from '../ai/chat-with-tools'
 import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
 import { t } from '../i18n'
 import { AGENT_TOOLS, buildAgentSystemPrompt, buildFullAgentTools } from './agent-tool-defs'
-import { filterToolsForSubagent, getSessionActiveTools } from './agent-ext-executor'
+import { getSessionActiveTools } from './agent-ext-executor'
 import type { AgentToolCall, AgentToolDef } from './agent-types'
 import type {
   AgentContinueResult,
@@ -52,6 +52,7 @@ import {
   clearAgentRunAbort,
   getAgentRunAbortSignal,
 } from './agent-run-abort'
+import { interruptBackgroundRun, listBackgroundRuns } from './agent-subagent-tasks'
 import { refreshCustomOutputStylesCache } from './agent-output-styles-custom'
 import type { AgentToolName } from './agent-types'
 import {
@@ -61,6 +62,7 @@ import {
   type ChatModeId,
 } from './chat-mode'
 import { applyRppitModeToLastUserMessage } from './rppit-command'
+import { applyAgentRolePersonaToMessages } from './agent-role-persona'
 
 export { compactAgentMessages } from './agent-context-compact'
 export { runUserShellCommand } from './agent-user-shell'
@@ -116,9 +118,10 @@ const refreshSessionActiveTools = (session: StoredAgentSession) => {
   session.activeTools = getSessionActiveTools(buildFullAgentTools(), session.revealedToolNames)
 }
 
-const replyMeta = (content?: string, reasoningContent?: string) => ({
+const replyMeta = (content?: string, reasoningContent?: string, speakerUserId?: string) => ({
   ...(content !== undefined ? { assistantContent: content } : {}),
   ...(reasoningContent ? { reasoningContent } : {}),
+  ...(speakerUserId ? { speakerUserId } : {}),
 })
 
 const finishDone = (
@@ -129,8 +132,15 @@ const finishDone = (
   reasoningContent?: string,
 ): AgentSendResult | AgentContinueResult => {
   const toolLog = [...session.toolLog]
+  const speakerUserId = session.assigneeUserId
   if (sessionId) deleteSession(sessionId)
-  return { ok: true, status: 'done', assistantText, toolLog, ...replyMeta(content, reasoningContent) }
+  return {
+    ok: true,
+    status: 'done',
+    assistantText,
+    toolLog,
+    ...replyMeta(content, reasoningContent, speakerUserId),
+  }
 }
 
 const applyAllPendingInSession = async (
@@ -185,7 +195,7 @@ const finishPending = (
   ...(pendingAsks.length ? { pendingAsks } : {}),
   assistantText,
   toolLog: [...session.toolLog],
-  ...replyMeta(content, reasoningContent),
+  ...replyMeta(content, reasoningContent, session.assigneeUserId),
 })
 
 const collectPendingPublic = (session: StoredAgentSession) => ({
@@ -272,6 +282,9 @@ export const stopAgentTurn = (sessionId: string): { ok: true } | { ok: false; er
   if (!session) return { ok: false, error: t('errors.agentSessionMissing') }
   session.abortRequested = true
   abortAgentRun(sid)
+  for (const run of listBackgroundRuns(sid)) {
+    if (run.status === 'running') interruptBackgroundRun(run.id)
+  }
   return { ok: true }
 }
 
@@ -379,6 +392,24 @@ export const runAgentLoopUntilDoneOrPending = async (
             })
             return { tc, run: blocked }
           }
+        }
+
+        if (session.abortRequested) {
+          const aborted: ToolRunResult = {
+            kind: 'immediate',
+            content: 'Error: Agent run stopped by user.',
+            log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
+          }
+          emitAgentProgress({
+            sessionId,
+            turn: session.turn,
+            kind: 'tool',
+            status: 'done',
+            toolName: tc.name,
+            summary: toolSummary,
+            ok: false,
+          })
+          return { tc, run: aborted }
         }
 
         let run = await executeAgentTool(session.ctx, tc)
@@ -551,6 +582,8 @@ export const startAgentTurn = async (
     images?: import('../models-types').AiChatImagePart[]
   }[],
   chatModeRaw?: ChatModeId | string,
+  assigneeUserId?: string,
+  roleWorkflowInvoke?: boolean,
 ): Promise<AgentSendResult> => {
   const chatMode = normalizeChatMode(chatModeRaw)
   if (!projectRoot.trim()) return { ok: false, error: t('errors.noProject') }
@@ -619,6 +652,13 @@ export const startAgentTurn = async (
     }
   }
 
+  const resolvedAssignee = await applyAgentRolePersonaToMessages(
+    projectRoot,
+    assigneeUserId,
+    messages,
+    roleWorkflowInvoke,
+  )
+
   const session: StoredAgentSession = {
     projectRoot,
     modelId,
@@ -636,6 +676,7 @@ export const startAgentTurn = async (
     proactiveTick: 0,
     scratchpadDir,
     compactedOnce: false,
+    ...(resolvedAssignee ? { assigneeUserId: resolvedAssignee } : {}),
   }
   applyChatModeToNewSession(session, chatMode)
   putSession(sessionId, session)
@@ -904,10 +945,7 @@ export const runWorkshopRoleAgentTurn = async (
   const cfg = await getConfig()
   const revealedToolNames = new Set<AgentToolName>()
   const allTools = buildFullAgentTools()
-  const activeTools =
-    options?.speakMode === 'manager_chat'
-      ? (filterToolsForSubagent(allTools, 'explore') as AgentToolDef[])
-      : getSessionActiveTools(allTools, revealedToolNames)
+  const activeTools = getSessionActiveTools(allTools, revealedToolNames)
   const scratchpadDir = await ensureScratchpadDir(sid)
 
   const ctx: AgentContext = {
@@ -924,46 +962,31 @@ export const runWorkshopRoleAgentTurn = async (
 
   const isPlan = options?.speakMode === 'plan'
   const isVerify = options?.speakMode === 'verify'
-  const isManagerChat = options?.speakMode === 'manager_chat'
-  const isMember = options?.speakMode === 'member'
   const roleLead = isPlan
     ? [
-        `[Collab Workshop · ${roleName}】`,
-        'Planning phase: use tools to read code, but the final assistant message must be only a ```json step plan—no reasoning prose.',
+        `[Collab Workshop · ${roleName} · plan]`,
+        'Use the same tools as Chat Agent mode. Final assistant message must be only a ```json step plan—no reasoning prose.',
         '',
       ].join('\n')
     : isVerify
       ? [
-          `[Collab Workshop · ${roleName}】`,
-          'Verification phase: first line must be VERIFY: approve|redo|abort; keep the rest brief in English.',
+          `[Collab Workshop · ${roleName} · verify]`,
+          'Use the same tools as Chat Agent mode. First line must be VERIFY: approve|redo|abort.',
           '',
         ].join('\n')
-      : isManagerChat
-        ? [
-            `[Collab Workshop · ${roleName}】`,
-            'Read-only codebase scan: use Read/Grep/Glob; no writes or shell. Final reply: brief English notes for routing (~800 chars).',
-            '',
-          ].join('\n')
-        : isMember
-          ? [
-              `[Collab Workshop · ${roleName}】`,
-              'Use tools to inspect code first; final reply: concise conclusion, then optional "- path" lines for touched files.',
-              '',
-            ].join('\n')
-          : [
-              `[Collab Workshop · ${roleName}】`,
-              'Execute this step: inspect code with tools first; final reply is a brief English summary only, optional file paths.',
-              '',
-            ].join('\n')
+      : [`[Collab Workshop · ${roleName}]`, 'Same tool capabilities as Chat Agent mode.', ''].join('\n')
 
   const messages: AgentLoopMessage[] = [
     {
       role: 'system',
-      content: await buildAgentSystemPrompt(root, {
-        modelId: model.modelId,
-        enabledToolNames: AGENT_TOOLS.map((t) => t.name),
-        outputStyleId: cfg.agentOutputStyle,
-      }),
+      content:
+        (await buildAgentSystemPrompt(root, {
+          modelId: model.modelId,
+          enabledToolNames: activeTools.map((t) => t.name),
+          outputStyleId: cfg.agentOutputStyle,
+          scratchpadDir,
+          agentFrcKeepToolMessages: cfg.agentFrcKeepToolMessages ?? 8,
+        })) + chatModeSystemAddon('agent'),
     },
     {
       role: 'user',
@@ -990,6 +1013,7 @@ export const runWorkshopRoleAgentTurn = async (
     scratchpadDir,
     compactedOnce: false,
   }
+  applyChatModeToNewSession(session, 'agent')
 
   putSession(sid, session)
   const result = await runAgentLoopUntilDoneOrPending(sid, session)

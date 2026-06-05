@@ -112,7 +112,14 @@ export type UserEntry = {
   avatarPath: string
   skillSlugs?: string[]
   isBuiltin?: boolean
-  builtinRole?: 'manager'
+  builtinRole?:
+    | 'manager'
+    | 'product_analyst'
+    | 'researcher'
+    | 'architect'
+    | 'planner'
+    | 'developer'
+    | 'reviewer'
 }
 
 export type AvailableSkillItem = {
@@ -311,6 +318,7 @@ export type AgentSendResult =
       toolLog: AgentToolLogEntry[]
       assistantContent?: string
       reasoningContent?: string
+      speakerUserId?: string
     }
   | {
       ok: true
@@ -323,6 +331,7 @@ export type AgentSendResult =
       toolLog: AgentToolLogEntry[]
       assistantContent?: string
       reasoningContent?: string
+      speakerUserId?: string
     }
   | { ok: false; error: string }
 
@@ -349,6 +358,8 @@ export type WorkshopMessage = {
   speakerUserId?: string
   text: string
   relatedFiles?: string[]
+  imageRefs?: ChatImageRef[]
+  imagePreviews?: string[]
   createdAt: number
   reasoningContent?: string
   hidden?: boolean
@@ -414,6 +425,12 @@ export type ChatMessage = {
   /** 待用户confirm执行的 Bash 命令 */
   pendingBashes?: AgentPendingBash[]
   agentSessionId?: string
+  /** Agent @角色：该条 assistant 回复对应的 Users 成员 */
+  speakerUserId?: string
+  /** 用户消息 @角色 对应的 Users id（展示头像） */
+  roleMentionUserId?: string
+  /** @角色 触发的内置工作流命令 slug */
+  roleMentionCommand?: string
 }
 
 export type SessionKind = 'agent' | 'workshop'
@@ -471,12 +488,23 @@ export type WindowLayout = {
   platform: string
 }
 
+export type CodeGraphPublicStatus = {
+  backendAvailable: boolean
+  sqliteAvailable: boolean
+  engineAvailable: boolean
+  initialized: boolean
+  indexing: boolean
+  distPath: string
+}
+
 export type AxeCoderFs = {
   getWindowLayout: () => Promise<WindowLayout>
   onWindowLayout: (callback: (layout: WindowLayout) => void) => () => void
   getLastProject: () => Promise<string | null>
   openProject: (rootPath?: string) => Promise<{ rootPath: string; tree: FileNode } | null>
   openFolder: () => Promise<{ rootPath: string; tree: FileNode } | null>
+  codeGraphStatus: (projectRoot: string) => Promise<CodeGraphPublicStatus>
+  codeGraphIndex: (projectRoot: string) => Promise<{ ok: true } | { ok: false; error: string }>
   openFile: () => Promise<{ path: string; content: string } | null>
   onOpenProject: (callback: () => void) => () => void
   onMenuAction: (callback: (channel: MenuChannel) => void) => () => void
@@ -573,6 +601,8 @@ export type AxeCoderFs = {
     modelId: string,
     messages: AiChatMessage[],
     chatMode?: ChatModeId,
+    assigneeUserId?: string,
+    roleWorkflowInvoke?: boolean,
   ) => Promise<AgentSendResult>
   agentStop: (sessionId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   agentRunUserShell: (
@@ -784,6 +814,7 @@ export type AxeCoderFs = {
     modelId: string,
     displayText?: string,
     imageRefs?: ChatImageRef[],
+    preferredAssigneeUserId?: string,
   ) => Promise<WorkshopRunResult>
   workshopSendUserAnswer: (
     projectRoot: string,

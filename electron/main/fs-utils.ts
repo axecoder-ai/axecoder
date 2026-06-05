@@ -5,6 +5,7 @@ export type ConflictAction = 'skip' | 'rename' | 'replace'
 export const IGNORED_DIR_NAMES = new Set([
   'node_modules',
   '.git',
+  '.codegraph',
   'dist',
   'dist-electron',
   '.DS_Store',

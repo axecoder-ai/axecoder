@@ -24,7 +24,12 @@ const pushMessage = (
   session: WorkshopSession,
   roleId: WorkshopMessage['roleId'],
   text: string,
-  extra?: Partial<Pick<WorkshopMessage, 'relatedFiles' | 'reasoningContent' | 'speakerUserId'>>,
+  extra?: Partial<
+    Pick<
+      WorkshopMessage,
+      'relatedFiles' | 'reasoningContent' | 'speakerUserId' | 'imageRefs' | 'imagePreviews'
+    >
+  >,
 ) => {
   session.messages.push({
     id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -206,35 +211,98 @@ const afterMemberSummary = async (
   )
 }
 
+export type SendWorkshopMessageOptions = {
+  displayText?: string
+  userImages?: import('../models-types').AiChatImagePart[]
+  userImageRefs?: import('../chat-attachments').ChatImageRef[]
+  userImagePreviews?: string[]
+  preferredAssigneeUserId?: string
+}
+
+const isManagerUser = (u: import('../users-types').UserEntry) =>
+  Boolean(u.isBuiltin && u.builtinRole === 'manager')
+
+const runAfterUserMessage = async (
+  session: WorkshopSession,
+  users: import('../users-types').UserEntry[],
+  speaker: RoleSpeaker,
+  routerLlm: RouterLLM,
+  onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
+  preferredAssigneeUserId?: string,
+): Promise<WorkshopRunResult> => {
+  const preferred = preferredAssigneeUserId?.trim()
+    ? findUserById(users, preferredAssigneeUserId.trim())
+    : undefined
+
+  if (preferred && !isManagerUser(preferred)) {
+    const memberOut = await runMemberSpeak(session, preferred, users, speaker, onProgress)
+    return afterMemberSummary(
+      session,
+      memberOut.summary,
+      users,
+      routerLlm,
+      speaker,
+      onProgress,
+      memberOut.detail,
+    )
+  }
+
+  const mgrRes = await runManagerSpeak(session, users, routerLlm, speaker, onProgress)
+  if (mgrRes.done) return { ok: true, session }
+  const memberOut = await runMemberSpeak(session, mgrRes.assignee, users, speaker, onProgress)
+  return afterMemberSummary(
+    session,
+    memberOut.summary,
+    users,
+    routerLlm,
+    speaker,
+    onProgress,
+    memberOut.detail,
+  )
+}
+
 export const sendWorkshopMessage = async (
   session: WorkshopSession,
   text: string,
   speaker: RoleSpeaker,
   routerLlm: RouterLLM,
   onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
-  displayText?: string,
-  userImages?: import('../models-types').AiChatImagePart[],
+  options?: SendWorkshopMessageOptions,
 ): Promise<WorkshopRunResult> => {
   const trimmed = text.trim()
-  if (!trimmed && !userImages?.length) return { ok: false, error: 'Message cannot be empty' }
-  if (userImages?.length) session.pendingUserImages = userImages
-  const userDisplay = displayText?.trim() || trimmed
+  if (!trimmed && !options?.userImages?.length) return { ok: false, error: 'Message cannot be empty' }
+  if (options?.userImages?.length) session.pendingUserImages = options.userImages
+  const userDisplay = options?.displayText?.trim() || trimmed
+  const preferredAssigneeUserId = options?.preferredAssigneeUserId?.trim()
 
   const usersFile = await listUsers()
   const users = usersFile.users
 
+  const userMsgExtra =
+    options?.userImageRefs?.length || options?.userImagePreviews?.length
+      ? {
+          ...(options.userImageRefs?.length ? { imageRefs: options.userImageRefs } : {}),
+          ...(options.userImagePreviews?.length ? { imagePreviews: options.userImagePreviews } : {}),
+        }
+      : undefined
+
   if (session.phase === 'waiting_user') {
-    pushMessage(session, 'user', userDisplay)
+    pushMessage(session, 'user', userDisplay, userMsgExtra)
     session.pendingQuestion = undefined
     session.phase = 'running'
-    const prior = priorSummaryFromMessages(session.messages)
-    const picked = await pickNextSpeaker(routerLlm, session.userBrief, prior, users)
-    if (!picked.ok) {
-      pushMessage(session, 'system', `Casting failed: ${picked.error}`)
-      session.phase = 'done'
-      return { ok: true, session }
+    let assignee = preferredAssigneeUserId
+      ? findUserById(users, preferredAssigneeUserId)
+      : undefined
+    if (!assignee) {
+      const prior = priorSummaryFromMessages(session.messages)
+      const picked = await pickNextSpeaker(routerLlm, session.userBrief, prior, users)
+      if (!picked.ok) {
+        pushMessage(session, 'system', `Casting failed: ${picked.error}`)
+        session.phase = 'done'
+        return { ok: true, session }
+      }
+      assignee = findUserById(users, picked.assigneeUserId)
     }
-    const assignee = findUserById(users, picked.assigneeUserId)
     if (!assignee) {
       pushMessage(session, 'system', 'Casting failed: executor does not exist')
       session.phase = 'done'
@@ -262,20 +330,16 @@ export const sendWorkshopMessage = async (
     if (title) session.title = title
   }
 
-  pushMessage(session, 'user', userDisplay)
+  pushMessage(session, 'user', userDisplay, userMsgExtra)
   session.phase = 'running'
 
-  const mgrRes = await runManagerSpeak(session, users, routerLlm, speaker, onProgress)
-  if (mgrRes.done) return { ok: true, session }
-  const memberOut = await runMemberSpeak(session, mgrRes.assignee, users, speaker, onProgress)
-  return afterMemberSummary(
+  return runAfterUserMessage(
     session,
-    memberOut.summary,
     users,
-    routerLlm,
     speaker,
+    routerLlm,
     onProgress,
-    memberOut.detail,
+    preferredAssigneeUserId,
   )
 }
 

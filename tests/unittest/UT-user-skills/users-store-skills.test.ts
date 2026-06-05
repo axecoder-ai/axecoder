@@ -44,7 +44,7 @@ describe('users-store skillSlugs', () => {
     expect(u.skillSlugs ?? []).toEqual([])
   })
 
-  it('内置技术经理可更新 skillSlugs', async () => {
+  it('内置角色 skillSlugs 固定不可改', async () => {
     await listUsers()
     await saveUser({
       id: BUILTIN_MANAGER_ID,
@@ -55,6 +55,6 @@ describe('users-store skillSlugs', () => {
     })
     const m = (await listUsers()).users.find((u) => u.id === BUILTIN_MANAGER_ID)!
     expect(m.role).toBe('Tech Lead')
-    expect(m.skillSlugs).toEqual(['make-plan'])
+    expect(m.skillSlugs).toEqual([])
   })
 })

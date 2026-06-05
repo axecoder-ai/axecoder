@@ -20,11 +20,25 @@ export default defineConfig(({ command }) => {
     }
   })()
 
+  const opencodeSymlink = path.resolve(__dirname, 'opencode')
+  const opencodeDenyPaths = [opencodeSymlink]
+  try {
+    if (fs.existsSync(opencodeSymlink)) {
+      opencodeDenyPaths.push(fs.realpathSync(opencodeSymlink))
+    }
+  } catch {
+    // 符号链接不存在或无法解析时忽略
+  }
+
   return {
     resolve: {
       alias: {
         '@shared': path.resolve(__dirname, 'shared'),
       },
+    },
+    // 只从 AxeCoder 的 index.html 扫描依赖，避免扫到根目录 opencode 符号链接里的 Solid 项目
+    optimizeDeps: {
+      entries: [path.resolve(__dirname, 'index.html')],
     },
     server: isServe
       ? {
@@ -33,7 +47,7 @@ export default defineConfig(({ command }) => {
           strictPort: false,
           fs: {
             // 项目根目录的 opencode 符号链接，避免 Vite 扫描外部 monorepo
-            deny: [path.resolve(__dirname, 'opencode')],
+            deny: opencodeDenyPaths,
           },
           watch: {
             ignored: ['**/opencode/**'],

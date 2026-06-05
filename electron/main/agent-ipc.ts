@@ -61,6 +61,8 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
       modelId: string,
       messages: AiChatMessage[],
       chatMode?: string,
+      assigneeUserId?: string,
+      roleWorkflowInvoke?: boolean,
     ) => {
       const history = (Array.isArray(messages) ? messages : [])
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -75,7 +77,14 @@ export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
       if (!history.some((m) => m.role === 'user')) {
         return { ok: false as const, error: 'No user message' }
       }
-      return startAgentTurn(projectRoot, modelId, history, chatMode)
+      return startAgentTurn(
+        projectRoot,
+        modelId,
+        history,
+        chatMode,
+        assigneeUserId,
+        roleWorkflowInvoke === true,
+      )
     },
   )
 

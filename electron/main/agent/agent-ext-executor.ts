@@ -28,6 +28,7 @@ import { getConfig } from '../config-store'
 import { ALL_AGENT_TOOL_NAMES } from './agent-types'
 import { buildExtendedAgentTools } from './agent-tool-prompts-ext'
 import { buildCoreAgentTools } from './agent-tool-prompts'
+import { executeCodeGraphAgentTool, isCodeGraphAgentTool } from './agent-codegraph'
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
@@ -276,6 +277,20 @@ export const executeExtendedAgentTool = async (
     return immediate(name, 'LSP', res.text, res.ok)
   }
 
+  if (isCodeGraphAgentTool(name)) {
+    const cfg = await getConfig()
+    if (cfg.agentFeatureCodeGraph === false) {
+      return immediate(
+        name,
+        name,
+        'Error: CodeGraph tools disabled. Enable agentFeatureCodeGraph in config.',
+        false,
+      )
+    }
+    const res = await executeCodeGraphAgentTool(ctx.projectRoot, name, args as Record<string, unknown>)
+    return immediate(name, name, res.text, res.ok)
+  }
+
   if (name === 'EnterWorktree') {
     const cfg = await getConfig()
     if (!cfg.agentFeatureWorktree) {
@@ -352,7 +367,16 @@ export const getSessionActiveTools = (
       (n) =>
         !revealed.has(n) &&
         buildExtendedAgentTools().some((t) => t.name === n) &&
-        !['TodoWrite', 'EnterPlanMode', 'ExitPlanMode', 'ToolSearch', 'DiscoverSkills'].includes(n),
+        ![
+          'TodoWrite',
+          'EnterPlanMode',
+          'ExitPlanMode',
+          'ToolSearch',
+          'DiscoverSkills',
+          'CodeGraphExplore',
+          'CodeGraphSearch',
+          'CodeGraphNode',
+        ].includes(n),
     ),
   )
   return allTools.filter((t) => !hidden.has(t.name))

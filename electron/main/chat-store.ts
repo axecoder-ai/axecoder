@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import fs from 'node:fs/promises'
+import path from 'node:path'
 import {
   ensureProjectSessionsDir,
   normalizeProjectRoot,
@@ -35,7 +36,8 @@ export type ChatSession = ChatSessionMeta & {
 type StoreResult = { ok: true } | { ok: false; error: string }
 
 const writeFileAtomic = async (filePath: string, content: string) => {
-  const tmp = `${filePath}.tmp.${process.pid}`
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
   await fs.writeFile(tmp, content, 'utf-8')
   await fs.rename(tmp, filePath)
 }

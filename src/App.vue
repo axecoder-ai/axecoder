@@ -482,17 +482,6 @@ const onNewAgentSession = async () => {
   await agentsPanelRef.value?.load()
 }
 
-const onNewWorkshopSession = async () => {
-  aiPanelVisible.value = true
-  await nextTick()
-  await chatPaneRef.value?.loadWorkshop?.()
-  await chatPaneRef.value?.newWorkshop()
-  activeChatSessionId.value = chatPaneRef.value?.workshopActiveId ?? ''
-  activeSessionKind.value = chatPaneRef.value?.activeTabKind ?? 'workshop'
-  await chatPaneRef.value?.loadWorkshopUsers()
-  await agentsPanelRef.value?.load()
-}
-
 const onSelectSession = async (payload: { id: string; kind: SessionKind }) => {
   aiPanelVisible.value = true
   activeSessionKind.value = payload.kind
@@ -716,7 +705,6 @@ onUnmounted(() => {
             :active-session-kind="activeSessionKind"
             @toggle="toggleAgentsSidebar"
             @new-session="onNewAgentSession"
-            @new-workshop="onNewWorkshopSession"
             @select-session="onSelectSession"
             @delete-session="onDeleteSession"
           />
@@ -733,6 +721,7 @@ onUnmounted(() => {
       :col="cursorCol"
       :language="statusLanguage"
       :project-name="projectName"
+      :project-root="projectRoot"
       :save-status="saveStatus"
     />
     <SettingsModal

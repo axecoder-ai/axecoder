@@ -23,9 +23,9 @@ const skillSlugs = ref<string[]>([])
 const availableSkills = ref<AvailableSkillItem[]>([])
 const skillsLoading = ref(false)
 
-const isBuiltinManager = computed(
-  () => Boolean(props.editing?.isBuiltin && props.editing?.builtinRole === 'manager'),
-)
+const isBuiltinUser = computed(() => Boolean(props.editing?.isBuiltin && props.editing?.builtinRole))
+
+const builtinCommandSlugs = computed(() => props.editing?.skillSlugs ?? [])
 
 const avatarFallback = computed(() => {
   const n = displayName.value.trim()
@@ -150,9 +150,9 @@ const onBackdropMouseup = (e: MouseEvent) => {
           v-model="role"
           type="text"
           placeholder="e.g. Backend engineer"
-          :disabled="isBuiltinManager"
+          :disabled="isBuiltinUser"
         />
-        <span v-if="isBuiltinManager" class="hint">Built-in tech lead role cannot be changed</span>
+        <span v-if="isBuiltinUser" class="hint">Built-in role title cannot be changed</span>
       </label>
       <label class="row">
         Expertise
@@ -160,28 +160,37 @@ const onBackdropMouseup = (e: MouseEvent) => {
           v-model="expertise"
           rows="2"
           placeholder="e.g. API design, performance"
-          :disabled="isBuiltinManager"
+          :disabled="isBuiltinUser"
         />
-        <span v-if="isBuiltinManager" class="hint">Built-in tech lead expertise cannot be changed</span>
+        <span v-if="isBuiltinUser" class="hint">Built-in expertise cannot be changed</span>
       </label>
       <div class="row skills-row">
         <span>Skills / Commands</span>
-        <p class="hint">Skills/commands this user may run (injected when they speak in Workshop)</p>
-        <p v-if="skillsLoading" class="hint">Loading…</p>
-        <ul v-else-if="availableSkills.length" class="skill-list">
-          <li v-for="item in availableSkills" :key="item.slug">
-            <label class="skill-check">
-              <input
-                type="checkbox"
-                :checked="isSkillChecked(item.slug)"
-                @change="toggleSkill(item.slug)"
-              />
-              <span class="skill-name">{{ item.slug }}</span>
-              <span class="skill-meta">{{ item.kind === 'skill' ? 'Skill' : 'Command' }} · {{ item.source }}</span>
-            </label>
-          </li>
-        </ul>
-        <p v-else class="hint">No skills or commands found. Add under ~/.cursor/skills, ~/.axecoder/commands, or project .axecoder/commands.</p>
+        <template v-if="isBuiltinUser">
+          <p class="hint">Built-in roles have fixed workflow commands (cannot be changed)</p>
+          <ul v-if="builtinCommandSlugs.length" class="builtin-cmd-list">
+            <li v-for="slug in builtinCommandSlugs" :key="slug">/{{ slug }}</li>
+          </ul>
+          <p v-else class="hint">Coordination only — no bound slash commands</p>
+        </template>
+        <template v-else>
+          <p class="hint">Skills/commands this user may run (injected when they speak in Workshop)</p>
+          <p v-if="skillsLoading" class="hint">Loading…</p>
+          <ul v-else-if="availableSkills.length" class="skill-list">
+            <li v-for="item in availableSkills" :key="item.slug">
+              <label class="skill-check">
+                <input
+                  type="checkbox"
+                  :checked="isSkillChecked(item.slug)"
+                  @change="toggleSkill(item.slug)"
+                />
+                <span class="skill-name">{{ item.slug }}</span>
+                <span class="skill-meta">{{ item.kind === 'skill' ? 'Skill' : 'Command' }} · {{ item.source }}</span>
+              </label>
+            </li>
+          </ul>
+          <p v-else class="hint">No skills or commands found. Add under ~/.cursor/skills, ~/.axecoder/commands, or project .axecoder/commands.</p>
+        </template>
       </div>
       <div class="actions">
         <button type="button" class="secondary-btn" @click="emit('close')">Cancel</button>
@@ -319,6 +328,22 @@ h3 {
   margin-left: auto;
   font-size: 10px;
   color: var(--wc-text-dim);
+}
+
+.builtin-cmd-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--wc-border);
+  border-radius: 6px;
+  background: var(--wc-input-bg);
+  font-size: 12px;
+}
+
+.builtin-cmd-list li {
+  padding: 4px 0;
+  color: var(--wc-text);
+  font-family: ui-monospace, monospace;
 }
 
 .actions {

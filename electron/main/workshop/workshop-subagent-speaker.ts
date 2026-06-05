@@ -25,9 +25,9 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
   const name = input.assigneeUser?.displayName?.trim() || input.roleId
   if (input.speakMode === 'manager_chat' && input.assigneeUser) {
     return [
-      `[Collab Workshop · ${name} (${input.assigneeUser.role}) · Tech Lead codebase scan]`,
-      'Read-only: use Read, Grep, Glob, SemanticSearch on the repo. Do not write files or run shell.',
-      'Final reply: brief English notes for routing (what exists, key paths, risks) — max ~800 chars.',
+      `[Collab Workshop · ${name} (${input.assigneeUser.role}) · Tech Lead]`,
+      'Same tool capabilities as Chat Agent mode: Read, Write, Grep, Glob, CodeGraph, Bash, etc.',
+      'Inspect the codebase with tools before concluding; answer substantively for routing.',
       '',
       `[User request]\n${input.userBrief}`,
       input.priorSummary ? `[Prior discussion]\n${input.priorSummary}` : '',
@@ -38,8 +38,8 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
   if (input.speakMode === 'member' && input.assigneeUser) {
     return [
       `[Collab Workshop · ${name} (${input.assigneeUser.role}) · group message]`,
-      'Use Read, Grep, Glob, etc. on real code before delivering.',
-      'Final reply: concise English conclusion (what you did/found), then changed/touched paths (one "- path" per line).',
+      'Same tool capabilities as Chat Agent mode. Use tools on real code before delivering.',
+      'Answer the user request substantively; list changed/touched paths when applicable.',
       input.skillPromptBlock ?? '',
       '',
       `[User request]\n${input.userBrief}`,
@@ -87,8 +87,8 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
     return [
       `[Collab Workshop · ${name} (${input.assigneeUser.role}) · execute step]`,
       `[Step task] ${input.step?.title ?? ''}`,
-      'You must use Read, Grep, Glob, etc. on real code before delivering.',
-      'Final reply only: first line "Done."; then changed/touched paths (one "- path" per line). No reasoning, exploration, code blocks, or long analysis.',
+      'Same tool capabilities as Chat Agent mode. Use tools on real code before delivering.',
+      'Answer substantively; list changed/touched paths when applicable.',
       input.skillPromptBlock ?? '',
       '',
       `[User request]\n${input.userBrief}`,
@@ -98,10 +98,10 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
       .join('\n')
   }
   return [
-    `[Collab Workshop · ${name}】`,
-    'You speak in a multi-role collaboration chat. Use Read, Grep, Glob on real code before concluding.',
+    `[Collab Workshop · ${name}]`,
+    'Same tool capabilities as Chat Agent mode. Use Read, Grep, Glob, CodeGraph on real code before concluding.',
     'If the user names a path or directory, read it first; do not ask for business clarification without reading code.',
-    'When done, reply briefly in English: conclusion, files inspected, suggested follow-ups (paths allowed).',
+    'Reply with a substantive conclusion, files inspected, and suggested follow-ups.',
     '',
     `[User request]\n${input.userBrief}`,
     input.priorSummary ? `[Prior discussion]\n${input.priorSummary}` : '',

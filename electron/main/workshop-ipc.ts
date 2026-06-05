@@ -13,7 +13,7 @@ import { buildAgentRoleSpeaker } from './workshop/workshop-agent-speaker'
 import { bindWorkshopProgressWindow, emitWorkshopProgress } from './workshop/workshop-progress-emit'
 import type { WorkshopSession } from './workshop/workshop-types'
 import { getModelById } from './models-store'
-import { resolveChatImageRefs, type ChatImageRef } from './chat-attachments'
+import { resolveChatImageRefs, chatImageRefPreviewDataUrl, type ChatImageRef } from './chat-attachments'
 import type { AiChatImagePart } from './models-types'
 import {
   scriptedMemberSpeaker,
@@ -47,6 +47,7 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
     useScripted?: boolean,
     displayText?: string,
     imageRefs?: ChatImageRef[],
+    preferredAssigneeUserId?: string,
   ) => {
     let session: WorkshopSession | null = null
     if (workshopId?.trim()) {
@@ -95,8 +96,25 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
           })
         }
       },
-      displayText,
-      userImages,
+      {
+        displayText,
+        userImages,
+        userImageRefs: refs.length ? refs : undefined,
+        userImagePreviews: refs.length
+          ? (
+              await Promise.all(
+                refs.map(async (ref) => {
+                  try {
+                    return await chatImageRefPreviewDataUrl(ref)
+                  } catch {
+                    return ''
+                  }
+                }),
+              )
+            ).filter(Boolean)
+          : undefined,
+        preferredAssigneeUserId,
+      },
     )
     if (!res.ok) return res
     res.session.pendingUserImages = undefined
@@ -116,6 +134,7 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
       useScripted?: boolean,
       displayText?: string,
       imageRefs?: ChatImageRef[],
+      preferredAssigneeUserId?: string,
     ) =>
       runSend(
         typeof projectRoot === 'string' ? projectRoot : '',
@@ -125,6 +144,7 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
         useScripted,
         displayText,
         imageRefs,
+        preferredAssigneeUserId,
       ),
   )
 

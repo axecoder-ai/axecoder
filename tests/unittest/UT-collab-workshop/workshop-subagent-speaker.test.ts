@@ -28,6 +28,19 @@ describe('workshop-subagent-speaker', () => {
     expect(p).toContain('zhongzhi')
   })
 
+  it('manager_chat 与 Agent 模式同能力（非只读）', () => {
+    const p = buildRoleTaskPrompt({
+      roleId: 'manager',
+      userBrief: '库存 schema',
+      priorSummary: '',
+      speakMode: 'manager_chat',
+      assigneeUser: { id: 'u-m', displayName: 'Tech Lead', role: 'Tech Lead', isBuiltin: true, builtinRole: 'manager' },
+    })
+    expect(p).not.toMatch(/Read-only/i)
+    expect(p).toContain('Chat Agent mode')
+    expect(p).toContain('CodeGraph')
+  })
+
   it('经理报告含澄清且未读代码时 needsUser', () => {
     const r = detectNeedsUserClarification(
       'manager',

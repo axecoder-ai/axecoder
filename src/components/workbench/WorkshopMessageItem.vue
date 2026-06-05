@@ -13,6 +13,7 @@ const props = defineProps<{
   text: string
   reasoningContent?: string
   relatedFiles?: string[]
+  imagePreviews?: string[]
   messageKind?: WorkshopMessageKind
   thinking?: boolean
   streaming?: boolean
@@ -93,6 +94,9 @@ const useMarkdown = computed(
           'ws-bubble--streaming': streaming,
         }"
       >
+        <div v-if="isUser && imagePreviews?.length" class="ws-image-row">
+          <img v-for="(url, j) in imagePreviews" :key="j" :src="url" alt="" class="ws-image-thumb" />
+        </div>
         <div v-if="useMarkdown" class="ws-md" v-html="renderMarkdown(text)" />
         <template v-else>
           {{ text }}<span v-if="streaming" class="ws-cursor">▍</span>
@@ -230,6 +234,18 @@ const useMarkdown = computed(
   background: var(--wc-user-bubble-bg);
   border-color: transparent;
   color: var(--wc-user-bubble-fg);
+}
+.ws-image-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ws-image-thumb {
+  max-width: 120px;
+  max-height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
 }
 .ws-bubble--system {
   background: transparent;

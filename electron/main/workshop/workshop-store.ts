@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import path from 'node:path'
 import {
   ensureProjectWorkshopsDir,
   normalizeProjectRoot,
@@ -71,6 +72,7 @@ const runWorkshopSaveSerialized = <T>(key: string, fn: () => Promise<T>): Promis
 }
 
 const writeFileAtomic = async (filePath: string, content: string) => {
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
   const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`
   await fs.writeFile(tmp, content, 'utf-8')
   await fs.rename(tmp, filePath)

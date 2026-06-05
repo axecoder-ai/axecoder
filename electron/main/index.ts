@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron'
 import { registerFsIpc } from './fs-ipc'
+import { registerCodeGraphIpc } from './codegraph-ipc'
 import { registerMarkdownExportIpc } from './markdown-export-ipc'
 import { registerGitIpc } from './git-ipc'
 import { registerTerminalIpc } from './terminal-ipc'
@@ -281,6 +282,7 @@ app.whenReady().then(async () => {
     legacyChatPath: path.join(app.getPath('userData'), 'chat-sessions.json'),
   })
   registerFsIpc(() => win)
+  registerCodeGraphIpc(() => win)
   registerMarkdownExportIpc(() => win)
   registerGitIpc()
   registerTerminalIpc(() => win)

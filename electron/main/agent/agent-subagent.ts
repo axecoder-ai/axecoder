@@ -176,9 +176,12 @@ export const runSubAgentTask = async (
       messages,
       options?.onDelta,
       tools,
-      undefined,
+      options?.abortSignal,
       apiModelId,
     )
+    if (options?.abortSignal?.aborted) {
+      return { ok: false, error: 'Sub-agent interrupted' }
+    }
     if (!res.ok) return { ok: false, error: res.error }
 
     if (res.toolCalls.length) {
@@ -189,9 +192,15 @@ export const runSubAgentTask = async (
         toolCalls: res.toolCalls,
       })
 
+      if (options?.abortSignal?.aborted) {
+        return { ok: false, error: 'Sub-agent interrupted' }
+      }
       const toolResults = await Promise.all(
         res.toolCalls.map(async (tc) => ({ tc, run: await executeAgentTool(ctx, tc) })),
       )
+      if (options?.abortSignal?.aborted) {
+        return { ok: false, error: 'Sub-agent interrupted' }
+      }
       for (const { tc, run } of toolResults) {
         if (run.kind === 'pending') {
           pendingById.set(run.pending.id, run.pending)

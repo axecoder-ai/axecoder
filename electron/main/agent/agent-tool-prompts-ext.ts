@@ -1,6 +1,11 @@
 import type { AgentToolDef } from './agent-types'
 import { LSP_TOOL_DESCRIPTION } from './agent-lsp-prompt'
 import { LSP_OPERATIONS } from '../lsp/types'
+import {
+  CODEGRAPH_EXPLORE_DESCRIPTION,
+  CODEGRAPH_NODE_DESCRIPTION,
+  CODEGRAPH_SEARCH_DESCRIPTION,
+} from './agent-codegraph-prompt'
 
 const pad = (text: string, min = 420) => {
   let s = text.trim()
@@ -107,6 +112,24 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
     line: { type: 'number', description: 'The line number (1-based, as shown in editors)' },
     character: { type: 'number', description: 'The character offset (1-based, as shown in editors)' },
   }, ['operation', 'filePath', 'line', 'character']),
+  obj('CodeGraphExplore', CODEGRAPH_EXPLORE_DESCRIPTION, {
+    query: { type: 'string', description: 'Symbol names, file names, or terms to explore' },
+    maxFiles: { type: 'number', description: 'Max files to include source from (default 12)' },
+  }, ['query']),
+  obj('CodeGraphSearch', CODEGRAPH_SEARCH_DESCRIPTION, {
+    query: { type: 'string', description: 'Symbol name or partial name' },
+    kind: {
+      type: 'string',
+      enum: ['function', 'method', 'class', 'interface', 'type', 'variable', 'route', 'component'],
+    },
+    limit: { type: 'number', description: 'Max results (default 10)' },
+  }, ['query']),
+  obj('CodeGraphNode', CODEGRAPH_NODE_DESCRIPTION, {
+    symbol: { type: 'string', description: 'Exact or qualified symbol name' },
+    includeCode: { type: 'boolean', description: 'Include full source body (default true)' },
+    file: { type: 'string', description: 'Disambiguate overloads by file path or basename' },
+    line: { type: 'number', description: 'Disambiguate by line number' },
+  }, ['symbol']),
   obj('EnterWorktree', 'Create/use a git worktree for isolated work. Requires agentFeatureWorktree.', {
     name: { type: 'string' },
   }, []),

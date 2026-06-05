@@ -124,6 +124,9 @@ defineExpose({ reload })
           </span>
           <span class="user-meta">{{ u.role }}</span>
           <span v-if="u.expertise" class="user-expertise">{{ u.expertise }}</span>
+          <span v-if="u.isBuiltin && u.skillSlugs?.length" class="user-commands">
+            {{ u.skillSlugs.map((s) => `/${s}`).join(' · ') }}
+          </span>
         </div>
         <div class="user-actions">
           <button type="button" class="link" @click="openEdit(u)">Edit</button>
@@ -264,6 +267,14 @@ h2 {
   font-size: 12px;
   color: var(--wc-text-muted);
   margin-top: 4px;
+}
+
+.user-commands {
+  display: block;
+  font-size: 11px;
+  color: var(--wc-text-dim);
+  margin-top: 4px;
+  font-family: ui-monospace, monospace;
 }
 
 .user-actions {

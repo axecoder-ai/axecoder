@@ -31,6 +31,9 @@ export type AgentToolName =
   | 'TaskStop'
   | 'ToolSearch'
   | 'LSP'
+  | 'CodeGraphExplore'
+  | 'CodeGraphSearch'
+  | 'CodeGraphNode'
   | 'EnterWorktree'
   | 'ExitWorktree'
   | 'Sleep'
@@ -110,6 +113,7 @@ export type AgentToolLogEntry = {
 type AgentReplyMeta = {
   assistantContent?: string
   reasoningContent?: string
+  speakerUserId?: string
 }
 
 export type AgentSendResult =
@@ -185,6 +189,9 @@ export const EXTENDED_AGENT_TOOL_NAMES: AgentToolName[] = [
   'TaskStop',
   'ToolSearch',
   'LSP',
+  'CodeGraphExplore',
+  'CodeGraphSearch',
+  'CodeGraphNode',
   'EnterWorktree',
   'ExitWorktree',
   'Sleep',

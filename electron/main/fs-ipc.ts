@@ -17,6 +17,7 @@ import { getSettings, setSettings } from './settings-store'
 import { copyCompletionSoundFrom, getCompletionSoundDataUrl } from './completion-sound'
 import { copyProfileAvatarFrom } from './profile-avatar'
 import { getUserAvatarDataUrl } from './users-store'
+import { maybeAutoIndexCodeGraph } from './codegraph-ipc'
 export type FileNode = {
   name: string
   path: string
@@ -209,6 +210,7 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
     await saveLastProject(folder)
     await pushRecentProject(folder)
     const tree = await buildTree(folder)
+    void maybeAutoIndexCodeGraph(folder)
     return { rootPath: folder, tree }
   }
 

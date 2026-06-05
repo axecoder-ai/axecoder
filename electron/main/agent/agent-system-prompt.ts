@@ -9,6 +9,7 @@ import {
   resolveAgentOutputStyle,
 } from './agent-output-styles'
 import { getMcpInstructionsSection } from './agent-mcp-instructions'
+import { getCodeGraphInstructionsSection } from './agent-codegraph-prompt'
 import { getMainLocale } from '../i18n'
 import { agentLanguageForLocale } from '../../../shared/i18n'
 import { getConfig } from '../config-store'
@@ -387,6 +388,10 @@ export const buildAgentSystemPrompt = async (
   ].filter((part): part is string => part !== null && part !== '')
 
   const mcpInstructions = await getMcpInstructionsSection()
+  const codeGraphInstructions =
+    cfg.agentFeatureCodeGraph !== false
+      ? await getCodeGraphInstructionsSection(root)
+      : null
   const enabled = new Set(options.enabledToolNames ?? AGENT_TOOL_NAMES_FOR_PROMPT)
   const frcKeep = options.agentFrcKeepToolMessages ?? 8
 
@@ -400,6 +405,7 @@ export const buildAgentSystemPrompt = async (
     language,
     outputStyleSection,
     mcpInstructions,
+    codeGraphInstructions,
     getScratchpadInstructionsSection(options.scratchpadDir),
     getFunctionResultClearingSection(frcKeep),
     getAgentToolPathRulesSection(),

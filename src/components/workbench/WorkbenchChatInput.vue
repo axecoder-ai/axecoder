@@ -1,9 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
-import type { ModelEntry } from '../../types/axecoder'
+import type { ModelEntry, UserEntry } from '../../types/axecoder'
 import ModelPickerDropdown from './ModelPickerDropdown.vue'
+import RoleMentionPicker from './RoleMentionPicker.vue'
 import { isUnderProject, relativeToProject, type ChatFileRef } from '../../utils/chat-file-context'
 import type { AttachedImageView } from '../../composables/useChatAttachedImages'
+import {
+  formatRoleMentionInput,
+  hasMultipleRoleMentions,
+  parseCommittedRoleMention,
+  resolveRoleCommandSlug,
+  sanitizeRoleMentionArgs,
+  effectiveUserSkillSlugs,
+} from '../../utils/role-mention'
+import { findUserById } from '../../utils/workshop-user-bind'
 
 const props = defineProps<{
   projectRoot: string
@@ -14,6 +24,8 @@ const props = defineProps<{
   activeModelId: string
   attachedFiles: ChatFileRef[]
   attachedImages?: AttachedImageView[]
+  /** Users 列表，用于 @ 提及角色 */
+  mentionUsers?: UserEntry[]
 }>()
 
 const emit = defineEmits<{
@@ -27,26 +39,117 @@ const emit = defineEmits<{
 }>()
 
 const inputEl = ref<HTMLTextAreaElement | null>(null)
+const inputWrapEl = ref<HTMLElement | null>(null)
+const rolePickerRef = ref<InstanceType<typeof RoleMentionPicker> | null>(null)
 const dropActive = ref(false)
 
-const text = computed({
-  get: () => props.modelValue,
-  set: (v: string) => emit('update:modelValue', v),
-})
+const mentionUsers = computed(() => props.mentionUsers ?? [])
 
-const canSend = computed(
-  () =>
-    !!props.projectRoot.trim() &&
-    (!!text.value.trim() || (props.attachedImages?.length ?? 0) > 0) &&
-    !props.loading &&
-    (props.enabledModels.length > 0 || text.value.trim().startsWith('/')),
+const inputAtMention = computed(() =>
+  mentionUsers.value.length
+    ? parseCommittedRoleMention(props.modelValue, mentionUsers.value)
+    : null,
 )
+
+const inputFieldValue = computed(() =>
+  inputAtMention.value ? inputAtMention.value.args : props.modelValue,
+)
+
+const inputAtMentionUser = computed(() =>
+  inputAtMention.value
+    ? findUserById(mentionUsers.value, inputAtMention.value.userId)
+    : undefined,
+)
+
+const inputAtMentionCommandSlug = computed(() =>
+  inputAtMentionUser.value
+    ? resolveRoleCommandSlug(inputAtMentionUser.value, inputAtMention.value?.args ?? '')
+    : undefined,
+)
+
+const canSend = computed(() => {
+  const mentionHasCommand = !!(inputAtMentionUser.value && effectiveUserSkillSlugs(inputAtMentionUser.value).length)
+  const mentionReady =
+    !!inputAtMention.value &&
+    (!!inputAtMention.value.args.trim() || mentionHasCommand)
+  return (
+    !!props.projectRoot.trim() &&
+    (!!props.modelValue.trim() || (props.attachedImages?.length ?? 0) > 0) &&
+    !props.loading &&
+    (props.enabledModels.length > 0 ||
+      props.modelValue.trim().startsWith('/') ||
+      mentionReady)
+  )
+})
 
 const resizeInput = () => {
   const el = inputEl.value
   if (!el) return
   el.style.height = 'auto'
   el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+}
+
+const setInput = (val: string) => emit('update:modelValue', val)
+
+const onInputField = (e: Event) => {
+  const val = (e.target as HTMLTextAreaElement).value
+  if (inputAtMention.value) {
+    setInput(formatRoleMentionInput(inputAtMention.value.displayName, sanitizeRoleMentionArgs(val)))
+  } else {
+    setInput(val)
+  }
+  resizeInput()
+}
+
+const clearInputAtMention = () => {
+  setInput('')
+  void nextTick(() => {
+    resizeInput()
+    inputEl.value?.focus()
+  })
+}
+
+const onRolePick = (user: UserEntry) => {
+  setInput(formatRoleMentionInput(user.displayName))
+  void nextTick(() => {
+    resizeInput()
+    inputEl.value?.focus()
+  })
+}
+
+const onInputKeydown = (e: KeyboardEvent) => {
+  if (inputAtMention.value && e.key === 'Backspace') {
+    const el = inputEl.value
+    if (el && el.selectionStart === 0 && el.selectionEnd === 0 && !inputAtMention.value.args) {
+      e.preventDefault()
+      setInput(`@${inputAtMention.value.displayName}`)
+      return
+    }
+  }
+  const picker = rolePickerRef.value
+  if (!picker?.isOpen) return
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    picker.moveActive(1)
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    picker.moveActive(-1)
+  } else if (e.key === 'Tab') {
+    e.preventDefault()
+    picker.pickActive()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    setInput('')
+  }
+}
+
+const onInputEnter = () => {
+  const picker = rolePickerRef.value
+  if (picker?.isOpen) {
+    picker.pickActive()
+    return
+  }
+  onSend()
 }
 
 const addAttachedPath = (filePath: string) => {
@@ -99,11 +202,23 @@ watch(
 
 onMounted(() => resizeInput())
 
-defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
+defineExpose({
+  focus: () => inputEl.value?.focus(),
+  resizeInput,
+  getPreferredAssigneeUserId: () => inputAtMention.value?.userId,
+})
 </script>
 
 <template>
   <div class="chat-input-area">
+    <RoleMentionPicker
+      v-if="mentionUsers.length"
+      ref="rolePickerRef"
+      :input-text="modelValue"
+      :users="mentionUsers"
+      :anchor-el="inputWrapEl"
+      @select="onRolePick"
+    />
     <div
       class="input-box"
       :class="{ 'drop-active': dropActive }"
@@ -131,17 +246,38 @@ defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
           <button type="button" class="chip-remove" @click="emit('remove-image', img.ref.id)">×</button>
         </span>
       </div>
-      <textarea
-        ref="inputEl"
-        v-model="text"
-        class="chat-input"
-        rows="1"
-        :placeholder="placeholder ?? 'Plan, Build, / for commands, @ for context'"
-        :disabled="loading"
-        @input="resizeInput"
-        @keydown.enter.exact.prevent="onSend"
-        @paste="emit('paste', $event)"
-      />
+      <div
+        ref="inputWrapEl"
+        class="chat-input-wrap"
+        :class="{ 'has-mention': !!inputAtMention }"
+      >
+        <span v-if="inputAtMention" class="role-mention-chip input-mention-pill" title="Mentioned role">
+          <span class="role-mention-avatar">
+            <span>{{ inputAtMention.displayName.slice(0, 1) }}</span>
+          </span>
+          <span class="role-mention-name">@{{ inputAtMention.displayName }}</span>
+          <span v-if="inputAtMentionCommandSlug" class="role-mention-cmd"
+            >/{{ inputAtMentionCommandSlug }}</span
+          >
+          <button type="button" class="input-mention-remove" @click="clearInputAtMention">×</button>
+        </span>
+        <textarea
+          ref="inputEl"
+          class="chat-input"
+          rows="1"
+          :value="inputFieldValue"
+          :placeholder="
+            inputAtMention
+              ? 'Add task details…'
+              : (placeholder ?? 'Plan, Build, / for commands, @ for roles')
+          "
+          :disabled="loading"
+          @input="onInputField"
+          @keydown="onInputKeydown"
+          @keydown.enter.exact.prevent="onInputEnter"
+          @paste="emit('paste', $event)"
+        />
+      </div>
       <div class="chat-input-footer">
         <div class="footer-left">
           <slot name="footer-prefix" />
@@ -246,12 +382,74 @@ defineExpose({ focus: () => inputEl.value?.focus(), resizeInput })
   border-radius: 4px;
   display: block;
 }
+.chat-input-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 14px 4px;
+}
+.chat-input-wrap.has-mention {
+  padding-top: 10px;
+}
+.input-mention-pill {
+  flex-shrink: 0;
+  margin-top: 2px;
+  padding-right: 4px;
+}
+.role-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--wc-text) 6%, var(--wc-input-bg));
+  border: 1px solid var(--wc-border);
+}
+.role-mention-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--wc-muted-surface);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--wc-text-muted);
+}
+.role-mention-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wc-text);
+}
+.role-mention-cmd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #c9922e;
+}
+.input-mention-remove {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--wc-text-muted);
+}
+.input-mention-remove:hover {
+  background: rgba(74, 158, 255, 0.2);
+  color: var(--wc-text);
+}
 .chat-input {
-  width: 100%;
+  flex: 1;
+  min-width: 120px;
   min-height: 44px;
   max-height: 200px;
   resize: none;
-  padding: 12px 14px 4px;
+  padding: 0;
   background: transparent;
   font-size: 13px;
   line-height: 1.5;

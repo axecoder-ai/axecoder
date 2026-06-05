@@ -1,3 +1,4 @@
+import { buildWorkflowSendPrompt, loadWorkflowSlugPrompt } from '../utils/role-workflow-send'
 import type { SlashCommandDef } from './types'
 
 const WORKFLOW_COMMANDS: { name: string; description: string }[] = [
@@ -18,13 +19,10 @@ export const registerWorkflowBuiltinCommands = (): SlashCommandDef[] =>
   WORKFLOW_COMMANDS.map(({ name, description }) => ({
     name,
     description,
-    run: async (_ctx, args) => {
-      const loaded = await window.axecoder.agentLoadBuiltinCommand(name)
+    run: async (ctx, args) => {
+      const loaded = await loadWorkflowSlugPrompt(ctx.projectRoot, name)
       if (!loaded.ok) return { ok: false, message: loaded.error ?? 'Failed to load command' }
-      const userPart = args.trim()
-      const sendPrompt = userPart
-        ? `${loaded.text}\n\n---\n\nUser notes:\n${userPart}`
-        : loaded.text
+      const sendPrompt = buildWorkflowSendPrompt(loaded.text, args.trim())
       return {
         ok: true,
         message: `Ran /${name}`,

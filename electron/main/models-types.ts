@@ -49,6 +49,8 @@ export type AppConfig = {
   agentFeatureWebSearch?: boolean
   agentWebSearchApiKey?: string
   agentFeatureLsp?: boolean
+  /** 内置 CodeGraph 代码知识图谱（tree-sitter + SQLite） */
+  agentFeatureCodeGraph?: boolean
   agentFeatureWorktree?: boolean
   agentFeatureSleep?: boolean
   agentFeatureBrief?: boolean

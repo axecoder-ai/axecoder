@@ -1,4 +1,11 @@
-export type BuiltinUserRole = 'manager'
+export type BuiltinUserRole =
+  | 'manager'
+  | 'product_analyst'
+  | 'researcher'
+  | 'architect'
+  | 'planner'
+  | 'developer'
+  | 'reviewer'
 
 export type UserEntry = {
   id: string

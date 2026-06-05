@@ -11,11 +11,13 @@ import type {
   ChatSessionMeta,
   ModelEntry,
   ModelsFile,
+  UserEntry,
   WorkshopSessionMeta,
 } from '../../types/axecoder'
 import ModelPickerDropdown from './ModelPickerDropdown.vue'
 import ChatModePickerDropdown from './ChatModePickerDropdown.vue'
 import SlashCommandPicker from './SlashCommandPicker.vue'
+import RoleMentionPicker from './RoleMentionPicker.vue'
 import ChatDiffCard from './ChatDiffCard.vue'
 import ChatAskUserCard from './ChatAskUserCard.vue'
 import ChatBashCard from './ChatBashCard.vue'
@@ -29,6 +31,19 @@ import {
 import { runSlashCommand } from '../../slash-commands/run'
 import { refreshSlashCommandRegistry, findCommand } from '../../slash-commands/registry'
 import type { SlashContext } from '../../slash-commands/types'
+import { findUserById } from '../../utils/workshop-user-bind'
+import {
+  effectiveUserSkillSlugs,
+  formatRoleMentionInput,
+  parseCommittedRoleMention,
+  resolveRoleCommandSlug,
+  sanitizeRoleMentionArgs,
+  stripRoleCommandPrefix,
+} from '../../utils/role-mention'
+import {
+  prepareRoleWorkflowSendPlan,
+  validateRoleMentionText,
+} from '../../utils/role-workflow-send'
 import { playAgentCompletionSound } from '../../utils/play-completion-sound'
 import SwitchToggle from './SwitchToggle.vue'
 import WorkshopChatSection from './WorkshopChatSection.vue'
@@ -94,6 +109,10 @@ const isMultiAgentInAgentChat = computed(
 const showWorkshopPanel = computed(
   () => isWorkshopMode.value || isMultiAgentInAgentChat.value,
 )
+const showAgentComposer = computed(
+  () => hasProject.value && (!showWorkshopPanel.value || isMultiAgentInAgentChat.value),
+)
+const workshopLoading = computed(() => !!workshopSectionRef.value?.loading)
 
 const wsMetas = ref<WorkshopSessionMeta[]>([])
 const wsTitleById = ref<Record<string, string>>({})
@@ -317,6 +336,9 @@ const input = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const inputBoxEl = ref<HTMLElement | null>(null)
 const slashPickerRef = ref<InstanceType<typeof SlashCommandPicker> | null>(null)
+const rolePickerRef = ref<InstanceType<typeof RoleMentionPicker> | null>(null)
+const mentionUsers = ref<UserEntry[]>([])
+const roleAvatarUrls = ref<Record<string, string>>({})
 const messagesEl = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const modelsFile = ref<ModelsFile>({ schemaVersion: 1, activeModelId: '', models: [] })
@@ -336,6 +358,7 @@ const includeContextFile = ref(false)
 const dropActive = ref(false)
 const pendingBusy = ref(false)
 const progressSteps = ref<AgentProgressStep[]>([])
+const pendingAssigneeUserId = ref('')
 type SubagentTaskView = {
   id: string
   description: string
@@ -381,7 +404,17 @@ const sendAgent = (
   projectRoot: string,
   modelId: string,
   apiMessages: import('../../types/axecoder').AiChatMessage[],
-) => window.axecoder.agentSend(projectRoot, modelId, apiMessages, chatModeId.value)
+  assigneeUserId?: string,
+  roleWorkflowInvoke?: boolean,
+) =>
+  window.axecoder.agentSend(
+    projectRoot,
+    modelId,
+    apiMessages,
+    chatModeId.value,
+    assigneeUserId,
+    roleWorkflowInvoke,
+  )
 
 const messages = computed(() => activeSession.value?.messages ?? [])
 const hasProject = computed(() => !!props.projectRoot.trim())
@@ -453,6 +486,9 @@ const persist = async (opts?: { skipTitleSuggest?: boolean }) => {
       ...(m.slashOnly ? { slashOnly: true } : {}),
       ...(m.assistantContent !== undefined ? { assistantContent: m.assistantContent } : {}),
       ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
+      ...(m.speakerUserId ? { speakerUserId: m.speakerUserId } : {}),
+      ...(m.roleMentionUserId ? { roleMentionUserId: m.roleMentionUserId } : {}),
+      ...(m.roleMentionCommand ? { roleMentionCommand: m.roleMentionCommand } : {}),
     })),
   })
   if (!res.ok) return
@@ -491,17 +527,97 @@ const inputSlash = computed(() => {
   return { name: cmd.name, args: t.slice(sp + 1) }
 })
 
-const inputFieldValue = computed(() => (inputSlash.value ? inputSlash.value.args : input.value))
+const inputAtMention = computed(() => {
+  if (inputSlash.value || !showAgentComposer.value) return null
+  return parseCommittedRoleMention(input.value, mentionUsers.value)
+})
+
+const inputAtMentionUser = computed(() =>
+  inputAtMention.value
+    ? findUserById(mentionUsers.value, inputAtMention.value.userId)
+    : undefined,
+)
+
+const inputAtMentionCommandSlug = computed(() =>
+  inputAtMentionUser.value
+    ? resolveRoleCommandSlug(inputAtMentionUser.value, inputAtMention.value?.args ?? '')
+    : undefined,
+)
+
+const inputFieldValue = computed(() => {
+  if (inputSlash.value) return inputSlash.value.args
+  if (inputAtMention.value) return inputAtMention.value.args
+  return input.value
+})
 
 const onInputField = (e: Event) => {
   const val = (e.target as HTMLTextAreaElement).value
   if (inputSlash.value) {
     input.value = `/${inputSlash.value.name} ${val}`
+  } else if (inputAtMention.value) {
+    input.value = formatRoleMentionInput(
+      inputAtMention.value.displayName,
+      sanitizeRoleMentionArgs(val),
+    )
   } else {
     input.value = val
   }
   resizeInput()
 }
+
+const clearInputAtMention = () => {
+  input.value = ''
+  void nextTick(() => {
+    resizeInput()
+    inputEl.value?.focus()
+  })
+}
+
+const onRolePick = (user: UserEntry) => {
+  input.value = formatRoleMentionInput(user.displayName)
+  void nextTick(() => {
+    resizeInput()
+    inputEl.value?.focus()
+  })
+}
+
+const loadMentionUsers = async () => {
+  const data = await window.axecoder.listUsers()
+  mentionUsers.value = data.users
+  const next: Record<string, string> = {}
+  for (const u of data.users) {
+    if (!u.avatarPath) continue
+    const res = await window.axecoder.getUserAvatarDataUrl(u.avatarPath)
+    if (res.ok && res.dataUrl) next[u.id] = res.dataUrl
+  }
+  roleAvatarUrls.value = next
+}
+
+const speakerUser = (userId?: string) =>
+  userId ? findUserById(mentionUsers.value, userId) : undefined
+
+type RoleMentionDisplay = { userId: string; name: string; body: string; command?: string }
+
+const roleMentionDisplay = (msg: ChatMessage): RoleMentionDisplay | null => {
+  const mention = parseCommittedRoleMention(msg.text, mentionUsers.value)
+  const userId = msg.roleMentionUserId ?? mention?.userId
+  if (!userId && !mention) return null
+  const u = userId ? speakerUser(userId) : undefined
+  const name = u?.displayName ?? mention?.displayName ?? ''
+  if (!name) return null
+  let body = mention?.args ?? ''
+  const command = msg.roleMentionCommand
+  if (command && u) body = stripRoleCommandPrefix(body, command, effectiveUserSkillSlugs(u))
+  return { userId: userId ?? mention!.userId, name, body, command }
+}
+
+const userBubbleRoleMentionMinimal = (msg: ChatMessage) => {
+  const d = roleMentionDisplay(msg)
+  return !!(d && !d.body)
+}
+
+const assigneeFromUserMessage = (msg: ChatMessage) =>
+  msg.roleMentionUserId ?? parseCommittedRoleMention(msg.text, mentionUsers.value)?.userId
 
 const clearInputSlash = () => {
   input.value = ''
@@ -788,8 +904,9 @@ const unbindAgentProgress = () => {
   progressUnsub = null
 }
 
-const bindAgentProgress = (initialSessionId?: string) => {
+const bindAgentProgress = (initialSessionId?: string, assigneeUserId?: string) => {
   unbindAgentProgress()
+  if (assigneeUserId) setPendingAssignee(assigneeUserId)
   progressSteps.value = []
   streamText.value = ''
   runningAgentSessionId.value = initialSessionId ?? ''
@@ -827,7 +944,17 @@ const clearProgressUi = () => {
   streamText.value = ''
   subagentTasks.value = new Map()
   runningAgentSessionId.value = ''
+  pendingAssigneeUserId.value = ''
 }
+
+const setPendingAssignee = (userId?: string) => {
+  pendingAssigneeUserId.value = userId?.trim() ?? ''
+}
+
+const progressAssigneeUser = computed(() => {
+  const id = pendingAssigneeUserId.value
+  return id ? speakerUser(id) : undefined
+})
 
 const showAgentStop = computed(
   () =>
@@ -860,11 +987,13 @@ const pushAssistantFromAgent = (res: AgentSendResult | AgentContinueResult) => {
     return
   }
   const suffix = formatToolLog(res.toolLog)
+  const speakerUserId = res.speakerUserId
   if (res.status === 'done') {
     activeSession.value.messages.push({
       role: 'assistant',
       text: (res.assistantText + suffix).trim() || '(done)',
       toolLog: res.toolLog,
+      ...(speakerUserId ? { speakerUserId } : {}),
       ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
       ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
     })
@@ -880,6 +1009,7 @@ const pushAssistantFromAgent = (res: AgentSendResult | AgentContinueResult) => {
     pendingBashes: res.pendingBashes,
     pendingAsks: res.pendingAsks,
     agentSessionId: res.sessionId,
+    ...(speakerUserId ? { speakerUserId } : {}),
     ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
     ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
   })
@@ -899,6 +1029,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     msg.pendingBashes = res.pendingBashes
     msg.pendingAsks = res.pendingAsks
     msg.agentSessionId = res.sessionId
+    if (res.speakerUserId) msg.speakerUserId = res.speakerUserId
     if (res.assistantText.trim()) msg.text = res.assistantText + suffix
     else msg.text += suffix
   } else {
@@ -914,7 +1045,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
 const onConfirmPending = async (msg: ChatMessage, pendingId: string) => {
   if (!msg.agentSessionId || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId)
+  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentConfirmWrite(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
@@ -929,7 +1060,7 @@ const onConfirmPending = async (msg: ChatMessage, pendingId: string) => {
 const onRejectPending = async (msg: ChatMessage, pendingId: string) => {
   if (!msg.agentSessionId || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId)
+  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentRejectWrite(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
@@ -944,7 +1075,7 @@ const onRejectPending = async (msg: ChatMessage, pendingId: string) => {
 const onConfirmBashPending = async (msg: ChatMessage, pendingId: string) => {
   if (!msg.agentSessionId || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId)
+  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentConfirmBash(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
@@ -959,7 +1090,7 @@ const onConfirmBashPending = async (msg: ChatMessage, pendingId: string) => {
 const onRejectBashPending = async (msg: ChatMessage, pendingId: string) => {
   if (!msg.agentSessionId || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId)
+  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentRejectBash(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
@@ -978,7 +1109,7 @@ const onAnswerPending = async (
 ) => {
   if (!msg.agentSessionId || pendingBusy.value) return
   pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId)
+  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentAnswerQuestions(
       msg.agentSessionId,
@@ -1167,7 +1298,69 @@ const ensureChatSession = async (): Promise<boolean> => {
 }
 
 const send = async () => {
-  if (isMultiAgentInAgentChat.value) return
+  if (isMultiAgentInAgentChat.value) {
+    const text = input.value.trim()
+    const imageRefs = imageRefsForPersist()
+    const hasPendingImages = imageRefs.length > 0
+    if (!hasProject.value || (!text && !hasPendingImages)) return
+    if (loading.value || workshopLoading.value) return
+    if (!(await ensureChatSession())) return
+    const modelId = modelsFile.value.activeModelId
+    if (!modelId) {
+      if (!(await ensureChatSession())) return
+      activeSession.value!.messages.push({
+        role: 'assistant',
+        text: 'Add and enable a model in Settings before chatting.',
+      })
+      await persist()
+      return
+    }
+    const filePaths = sendFilePaths.value.length ? [...sendFilePaths.value] : undefined
+    const mentionPlan = await prepareRoleWorkflowSendPlan(text, mentionUsers.value, props.projectRoot)
+    if (mentionPlan.kind === 'error') {
+      activeSession.value!.messages.push({
+        role: 'assistant',
+        text: mentionPlan.message,
+      })
+      activeSession.value!.updatedAt = Date.now()
+      await persist()
+      return
+    }
+    const mention = parseCommittedRoleMention(text, mentionUsers.value)
+    let apiText = mention?.args.trim() || text
+    const displayText = text || '(image)'
+    if (mentionPlan.kind === 'workflow') apiText = mentionPlan.prompt
+    const plainImageRefs = imageRefs.length
+      ? (JSON.parse(JSON.stringify(imageRefs)) as import('../../types/axecoder').ChatImageRef[])
+      : undefined
+    const imagePreviews = attachedImages.value.map((x: AttachedImageView) => x.previewUrl)
+    input.value = ''
+    attachedFiles.value = []
+    clearAttachedImages()
+    includeContextFile.value = false
+    await nextTick()
+    resizeInput()
+    const res = await workshopSectionRef.value?.sendWithPayload({
+      text: apiText || displayText,
+      apiText,
+      displayText,
+      filePaths,
+      imageRefs: plainImageRefs,
+      imagePreviews: imagePreviews.length ? imagePreviews : undefined,
+      modelId,
+    })
+    if (res && !res.ok) {
+      if (activeSession.value) {
+        activeSession.value.messages.push({
+          role: 'assistant',
+          text: `协作请求失败：${res.error}`,
+        })
+        activeSession.value.updatedAt = Date.now()
+        await persist()
+      }
+    }
+    return
+  }
   const text = input.value.trim()
   const hasPendingImages = attachedImages.value.length > 0
   if (!hasProject.value || (!text && !hasPendingImages)) return
@@ -1292,6 +1485,15 @@ const send = async () => {
   }
 
   if (loading.value) return
+  const mentionValidation = validateRoleMentionText(text, mentionUsers.value)
+  if (!mentionValidation.ok) {
+    activeSession.value!.messages.push({
+      role: 'assistant',
+      text: mentionValidation.error,
+    })
+    await persist()
+    return
+  }
   const modelId = modelsFile.value.activeModelId
   const model = activeModel.value
   if (!modelId || !model) {
@@ -1304,11 +1506,30 @@ const send = async () => {
   }
   const imageRefs = imageRefsForPersist()
   const imagePreviews = attachedImages.value.map((x: AttachedImageView) => x.previewUrl)
+  const mention = parseCommittedRoleMention(text, mentionUsers.value)
+  let apiText = mention?.args.trim() || text
   const filePaths = sendFilePaths.value.length ? [...sendFilePaths.value] : undefined
   const displayText = text || '(image)'
+  let roleMentionUserId: string | undefined
+  let roleMentionCommand: string | undefined
+
+  const mentionPlan = await prepareRoleWorkflowSendPlan(text, mentionUsers.value, props.projectRoot)
+  if (mentionPlan.kind === 'error') {
+    activeSession.value!.messages.push({ role: 'assistant', text: mentionPlan.message })
+    activeSession.value!.updatedAt = Date.now()
+    await persist()
+    return
+  }
+  if (mention) {
+    roleMentionUserId = mention.userId
+    if (mentionPlan.kind === 'workflow') {
+      apiText = mentionPlan.prompt
+      roleMentionCommand = mentionPlan.slug
+    }
+  }
 
   loading.value = true
-  if (agentMode.value) bindAgentProgress()
+  if (agentMode.value) bindAgentProgress(undefined, roleMentionUserId ?? mention?.userId)
   else startIdleHintTimer()
   try {
     const plainImageRefs = imageRefs.length
@@ -1322,6 +1543,9 @@ const send = async () => {
       text: displayText,
       ...(filePaths ? { filePaths } : {}),
       ...(plainImageRefs.length ? { imageRefs: plainImageRefs, imagePreviews } : {}),
+      ...(roleMentionUserId ? { roleMentionUserId } : {}),
+      ...(roleMentionCommand ? { roleMentionCommand } : {}),
+      ...(roleMentionCommand ? { slashOnly: true } : {}),
     }
     activeSession.value!.messages.push(userMsg)
     attachedFiles.value = []
@@ -1339,15 +1563,22 @@ const send = async () => {
     if (filePaths?.length) {
       userMsg.apiContent = await window.axecoder.expandChatUserWithFiles(
         props.projectRoot,
-        text,
+        apiText || displayText,
         filePaths,
       )
+    } else if (roleMentionCommand || (apiText && apiText !== displayText)) {
+      userMsg.apiContent = apiText
     }
     await persist()
-    const historyMsgs = activeSession.value!.messages.slice(0, -1)
-    const apiMessages = await buildApiMessages([...historyMsgs, userMsg])
+    const apiMessages = await buildApiMessages(activeSession.value!.messages)
     if (agentMode.value) {
-      const res = await sendAgent(props.projectRoot, modelId, apiMessages)
+      const res = await sendAgent(
+        props.projectRoot,
+        modelId,
+        apiMessages,
+        roleMentionUserId ?? mention?.userId,
+        !!roleMentionCommand,
+      )
       pushAssistantFromAgent(res)
     } else {
       await runPlainChat(model, modelId, apiMessages)
@@ -1368,11 +1599,17 @@ const canSend = computed(() => {
   const text = input.value.trim()
   const slash = text.startsWith('/')
   const hasImages = attachedImages.value.length > 0
+  const mentionUser = inputAtMentionUser.value
+  const mentionHasCommand = !!(mentionUser && effectiveUserSkillSlugs(mentionUser).length)
+  const mentionReady =
+    !!inputAtMention.value &&
+    (!!inputAtMention.value.args.trim() || mentionHasCommand)
   return (
     hasProject.value &&
     (!!text || hasImages) &&
     !loading.value &&
-    (enabledModels.value.length > 0 || slash)
+    !workshopLoading.value &&
+    (enabledModels.value.length > 0 || slash || mentionReady || (inputAtMention.value && hasImages))
   )
 })
 
@@ -1418,8 +1655,14 @@ const regenerateLastReply = async () => {
   else startIdleHintTimer()
   try {
     const apiMessages = await buildApiMessages(msgs.slice(0, userIdx + 1))
+    const userMsg = msgs[userIdx]
     if (agentMode.value) {
-      const res = await sendAgent(props.projectRoot, modelId, apiMessages)
+      const res = await sendAgent(
+        props.projectRoot,
+        modelId,
+        apiMessages,
+        userMsg ? assigneeFromUserMessage(userMsg) : undefined,
+      )
       pushAssistantFromAgent(res)
     } else {
       await runPlainChat(model, modelId, apiMessages)
@@ -1450,6 +1693,19 @@ const onSlashPick = (name: string) => {
 }
 
 const onInputKeydown = (e: KeyboardEvent) => {
+  if (inputAtMention.value && e.key === 'Backspace') {
+    const el = inputEl.value
+    if (
+      el &&
+      el.selectionStart === 0 &&
+      el.selectionEnd === 0 &&
+      !inputAtMention.value.args
+    ) {
+      e.preventDefault()
+      input.value = `@${inputAtMention.value.displayName}`
+      return
+    }
+  }
   if (inputSlash.value && e.key === 'Backspace') {
     const el = inputEl.value
     if (
@@ -1463,27 +1719,50 @@ const onInputKeydown = (e: KeyboardEvent) => {
       return
     }
   }
-  const picker = slashPickerRef.value
-  if (!picker?.isOpen) return
-  if (e.key === 'ArrowDown') {
-    e.preventDefault()
-    picker.moveActive(1)
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    picker.moveActive(-1)
-  } else if (e.key === 'Tab') {
-    e.preventDefault()
-    picker.pickActive()
-  } else if (e.key === 'Escape') {
-    e.preventDefault()
-    input.value = ''
+  const slashPicker = slashPickerRef.value
+  if (slashPicker?.isOpen) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      slashPicker.moveActive(1)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      slashPicker.moveActive(-1)
+    } else if (e.key === 'Tab') {
+      e.preventDefault()
+      slashPicker.pickActive()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      input.value = ''
+    }
+    return
+  }
+  const rolePicker = rolePickerRef.value
+  if (rolePicker?.isOpen) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      rolePicker.moveActive(1)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      rolePicker.moveActive(-1)
+    } else if (e.key === 'Tab') {
+      e.preventDefault()
+      rolePicker.pickActive()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      input.value = ''
+    }
   }
 }
 
 const onInputEnter = () => {
-  const picker = slashPickerRef.value
-  if (picker?.isOpen) {
-    picker.pickActive()
+  const rolePicker = rolePickerRef.value
+  if (rolePicker?.isOpen) {
+    rolePicker.pickActive()
+    return
+  }
+  const slashPicker = slashPickerRef.value
+  if (slashPicker?.isOpen) {
+    slashPicker.pickActive()
     return
   }
   if (!canSend.value) return
@@ -1501,6 +1780,7 @@ watch(
 watch(
   () => chatModeId.value,
   (mode, prev) => {
+    void loadMentionUsers()
     if (mode === 'multi-agent' && prev !== 'multi-agent') void syncMultiAgentWorkshop()
   },
 )
@@ -1524,8 +1804,12 @@ onMounted(async () => {
   void loadModels()
   await load()
   void loadWsMetas()
-  if (chatModeId.value === 'multi-agent') await syncMultiAgentWorkshop()
+  if (chatModeId.value === 'multi-agent') {
+    await syncMultiAgentWorkshop()
+    await loadMentionUsers()
+  }
   void refreshSlashCommandRegistry(props.projectRoot ?? '')
+  void loadMentionUsers()
 })
 
 watch(
@@ -1700,7 +1984,7 @@ defineExpose({
             <div class="user-message-meta">
               <span class="user-message-nickname">{{ profileNickname }}</span>
             </div>
-            <div class="user-bubble" :class="{ 'user-bubble--slash': userBubbleSlashMinimal(msg) }">
+            <div class="user-bubble" :class="{ 'user-bubble--slash': userBubbleSlashMinimal(msg) || userBubbleRoleMentionMinimal(msg) }">
               <div v-if="msg.filePaths?.length" class="msg-file-tags">
                 <span v-for="fp in msg.filePaths" :key="fp" class="msg-file-tag" :title="fp">
                   {{ relativeToProject(projectRoot, fp) }}
@@ -1722,6 +2006,27 @@ defineExpose({
                 </div>
                 <span v-else class="slash-cmd-tag">{{ slashMessageParts(msg)!.invoke }}</span>
               </template>
+              <template v-else-if="roleMentionDisplay(msg)">
+                <div class="role-mention-flow">
+                  <span class="role-mention-chip">
+                    <span class="role-mention-avatar">
+                      <img
+                        v-if="roleAvatarUrls[roleMentionDisplay(msg)!.userId]"
+                        :src="roleAvatarUrls[roleMentionDisplay(msg)!.userId]"
+                        alt=""
+                      />
+                      <span v-else>{{ roleMentionDisplay(msg)!.name.slice(0, 1) }}</span>
+                    </span>
+                    <span class="role-mention-name">@{{ roleMentionDisplay(msg)!.name }}</span>
+                    <span v-if="roleMentionDisplay(msg)!.command" class="role-mention-cmd"
+                      >/{{ roleMentionDisplay(msg)!.command }}</span
+                    >
+                  </span>
+                  <span v-if="roleMentionDisplay(msg)!.body" class="role-mention-body">{{
+                    roleMentionDisplay(msg)!.body
+                  }}</span>
+                </div>
+              </template>
               <template v-else-if="msg.text">{{ msg.text }}</template>
             </div>
           </div>
@@ -1733,7 +2038,7 @@ defineExpose({
         <div
           v-else-if="msg.role === 'user'"
           class="user-bubble"
-          :class="{ 'user-bubble--slash': userBubbleSlashMinimal(msg) }"
+          :class="{ 'user-bubble--slash': userBubbleSlashMinimal(msg) || userBubbleRoleMentionMinimal(msg) }"
         >
           <div v-if="msg.filePaths?.length" class="msg-file-tags">
             <span v-for="fp in msg.filePaths" :key="fp" class="msg-file-tag" :title="fp">
@@ -1756,9 +2061,44 @@ defineExpose({
             </div>
             <span v-else class="slash-cmd-tag">{{ slashMessageParts(msg)!.invoke }}</span>
           </template>
+          <template v-else-if="roleMentionDisplay(msg)">
+            <div class="role-mention-flow">
+              <span class="role-mention-chip">
+                <span class="role-mention-avatar">
+                  <img
+                    v-if="roleAvatarUrls[roleMentionDisplay(msg)!.userId]"
+                    :src="roleAvatarUrls[roleMentionDisplay(msg)!.userId]"
+                    alt=""
+                  />
+                  <span v-else>{{ roleMentionDisplay(msg)!.name.slice(0, 1) }}</span>
+                </span>
+                <span class="role-mention-name">@{{ roleMentionDisplay(msg)!.name }}</span>
+                <span v-if="roleMentionDisplay(msg)!.command" class="role-mention-cmd"
+                  >/{{ roleMentionDisplay(msg)!.command }}</span
+                >
+              </span>
+              <span v-if="roleMentionDisplay(msg)!.body" class="role-mention-body">{{
+                roleMentionDisplay(msg)!.body
+              }}</span>
+            </div>
+          </template>
           <template v-else-if="msg.text">{{ msg.text }}</template>
         </div>
         <template v-else>
+          <div v-if="msg.speakerUserId && speakerUser(msg.speakerUserId)" class="assistant-role-header">
+            <div class="assistant-role-avatar">
+              <img
+                v-if="roleAvatarUrls[msg.speakerUserId]"
+                :src="roleAvatarUrls[msg.speakerUserId]"
+                alt=""
+              />
+              <span v-else>{{ speakerUser(msg.speakerUserId)!.displayName.slice(0, 1) }}</span>
+            </div>
+            <div class="assistant-role-meta">
+              <span class="assistant-role-name">{{ speakerUser(msg.speakerUserId)!.displayName }}</span>
+              <span class="assistant-role-title">{{ speakerUser(msg.speakerUserId)!.role }}</span>
+            </div>
+          </div>
           <div
             v-if="msg.text.trim()"
             class="assistant-text"
@@ -1790,6 +2130,20 @@ defineExpose({
         </template>
       </div>
       <div v-if="showProgressBubble" class="message assistant">
+        <div v-if="progressAssigneeUser" class="assistant-role-header">
+          <div class="assistant-role-avatar">
+            <img
+              v-if="roleAvatarUrls[pendingAssigneeUserId]"
+              :src="roleAvatarUrls[pendingAssigneeUserId]"
+              alt=""
+            />
+            <span v-else>{{ progressAssigneeUser.displayName.slice(0, 1) }}</span>
+          </div>
+          <div class="assistant-role-meta">
+            <span class="assistant-role-name">{{ progressAssigneeUser.displayName }}</span>
+            <span class="assistant-role-title">{{ progressAssigneeUser.role }}</span>
+          </div>
+        </div>
         <div class="assistant-text loading-bubble agent-progress-bubble">
           <AgentProgressStream
             :steps="progressSteps"
@@ -1873,12 +2227,21 @@ defineExpose({
         </button>
       </div>
     </div>
-    <div v-if="activeSession" class="chat-input-area">
+    </div>
+    <div v-if="showAgentComposer" class="chat-input-area">
       <SlashCommandPicker
         ref="slashPickerRef"
         :input-text="input"
         :anchor-el="inputBoxEl"
         @select="onSlashPick"
+      />
+      <RoleMentionPicker
+        v-if="mentionUsers.length"
+        ref="rolePickerRef"
+        :input-text="input"
+        :users="mentionUsers"
+        :anchor-el="inputBoxEl"
+        @select="onRolePick"
       />
       <div
         ref="inputBoxEl"
@@ -1927,17 +2290,40 @@ defineExpose({
             </button>
           </span>
         </div>
-        <div class="chat-input-wrap" :class="{ 'has-slash': !!inputSlash }">
+        <div class="chat-input-wrap" :class="{ 'has-slash': !!inputSlash, 'has-mention': !!inputAtMention }">
           <span v-if="inputSlash" class="input-slash-pill" title="Slash command">
             /{{ inputSlash.name }}
             <button type="button" class="input-slash-remove" @click="clearInputSlash">×</button>
+          </span>
+          <span v-else-if="inputAtMention" class="role-mention-chip input-mention-pill" title="Mentioned role">
+            <span class="role-mention-avatar">
+              <img
+                v-if="roleAvatarUrls[inputAtMention.userId]"
+                :src="roleAvatarUrls[inputAtMention.userId]"
+                alt=""
+              />
+              <span v-else>{{ inputAtMention.displayName.slice(0, 1) }}</span>
+            </span>
+            <span class="role-mention-name">@{{ inputAtMention.displayName }}</span>
+            <span v-if="inputAtMentionCommandSlug" class="role-mention-cmd"
+              >/{{ inputAtMentionCommandSlug }}</span
+            >
+            <button type="button" class="input-mention-remove" @click="clearInputAtMention">×</button>
           </span>
           <textarea
             ref="inputEl"
             :value="inputFieldValue"
             class="chat-input"
             rows="1"
-            :placeholder="inputSlash ? 'Add details…' : 'Plan, Build, / for commands, @ for context'"
+            :placeholder="
+              inputSlash
+                ? 'Add details…'
+                : inputAtMention
+                  ? 'Add task details…'
+                  : isMultiAgentInAgentChat
+                    ? 'Plan, Build, / for commands, @ for roles'
+                    : 'Plan, Build, / for commands, @ for roles'
+            "
             @input="onInputField"
             @keydown="onInputKeydown"
             @keydown.enter.exact.prevent="onInputEnter"
@@ -2014,7 +2400,6 @@ defineExpose({
         </div>
       </div>
     </div>
-    </div>
   </section>
 </template>
 
@@ -2050,6 +2435,10 @@ defineExpose({
 .chat-pane.workshop-in-chat .workshop-chat-host {
   display: flex;
   flex-direction: column;
+}
+
+.chat-pane.workshop-in-chat .chat-input-area {
+  flex-shrink: 0;
 }
 
 .chat-pane.chat-empty .empty-hint {
@@ -2371,6 +2760,122 @@ defineExpose({
   white-space: nowrap;
 }
 
+.slash-cmd-tag.mention-tag {
+  color: var(--wc-accent, #4a9eff);
+  background: color-mix(in srgb, var(--wc-accent) 12%, var(--wc-input-bg));
+  border-color: color-mix(in srgb, var(--wc-accent) 35%, var(--wc-border));
+}
+
+.role-mention-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.role-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--wc-text) 6%, var(--wc-input-bg));
+  border: 1px solid var(--wc-border);
+  vertical-align: middle;
+  max-width: 100%;
+}
+
+.role-mention-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--wc-muted-surface);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--wc-text-muted);
+}
+
+.role-mention-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.role-mention-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wc-text);
+  line-height: 1.35;
+}
+
+.role-mention-cmd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #c9922e;
+  line-height: 1.35;
+}
+
+.role-mention-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.assistant-role-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.assistant-role-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--wc-input-bg);
+  border: 1px solid var(--wc-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wc-text-muted);
+  flex-shrink: 0;
+}
+
+.assistant-role-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.assistant-role-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.assistant-role-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wc-text);
+}
+
+.assistant-role-title {
+  font-size: 11px;
+  color: var(--wc-text-dim);
+}
+
 .assistant-text {
   font-size: 13px;
   line-height: 1.6;
@@ -2630,6 +3135,31 @@ defineExpose({
 }
 
 .input-slash-remove:hover {
+  background: color-mix(in srgb, var(--wc-accent) 20%, var(--wc-muted-surface));
+  color: var(--wc-text);
+}
+
+.input-mention-pill {
+  flex-shrink: 0;
+  margin-top: 1px;
+  padding-right: 4px;
+}
+
+.input-mention-pill .input-mention-remove {
+  margin-left: 2px;
+}
+
+.input-mention-remove {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--wc-text-muted);
+}
+
+.input-mention-remove:hover {
   background: color-mix(in srgb, var(--wc-accent) 20%, var(--wc-muted-surface));
   color: var(--wc-text);
 }

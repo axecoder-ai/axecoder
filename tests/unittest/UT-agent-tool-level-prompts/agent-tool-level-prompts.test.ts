@@ -10,7 +10,7 @@ describe('agent-tool-level-prompts', () => {
     const names = AGENT_TOOLS.map((t) => t.name).sort()
     expect(built).toEqual(names)
     expect(names).toEqual([...ALL_AGENT_TOOL_NAMES].sort())
-    expect(names.length).toBe(37)
+    expect(names.length).toBe(40)
   })
 
   it('strict：各工具 description 达到长文下限', () => {

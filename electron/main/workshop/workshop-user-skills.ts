@@ -2,13 +2,14 @@ import { discoverCustomCommands, readCustomCommandContent } from '../agent/agent
 import { loadBuiltinCommand } from '../agent/agent-builtin-commands'
 import { discoverSkills, readSkillContent } from '../agent/agent-skills'
 import type { UserEntry } from '../users-types'
+import { effectiveUserSkillSlugs } from '../../../shared/user-skill-slugs'
 import type { RoleSpeakInput } from './workshop-types'
 
 export const resolveUserSkillPromptBlock = async (
   user: UserEntry,
   projectRoot: string,
 ): Promise<string> => {
-  const slugs = (user.skillSlugs ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean)
+  const slugs = effectiveUserSkillSlugs(user)
   if (!slugs.length) return ''
   const root = projectRoot.trim()
   const parts: string[] = []
@@ -36,10 +37,27 @@ export const resolveUserSkillPromptBlock = async (
     parts.push(`### ${slug}\n${text}`)
   }
   if (!parts.length) return ''
+  const roleScope =
+    user.isBuiltin && user.builtinRole
+      ? [
+          '[Role scope]',
+          slugs.length
+            ? `This built-in role may only follow the bound workflow commands below; do not implement outside that scope.`
+            : `This built-in role coordinates the team; do not run implementation or review commands directly unless explicitly asked.`,
+          '',
+        ]
+      : slugs.length
+        ? [
+            '[Role scope]',
+            'Follow the bound workflow commands below for this role.',
+            '',
+          ]
+        : []
   return [
     '[Bound skills / commands]',
     "Guidance for this user's bound capabilities—follow first:",
     '',
+    ...roleScope,
     ...parts,
   ].join('\n')
 }
