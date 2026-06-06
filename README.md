@@ -1,198 +1,204 @@
 # AxeCoder
 
-> 代码编写桌面 IDE — Electron + Vue 3 + Monaco，内置 AI Agent 编码助手
+> Desktop IDE for coding — Electron + Vue 3 + Monaco, with a built-in AI Agent coding assistant
 
-AxeCoder 是一个跨平台的桌面代码编辑器，集成了类 Claude Code 的 AI Agent，可以通过对话让 AI 帮你读代码、写代码、执行命令、搜索文件等。AI Agent 拥有完整的工具集（读写文件、执行终端命令、网络搜索、任务管理等），并支持 MCP 协议扩展。
+AxeCoder is a cross-platform desktop code editor with a Claude Code–style AI Agent. Chat with the AI to read code, write code, run commands, search files, and more. The Agent has a full toolset (read/write files, run terminal commands, web search, task management, etc.) and supports MCP protocol extensions.
 
-## ✨ 主要特性
+## ✨ Key Features
 
-- **AI Agent 编码助手** — 支持多轮对话，Agent 可以自动使用工具完成任务，包括读写文件、执行 Shell 命令、搜索代码、管理 Todo 等
-- **Claude Code 兼容** — Agent 工具集对齐 Claude Code，支持 Read / Edit / Write / Bash / Grep / Glob / Agent 等核心工具，以及 WebSearch / WebFetch / Task 等扩展工具
-- **多模型支持** — 支持 OpenAI、Anthropic、Ollama 等多种 AI 提供商，可自由配置 API 端点和密钥
-- **子 Agent 并行** — 支持启动子 Agent 并行探索或执行任务（generalPurpose / explore / plan 三种模式）
-- **Plan Mode** — 先规划后执行，Agent 以只读模式分析代码库并制定方案，用户确认后再实施
-- **MCP 协议** — 支持 Model Context Protocol，可接入外部工具和数据源
-- **Skills & Hooks** — 支持自定义技能（Skills）和钩子函数（PreToolUse / PostToolUse / UserPromptSubmit）
-- **Slash Commands** — 内置斜杠命令，快速调用常用操作
-- **Agent Checkpoints** — 支持 Agent 操作回退，安全可恢复
-- **完善的编辑器** — 基于 Monaco Editor，支持语法高亮、Markdown 编辑与预览
-- **文件浏览器** — 侧边栏文件树，支持新建/重命名/删除文件
-- **集成终端** — 内置终端，支持在项目目录下执行命令
-- **全局搜索** — 基于 ripgrep 的全文搜索，支持在项目中快速查找
-- **命令面板** — `Cmd+Shift+P` 快速调用所有功能
-- **Git 集成** — 查看 Git 状态和差异
-- **会话管理** — 聊天会话持久化，随时切换和恢复对话上下文
-- **跨平台** — 支持 macOS 和 Windows
+- **AI Agent coding assistant** — Multi-turn conversations; the Agent automatically uses tools to complete tasks, including read/write files, run Shell commands, search code, manage Todos, and more
+- **Claude Code compatible** — Agent tools aligned with Claude Code: Read / Edit / Write / Bash / Grep / Glob / Agent, plus WebSearch / WebFetch / Task and other extensions
+- **Multi-model support** — OpenAI, Anthropic, Ollama, and other providers; freely configure API endpoints and keys
+- **Parallel sub-agents** — Launch sub-agents to explore or execute tasks in parallel (generalPurpose / explore / plan modes)
+- **Plan Mode** — Plan first, execute later; the Agent analyzes the codebase in read-only mode and proposes a plan before implementation
+- **MCP protocol** — Model Context Protocol support for external tools and data sources
+- **Skills & Hooks** — Custom Skills and hooks (PreToolUse / PostToolUse / UserPromptSubmit)
+- **Slash Commands** — Built-in slash commands for quick actions
+- **Agent Checkpoints** — Roll back Agent actions for safe recovery
+- **Full-featured editor** — Monaco Editor with syntax highlighting, Markdown editing and preview
+- **File explorer** — Sidebar file tree with create/rename/delete
+- **Integrated terminal** — Built-in terminal for running commands in the project directory
+- **Global search** — ripgrep-based full-text search across the project
+- **Command palette** — `Cmd+Shift+P` to access all features
+- **Git integration** — View Git status and diffs
+- **Session management** — Persistent chat sessions; switch and restore conversation context anytime
+- **Cross-platform** — macOS and Windows
 
-## 🏗️ 技术栈
+## 🏗️ Tech Stack
 
-| 层 | 技术 |
-|---|---|
-| 桌面框架 | Electron 29 |
-| 前端 | Vue 3 + TypeScript |
-| 构建工具 | Vite 5 + vite-plugin-electron |
-| 编辑器 | Monaco Editor |
-| AI 协议 | OpenAI / Anthropic API |
-| MCP | @modelcontextprotocol/sdk |
-| 搜索 | @vscode/ripgrep |
-| 终端 | node-pty |
-| 存储 | electron-store |
 
-## 📁 项目结构
+| Layer    | Technology                    |
+| -------- | ----------------------------- |
+| Desktop  | Electron 29                   |
+| Frontend | Vue 3 + TypeScript            |
+| Build    | Vite 5 + vite-plugin-electron |
+| Editor   | Monaco Editor                 |
+| AI       | OpenAI / Anthropic API        |
+| MCP      | @modelcontextprotocol/sdk     |
+| Search   | @vscode/ripgrep               |
+| Terminal | node-pty                      |
+| Storage  | electron-store                |
+
+
+## 📁 Project Structure
 
 ```
 AxeCoder/
-├── src/                          # 渲染进程 (Vue 3 前端)
-│   ├── App.vue                   # 主布局 (工作台)
-│   ├── main.ts                   # 入口
+├── src/                          # Renderer (Vue 3 frontend)
+│   ├── App.vue                   # Main layout (workbench)
+│   ├── main.ts                   # Entry point
 │   ├── components/
-│   │   └── workbench/            # 工作台组件
-│   │       ├── ChatPane.vue      # AI 对话面板
-│   │       ├── AgentsPanel.vue   # Agent 会话列表
-│   │       ├── EditorPane.vue    # 编辑器区域
-│   │       ├── FileExplorer.vue  # 文件浏览器
-│   │       ├── SearchPanel.vue   # 搜索面板
-│   │       ├── BottomPanel.vue   # 底部面板 (终端等)
-│   │       ├── TitleBar.vue      # 标题栏
-│   │       ├── StatusBar.vue     # 状态栏
-│   │       ├── SettingsModal.vue # 设置弹窗
-│   │       ├── SettingsPanel.vue # 设置面板
-│   │       ├── CommandPalette.vue# 命令面板
-│   │       ├── WelcomePage.vue   # 欢迎页
+│   │   └── workbench/            # Workbench components
+│   │       ├── ChatPane.vue      # AI chat panel
+│   │       ├── AgentsPanel.vue   # Agent session list
+│   │       ├── EditorPane.vue    # Editor area
+│   │       ├── FileExplorer.vue  # File explorer
+│   │       ├── SearchPanel.vue   # Search panel
+│   │       ├── BottomPanel.vue   # Bottom panel (terminal, etc.)
+│   │       ├── TitleBar.vue      # Title bar
+│   │       ├── StatusBar.vue     # Status bar
+│   │       ├── SettingsModal.vue # Settings modal
+│   │       ├── SettingsPanel.vue # Settings panel
+│   │       ├── CommandPalette.vue# Command palette
+│   │       ├── WelcomePage.vue   # Welcome page
 │   │       └── ...
-│   ├── composables/              # 组合式 API
-│   ├── utils/                    # 工具函数
-│   ├── slash-commands/           # 斜杠命令系统
-│   └── types/                    # 类型定义
-├── electron/                     # 主进程
+│   ├── composables/              # Composables
+│   ├── utils/                    # Utilities
+│   ├── slash-commands/           # Slash command system
+│   └── types/                    # Type definitions
+├── electron/                     # Main process
 │   ├── main/
-│   │   ├── index.ts              # Electron 主入口
-│   │   ├── agent/                # Agent 核心引擎
-│   │   │   ├── agent-loop.ts     # Agent 循环主逻辑
-│   │   │   ├── agent-types.ts    # Agent 类型定义 (36 种工具)
-│   │   │   ├── agent-system-prompt.ts  # 系统提示词
-│   │   │   ├── tool-executor.ts  # 工具执行器
-│   │   │   ├── agent-tool-defs.ts# 工具定义
-│   │   │   ├── agent-permissions.ts    # 权限控制
-│   │   │   ├── agent-context-compact.ts# 上下文压缩
-│   │   │   ├── agent-checkpoint.ts     # 检查点/回退
-│   │   │   ├── agent-mcp.ts      # MCP 支持
-│   │   │   ├── agent-hooks.ts    # Hooks 系统
-│   │   │   ├── agent-skills.ts   # 技能系统
-│   │   │   ├── agent-subagent.ts # 子 Agent
-│   │   │   ├── agent-ext-executor.ts    # 扩展执行
+│   │   ├── index.ts              # Electron main entry
+│   │   ├── agent/                # Agent core engine
+│   │   │   ├── agent-loop.ts     # Agent loop logic
+│   │   │   ├── agent-types.ts    # Agent types (36 tools)
+│   │   │   ├── agent-system-prompt.ts  # System prompt
+│   │   │   ├── tool-executor.ts  # Tool executor
+│   │   │   ├── agent-tool-defs.ts# Tool definitions
+│   │   │   ├── agent-permissions.ts    # Permissions
+│   │   │   ├── agent-context-compact.ts# Context compaction
+│   │   │   ├── agent-checkpoint.ts     # Checkpoints / rollback
+│   │   │   ├── agent-mcp.ts      # MCP support
+│   │   │   ├── agent-hooks.ts    # Hooks system
+│   │   │   ├── agent-skills.ts   # Skills system
+│   │   │   ├── agent-subagent.ts # Sub-agents
+│   │   │   ├── agent-ext-executor.ts    # Extended execution
 │   │   │   └── ...
-│   │   ├── ai/                   # AI 通信层
+│   │   ├── ai/                   # AI communication layer
 │   │   │   ├── providers/        # openai / anthropic / ollama
 │   │   │   ├── chat-with-tools.ts
 │   │   │   └── ...
-│   │   ├── fs-ipc.ts             # 文件系统 IPC
+│   │   ├── fs-ipc.ts             # Filesystem IPC
 │   │   ├── git-ipc.ts            # Git IPC
-│   │   ├── terminal-ipc.ts       # 终端 IPC
+│   │   ├── terminal-ipc.ts       # Terminal IPC
 │   │   ├── agent-ipc.ts          # Agent IPC
-│   │   ├── models-ipc.ts         # 模型管理 IPC
-│   │   ├── config-store.ts       # 配置存储
-│   │   └── secrets-store.ts      # 密钥存储
-│   └── preload/                  # 预加载脚本
+│   │   ├── models-ipc.ts         # Model management IPC
+│   │   ├── config-store.ts       # Config storage
+│   │   └── secrets-store.ts      # Secrets storage
+│   └── preload/                  # Preload scripts
 └── package.json
 ```
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 环境要求
+### Requirements
 
 - Node.js >= 18
-- pnpm (推荐) 或 npm
+- pnpm (recommended) or npm
 
-### 安装与运行
+### Install & Run
 
 ```bash
-# 克隆仓库
-git clone <repo-url>
+# Clone the repo
+git clone https://github.com/axecoder-ai/axecoder.git
 cd AxeCoder
 
-# 安装依赖
+# Install dependencies
 pnpm install
 
-# 启动开发模式
+# Start dev mode
 pnpm dev
 ```
 
-### 构建
+### Build
 
 ```bash
-# 类型检查 + 构建 + 打包
+# Type check + build + package
 pnpm build
 ```
 
-构建产物输出到 `release/` 目录。
+Build output goes to the `release/` directory.
 
-## 🎯 使用指南
+## 🎯 Usage
 
-### 配置 AI 模型
+### Configure AI Models
 
-1. 启动应用后，点击标题栏的模型设置按钮
-2. 添加模型配置：
-   - **OpenAI**：填写 API Endpoint + API Key + 模型名称（如 `gpt-4o`）
-   - **Anthropic**：填写 API Key + 模型名称（如 `claude-sonnet-4-20250514`）
-   - **Ollama**：填写本地 Ollama 地址 + 模型名称
-3. 保存后即可在聊天面板中选择模型
+1. After launching the app, click the model settings button in the title bar
+2. Add a model configuration:
+  - **OpenAI**: API Endpoint + API Key + model name (e.g. `gpt-4o`)
+  - **Anthropic**: API Key + model name (e.g. `claude-sonnet-4-20250514`)
+  - **Ollama**: Local Ollama URL + model name
+3. Save, then select the model in the chat panel
 
-### 使用 AI Agent
+### Use the AI Agent
 
-1. 打开一个项目文件夹（`Cmd+O`）
-2. 在右侧聊天面板中输入你的需求，例如：
-   - "帮我重构这个文件"
-   - "在项目中找到所有未使用的导入"
-   - "给这个函数写单元测试"
-3. Agent 会自动调用工具来完成任务
-4. 对于文件写入和命令执行操作，需要你确认后才会执行（也可在设置中开启自动应用）
+1. Open a project folder (`Cmd+O`)
+2. Enter your request in the chat panel on the right, for example:
+  - "Refactor this file for me"
+  - "Find all unused imports in the project"
+  - "Write unit tests for this function"
+3. The Agent will call tools automatically to complete the task
+4. File writes and command execution require your confirmation (or enable auto-apply in settings)
 
-### 快捷键
+### Keyboard Shortcuts
 
-| 快捷键 | 功能 |
-|---|---|
-| `Cmd/Ctrl + O` | 打开项目 |
-| `Cmd/Ctrl + Shift + O` | 打开文件 |
-| `Cmd/Ctrl + N` | 新建文件 |
-| `Cmd/Ctrl + S` | 保存文件 |
-| `Cmd/Ctrl + W` | 关闭标签 |
-| `Cmd/Ctrl + F` | 查找 |
-| `Cmd/Ctrl + Shift + F` | 在项目中查找 |
-| `Cmd/Ctrl + Shift + P` | 命令面板 |
-| `Cmd/Ctrl + Shift + C` | 切换 AI 面板 |
-| `Cmd/Ctrl + \`` | 切换终端 |
 
-### Agent 工具集
+| Shortcut               | Action          |
+| ---------------------- | --------------- |
+| `Cmd/Ctrl + O`         | Open project    |
+| `Cmd/Ctrl + Shift + O` | Open file       |
+| `Cmd/Ctrl + N`         | New file        |
+| `Cmd/Ctrl + S`         | Save file       |
+| `Cmd/Ctrl + W`         | Close tab       |
+| `Cmd/Ctrl + F`         | Find            |
+| `Cmd/Ctrl + Shift + F` | Find in project |
+| `Cmd/Ctrl + Shift + P` | Command palette |
+| `Cmd/Ctrl + Shift + C` | Toggle AI panel |
+| `Cmd/Ctrl + `          | Toggle terminal |
 
-Agent 拥有以下核心工具：
 
-| 工具 | 说明 |
-|---|---|
-| `Read` | 读取文件内容 |
-| `Edit` | 精确编辑文件 |
-| `Write` | 创建/覆盖文件 |
-| `Glob` | 按模式搜索文件 |
-| `Grep` | 搜索文件内容 |
-| `Delete` | 删除文件/目录 |
-| `Move` | 移动/重命名文件 |
-| `Bash` | 执行终端命令 |
-| `Agent` | 启动子 Agent |
-| `AskUserQuestion` | 向用户提问 |
+### Agent Tools
 
-扩展工具：`TodoWrite`、`Task*`、`WebFetch`、`WebSearch`、`Skill`、`MCP` 等共 36 种。
+Core tools:
 
-## ⚙️ 配置
 
-通过设置面板（`Cmd+,`）可以配置：
+| Tool              | Description              |
+| ----------------- | ------------------------ |
+| `Read`            | Read file contents       |
+| `Edit`            | Precise file edits       |
+| `Write`           | Create/overwrite files   |
+| `Glob`            | Search files by pattern  |
+| `Grep`            | Search file contents     |
+| `Delete`          | Delete files/directories |
+| `Move`            | Move/rename files        |
+| `Bash`            | Run terminal commands    |
+| `Agent`           | Launch sub-agent         |
+| `AskUserQuestion` | Ask the user a question  |
 
-- **编辑器**：字体大小、主题
-- **自动保存**：开关和延迟时间
-- **Agent 权限**：允许/禁止特定工具、自动应用写入
-- **Agent 行为**：主动提醒、上下文压缩阈值、Plan Mode
-- **输出风格**：自定义 Agent 回复风格
-- **Hooks**：启用/禁用 hooks 系统
+
+Extended tools: `TodoWrite`, `Task`*, `WebFetch`, `WebSearch`, `Skill`, `MCP`, and more — 36 tools in total.
+
+## ⚙️ Configuration
+
+Use the settings panel (`Cmd+,`) to configure:
+
+- **Editor**: Font size, theme
+- **Auto-save**: On/off and delay
+- **Agent permissions**: Allow/deny specific tools, auto-apply writes
+- **Agent behavior**: Proactive reminders, context compaction threshold, Plan Mode
+- **Output style**: Custom Agent reply style
+- **Hooks**: Enable/disable the hooks system
 
 ## 📄 License
 
-MIT License — 详见 [LICENSE](./LICENSE)
+MIT License — see [LICENSE](./LICENSE)
