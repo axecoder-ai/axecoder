@@ -54,7 +54,7 @@ describe('background bash tasks', () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'axecoder-bash-bg-'))
     const isWin = process.platform === 'win32'
     const cmd = isWin ? 'echo bg-parity' : 'echo bg-parity'
-    const started = startBackgroundBash(tmpDir, cmd, { description: 'test echo' })
+    const started = await startBackgroundBash(tmpDir, cmd, { description: 'test echo' })
     expect(started.ok).toBe(true)
     if (!started.ok) return
 

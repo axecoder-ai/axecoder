@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process'
+import { getConfig } from '../config-store'
+import { evaluateExecPolicy } from './agent-execpolicy'
+import { buildShellSpawnSpec } from './agent-sandbox'
 
 export const DEFAULT_BASH_TIMEOUT_MS = 120_000
 export const MAX_BASH_TIMEOUT_MS = 600_000
@@ -58,12 +61,19 @@ export const runAgentBash = async (
     }
   }
 
-  return new Promise((resolve) => {
-    const isWin = process.platform === 'win32'
-    const shell = isWin ? process.env.COMSPEC || 'cmd.exe' : process.env.SHELL || '/bin/sh'
-    const shellArgs = isWin ? ['/d', '/s', '/c', cmd] : ['-lc', cmd]
+  const cfg = await getConfig()
+  const sandboxOn = cfg.agentOsSandboxEnabled !== false
+  if (sandboxOn) {
+    const policy = evaluateExecPolicy(cmd)
+    if (policy.kind === 'deny') {
+      return { ok: false, error: policy.reason }
+    }
+  }
 
-    const proc = spawn(shell, shellArgs, {
+  const spawnSpec = buildShellSpawnSpec(projectRoot, cmd, { enabled: sandboxOn })
+
+  return new Promise((resolve) => {
+    const proc = spawn(spawnSpec.program, spawnSpec.args, {
       cwd: projectRoot,
       env: envOverride ? { ...process.env, ...envOverride } : process.env,
       stdio: ['ignore', 'pipe', 'pipe'],

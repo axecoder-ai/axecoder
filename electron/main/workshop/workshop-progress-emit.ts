@@ -1,12 +1,6 @@
-import type { BrowserWindow } from 'electron'
 import type { WorkshopProgressPayload } from './workshop-types'
-
-let getMainWindow: (() => BrowserWindow | null) | null = null
-
-export const bindWorkshopProgressWindow = (fn: () => BrowserWindow | null) => {
-  getMainWindow = fn
-}
+import { broadcastToRenderers } from '../renderer-broadcast'
 
 export const emitWorkshopProgress = (payload: WorkshopProgressPayload) => {
-  getMainWindow?.()?.webContents.send('workshop:progress', payload)
+  broadcastToRenderers('workshop:progress', payload)
 }

@@ -3,9 +3,11 @@ import { computed, defineAsyncComponent, ref } from 'vue'
 import MarkdownIt from 'markdown-it'
 
 const MonacoEditor = defineAsyncComponent(() => import('./MonacoEditor.vue'))
+const DocumentPreviewPane = defineAsyncComponent(() => import('./DocumentPreviewPane.vue'))
 import type { OpenFile } from '../../composables/workbench-state'
 import type { AppTheme } from '../../types/axecoder'
 import { isMarkdownPath, monacoLanguageForPath } from '../../utils/editor-language'
+import { documentPreviewKind } from '../../utils/document-preview'
 
 const props = defineProps<{
   tabs: OpenFile[]
@@ -29,6 +31,11 @@ const md = new MarkdownIt()
 const previewHtml = computed(() => md.render(props.content))
 const isMarkdown = computed(() => isMarkdownPath(props.activePath))
 const editorLanguage = computed(() => monacoLanguageForPath(props.activePath))
+const previewKind = computed(() => documentPreviewKind(props.activePath))
+const activePreviewFile = computed(() =>
+  props.tabs.find((t) => t.path === props.activePath) ?? null,
+)
+const isDocumentPreview = computed(() => previewKind.value !== null)
 
 const revealLine = (line: number, col = 1) => {
   monacoRef.value?.revealPosition(line, col)
@@ -38,12 +45,21 @@ const focusEditor = () => {
   monacoRef.value?.focus()
 }
 
+const getEditorSelection = (): string => {
+  const ed = monacoRef.value?.getEditor?.()
+  if (!ed) return ''
+  const sel = ed.getSelection()
+  const model = ed.getModel()
+  if (!sel || !model || sel.isEmpty()) return ''
+  return model.getValueInRange(sel)
+}
+
 const fileName = (p: string) => {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
   return i >= 0 ? p.slice(i + 1) : p
 }
 
-defineExpose({ revealLine, focusEditor })
+defineExpose({ revealLine, focusEditor, getEditorSelection })
 </script>
 
 <template>
@@ -90,8 +106,14 @@ defineExpose({ revealLine, focusEditor })
       </div>
     </div>
     <div class="editor-body">
+      <DocumentPreviewPane
+        v-if="activePath && isDocumentPreview && previewKind"
+        :kind="previewKind"
+        :preview-base64="activePreviewFile?.previewBase64"
+        :preview-html="activePreviewFile?.previewHtml"
+      />
       <MonacoEditor
-        v-if="activePath && (isMarkdown ? mode === 'markdown' : true)"
+        v-else-if="activePath && (isMarkdown ? mode === 'markdown' : true)"
         ref="monacoRef"
         :model-value="content"
         :language="editorLanguage"

@@ -59,6 +59,8 @@ import {
   type ChatModeId,
 } from '../../utils/chat-modes'
 import { workshopIdForAgentChat } from '../../utils/workshop-agent-link'
+import { formatAiChatRequestError, visionUnsupportedMessage } from '../../utils/ai-chat-error'
+import { visionBlockedForPendingImages } from '../../utils/chat-vision'
 
 const md = new MarkdownIt()
 
@@ -980,10 +982,16 @@ const maybePlayAgentDoneSound = (res: { ok: boolean; status: string; assistantTe
   })
 }
 
-const pushAssistantFromAgent = (res: AgentSendResult | AgentContinueResult) => {
+const pushAssistantFromAgent = (
+  res: AgentSendResult | AgentContinueResult,
+  model?: ModelEntry,
+) => {
   if (!activeSession.value) return
   if (!res.ok) {
-    activeSession.value.messages.push({ role: 'assistant', text: `Request failed: ${res.error}` })
+    activeSession.value.messages.push({
+      role: 'assistant',
+      text: formatAiChatRequestError(res.error, model),
+    })
     return
   }
   const suffix = formatToolLog(res.toolLog)
@@ -1254,7 +1262,10 @@ const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiC
       ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
     })
   } else {
-    activeSession.value!.messages.push({ role: 'assistant', text: `Request failed: ${res.error}` })
+    activeSession.value!.messages.push({
+      role: 'assistant',
+      text: formatAiChatRequestError(res.error, model),
+    })
   }
 }
 
@@ -1365,14 +1376,16 @@ const send = async () => {
   const hasPendingImages = attachedImages.value.length > 0
   if (!hasProject.value || (!text && !hasPendingImages)) return
   if (!(await ensureChatSession())) return
+  const session = activeSession.value
+  if (!session) return
 
   if (text.startsWith('!')) {
     if (loading.value || pendingBusy.value) {
-      activeSession.value.messages.push({
+      session.messages.push({
         role: 'assistant',
         text: 'Wait for the current reply to finish before running shell commands.',
       })
-      activeSession.value.updatedAt = Date.now()
+      session.updatedAt = Date.now()
       await persist()
       return
     }
@@ -1381,17 +1394,17 @@ const send = async () => {
     input.value = ''
     await nextTick()
     resizeInput()
-    activeSession.value.messages.push({ role: 'user', text })
+    session.messages.push({ role: 'user', text })
     loading.value = true
     try {
       const res = await window.axecoder.agentRunUserShell(props.projectRoot, cmd)
-      activeSession.value.messages.push({
+      session.messages.push({
         role: 'assistant',
         text: res.ok
           ? `\`\`\`\n${res.text}\n\`\`\``
           : `Command failed: ${res.error ?? 'unknown'}`,
       })
-      activeSession.value.updatedAt = Date.now()
+      session.updatedAt = Date.now()
       await persist()
     } finally {
       loading.value = false
@@ -1401,11 +1414,11 @@ const send = async () => {
 
   if (text.startsWith('/')) {
     if (loading.value || pendingBusy.value || hasPendingAgentInteraction()) {
-      activeSession.value.messages.push({
+      session.messages.push({
         role: 'assistant',
         text: 'Wait for the current reply or pending Agent confirmations before slash commands.',
       })
-      activeSession.value.updatedAt = Date.now()
+      session.updatedAt = Date.now()
       await persist()
       return
     }
@@ -1416,23 +1429,23 @@ const send = async () => {
     const slashResult = await runSlashCommand(text, buildSlashContext())
 
     if (slashResult === null) {
-      activeSession.value.messages.push({
+      session.messages.push({
         role: 'assistant',
         text: 'Invalid input; start with /command.',
       })
-      activeSession.value.updatedAt = Date.now()
+      session.updatedAt = Date.now()
       await persist()
       return
     }
     if (!slashResult.ok) {
-      activeSession.value.messages.push({ role: 'assistant', text: slashResult.message })
-      activeSession.value.updatedAt = Date.now()
+      session.messages.push({ role: 'assistant', text: slashResult.message })
+      session.updatedAt = Date.now()
       await persist()
       return
     }
     if (!slashResult.silent && slashResult.message) {
-      activeSession.value.messages.push({ role: 'assistant', text: slashResult.message })
-      activeSession.value.updatedAt = Date.now()
+      session.messages.push({ role: 'assistant', text: slashResult.message })
+      session.updatedAt = Date.now()
       await persist()
     }
     if (slashResult.sendPrompt) {
@@ -1440,41 +1453,44 @@ const send = async () => {
       const modelId = modelsFile.value.activeModelId
       const model = activeModel.value
       if (!modelId || !model) {
-        activeSession.value.messages.push({
+        session.messages.push({
           role: 'assistant',
           text: 'Add and enable a model in Settings before custom commands.',
         })
-        activeSession.value.updatedAt = Date.now()
+        session.updatedAt = Date.now()
         await persist()
         return
       }
-      activeSession.value.messages.push({
+      session.messages.push({
         role: 'user',
         text,
         slashOnly: true,
         apiContent: prompt,
       })
-      if (activeSession.value.title === 'New Agent' || activeSession.value.title === 'New chat') {
-        activeSession.value.title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
+      if (session.title === 'New Agent' || session.title === 'New chat') {
+        session.title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
       }
-      activeSession.value.updatedAt = Date.now()
+      session.updatedAt = Date.now()
       loading.value = true
       if (agentMode.value) bindAgentProgress()
       else startIdleHintTimer()
       try {
         await persist()
-        const apiMessages = await buildApiMessages(activeSession.value.messages)
+        const apiMessages = await buildApiMessages(session.messages)
         if (agentMode.value) {
           const res = await sendAgent(props.projectRoot, modelId, apiMessages)
-          pushAssistantFromAgent(res)
+          pushAssistantFromAgent(res, model)
         } else {
           await runPlainChat(model, modelId, apiMessages)
         }
-        activeSession.value.updatedAt = Date.now()
+        session.updatedAt = Date.now()
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Request error'
-        activeSession.value.messages.push({ role: 'assistant', text: `Request failed: ${msg}` })
-        activeSession.value.updatedAt = Date.now()
+        session.messages.push({
+          role: 'assistant',
+          text: formatAiChatRequestError(msg, model),
+        })
+        session.updatedAt = Date.now()
       } finally {
         loading.value = false
         clearProgressUi()
@@ -1487,7 +1503,7 @@ const send = async () => {
   if (loading.value) return
   const mentionValidation = validateRoleMentionText(text, mentionUsers.value)
   if (!mentionValidation.ok) {
-    activeSession.value!.messages.push({
+    session.messages.push({
       role: 'assistant',
       text: mentionValidation.error,
     })
@@ -1497,7 +1513,7 @@ const send = async () => {
   const modelId = modelsFile.value.activeModelId
   const model = activeModel.value
   if (!modelId || !model) {
-    activeSession.value.messages.push({
+    session.messages.push({
       role: 'assistant',
       text: 'Add and enable a model in Settings before chatting.',
     })
@@ -1505,6 +1521,15 @@ const send = async () => {
     return
   }
   const imageRefs = imageRefsForPersist()
+  if (visionBlockedForPendingImages(model, imageRefs.length)) {
+    session.messages.push({
+      role: 'assistant',
+      text: visionUnsupportedMessage(model),
+    })
+    session.updatedAt = Date.now()
+    await persist()
+    return
+  }
   const imagePreviews = attachedImages.value.map((x: AttachedImageView) => x.previewUrl)
   const mention = parseCommittedRoleMention(text, mentionUsers.value)
   let apiText = mention?.args.trim() || text
@@ -1579,14 +1604,17 @@ const send = async () => {
         roleMentionUserId ?? mention?.userId,
         !!roleMentionCommand,
       )
-      pushAssistantFromAgent(res)
+      pushAssistantFromAgent(res, model)
     } else {
       await runPlainChat(model, modelId, apiMessages)
     }
     activeSession.value!.updatedAt = Date.now()
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Request error'
-    activeSession.value?.messages.push({ role: 'assistant', text: `Request failed: ${msg}` })
+    activeSession.value?.messages.push({
+      role: 'assistant',
+      text: formatAiChatRequestError(msg, model),
+    })
     if (activeSession.value) activeSession.value.updatedAt = Date.now()
   } finally {
     loading.value = false
@@ -1663,14 +1691,17 @@ const regenerateLastReply = async () => {
         apiMessages,
         userMsg ? assigneeFromUserMessage(userMsg) : undefined,
       )
-      pushAssistantFromAgent(res)
+      pushAssistantFromAgent(res, model)
     } else {
       await runPlainChat(model, modelId, apiMessages)
     }
     activeSession.value.updatedAt = Date.now()
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Request error'
-    activeSession.value.messages.push({ role: 'assistant', text: `Request failed: ${msg}` })
+    activeSession.value.messages.push({
+      role: 'assistant',
+      text: formatAiChatRequestError(msg, model),
+    })
     activeSession.value.updatedAt = Date.now()
   } finally {
     loading.value = false

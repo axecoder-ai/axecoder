@@ -27,6 +27,8 @@ import {
   prepareRoleWorkflowSendPlan,
 } from '../../utils/role-workflow-send'
 import { parseCommittedRoleMention } from '../../utils/role-mention'
+import { formatAiChatRequestError, visionUnsupportedMessage } from '../../utils/ai-chat-error'
+import { visionBlockedForPendingImages } from '../../utils/chat-vision'
 
 const props = defineProps<{
   projectRoot: string
@@ -518,6 +520,13 @@ const sendPayload = async (opts: {
     void scrollBottom()
     return { ok: false, error: 'No model' }
   }
+  const model = activeModel.value
+  const pendingImages = opts.imageRefs?.length ?? 0
+  if (model && visionBlockedForPendingImages(model, pendingImages)) {
+    pushLocalSystemMessage(visionUnsupportedMessage(model))
+    void scrollBottom()
+    return { ok: false, error: visionUnsupportedMessage(model) }
+  }
   const filePaths = opts.filePaths ?? []
   const displayText = opts.displayText?.trim() || text || '(image)'
   const workshopId = pushOptimisticUser(displayText, imageRefs, opts.imagePreviews)
@@ -538,7 +547,7 @@ const sendPayload = async (opts: {
     )
     if (!res.ok) {
       rollbackOptimisticUser()
-      pushLocalSystemMessage(`协作请求失败：${res.error}`)
+      pushLocalSystemMessage(formatAiChatRequestError(res.error, model))
       await scrollBottom()
       return { ok: false, error: res.error }
     }

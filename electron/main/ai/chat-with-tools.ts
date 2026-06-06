@@ -1,10 +1,22 @@
-import type { ModelEntry } from '../models-types'
 import type { AgentLoopMessage, AgentToolCall, AgentToolDef } from '../agent/agent-types'
+import type { AiTokenUsage, ModelEntry } from '../models-types'
+import {
+  beginAiMetricsCall,
+  endAiMetricsCall,
+  markAiMetricsFirstToken,
+  type AiMetricsSource,
+} from '../ai-metrics-store'
+import { traceModelCall, type AiTraceSource } from '../ai-trace-store'
+import type { AiTraceContext } from './chat-with-provider'
+import { estimateTokenUsage, parseOpenAiUsage } from './parse-token-usage'
 import { resolveAgentToolName } from '../agent/agent-tool-aliases'
 import { AGENT_TOOLS } from '../agent/agent-tool-defs'
 import { buildOpenAiChatUrl } from './providers/openai'
 import { buildAnthropicMessagesUrl } from './providers/anthropic'
+import { fetchAiWithRetry, formatAiRequestFailedError } from './ai-request-retry'
 import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from './request-timeout'
+import { isVisionUnsupportedApiError } from '../../../shared/ai/vision'
+import { prepareAgentMessagesForVisionModel, visionUnsupportedError } from './ai-vision-guard'
 import { userMessageToAnthropicContent } from './ai-message-images'
 import { agentLoopToOpenAiWire, parseOpenAiAssistantParts } from './openai-messages'
 import {
@@ -22,8 +34,12 @@ export type ChatWithToolsResult =
       content: string
       reasoningContent?: string
       toolCalls: AgentToolCall[]
+      usage?: AiTokenUsage
     }
   | { ok: false; error: string }
+
+const agentInputChars = (messages: AgentLoopMessage[]) =>
+  messages.reduce((sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0)
 
 const openAiTools = (tools: readonly AgentToolDef[]) =>
   tools.map((t) => ({
@@ -78,7 +94,7 @@ export const chatOpenAiWithTools = async (
   if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
   const useStream = !!onDelta
   try {
-    const res = await fetch(url, {
+    const { res, meta } = await fetchAiWithRetry(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -92,20 +108,27 @@ export const chatOpenAiWithTools = async (
     })
     if (!res.ok) {
       const errText = await res.text()
-      return { ok: false, error: `request failed (${res.status}): ${errText.slice(0, 300)}` }
+      return { ok: false, error: formatAiRequestFailedError(res.status, errText, meta) }
     }
     let message: Record<string, unknown>
+    let usage: AiTokenUsage | undefined
     if (useStream) {
       const accum = emptyOpenAiStreamAccum()
       await consumeOpenAiSse(res, (obj) => {
+        const u = parseOpenAiUsage(obj)
+        if (u) usage = u
         const { contentDelta, reasoningDelta } = mergeOpenAiStreamChunk(accum, obj)
         if (contentDelta) onDelta!({ content: contentDelta })
         if (reasoningDelta) onDelta!({ reasoning: reasoningDelta })
       })
       message = openAiStreamAccumToMessage(accum)
     } else {
-      const data = (await res.json()) as { choices?: { message?: Record<string, unknown> }[] }
+      const data = (await res.json()) as {
+        choices?: { message?: Record<string, unknown> }[]
+        usage?: Record<string, unknown>
+      }
       message = data.choices?.[0]?.message ?? {}
+      usage = data.usage ? parseOpenAiUsage({ usage: data.usage }) : undefined
     }
     const parts = parseOpenAiAssistantParts(message)
     const toolCalls = parseOpenAiToolCalls(message)
@@ -115,6 +138,7 @@ export const chatOpenAiWithTools = async (
       content: parts.content,
       reasoningContent: parts.reasoningContent,
       toolCalls,
+      usage,
     }
   } catch (e) {
     return { ok: false, error: formatAiFetchError(e) }
@@ -196,7 +220,7 @@ export const chatAnthropicWithTools = async (
   const system = messages.find((m) => m.role === 'system')?.content ?? ''
   const url = buildAnthropicMessagesUrl(model.baseUrl)
   try {
-    const res = await fetch(url, {
+    const { res, meta } = await fetchAiWithRetry(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -214,10 +238,11 @@ export const chatAnthropicWithTools = async (
     })
     if (!res.ok) {
       const errText = await res.text()
-      return { ok: false, error: `request failed (${res.status}): ${errText.slice(0, 300)}` }
+      return { ok: false, error: formatAiRequestFailedError(res.status, errText, meta) }
     }
     const data = (await res.json()) as {
       content?: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[]
+      usage?: { input_tokens?: number; output_tokens?: number }
     }
     const blocks = data.content ?? []
     let text = ''
@@ -232,10 +257,27 @@ export const chatAnthropicWithTools = async (
         })
       }
     }
-    return { ok: true, text, toolCalls }
+    const usage: AiTokenUsage | undefined =
+      data.usage &&
+      (typeof data.usage.input_tokens === 'number' || typeof data.usage.output_tokens === 'number')
+        ? {
+            promptTokens: data.usage.input_tokens ?? 0,
+            completionTokens: data.usage.output_tokens ?? 0,
+            estimated: false,
+          }
+        : undefined
+    return { ok: true, text, content: text, toolCalls, usage }
   } catch (e) {
     return { ok: false, error: formatAiFetchError(e) }
   }
+}
+
+const normalizeToolsResult = (model: ModelEntry, result: ChatWithToolsResult): ChatWithToolsResult => {
+  if (result.ok) return result
+  if (isVisionUnsupportedApiError(result.error)) {
+    return { ok: false, error: visionUnsupportedError(model) }
+  }
+  return result
 }
 
 export const chatWithToolsForModel = async (
@@ -246,12 +288,86 @@ export const chatWithToolsForModel = async (
   tools: readonly AgentToolDef[] = AGENT_TOOLS,
   abortSignal?: AbortSignal,
   apiModelId?: string,
+  metricsSource: AiMetricsSource = 'agent',
+  traceContext?: AiTraceContext,
 ): Promise<ChatWithToolsResult> => {
+  const prepared = prepareAgentMessagesForVisionModel(model, messages)
+  if (!prepared.ok) return prepared
+  const wireMessages = prepared.messages
+  const metricsMeta = {
+    modelId: model.id,
+    modelName: model.name,
+    provider: model.provider,
+    source: metricsSource,
+  }
+  const startedAt = Date.now()
+  const callId = beginAiMetricsCall(metricsMeta)
+  const wrappedDelta = onDelta
+    ? (delta: OpenAiStreamDelta) => {
+        markAiMetricsFirstToken(callId)
+        onDelta(delta)
+      }
+    : undefined
+  let result: ChatWithToolsResult
   if (model.provider === 'ollama' || model.provider === 'openai') {
     if (model.provider === 'openai' && !apiKey.trim()) {
-      return { ok: false, error: 'OpenAI-compatible API requires an API Key' }
+      result = { ok: false, error: 'OpenAI-compatible API requires an API Key' }
+    } else {
+      result = await chatOpenAiWithTools(
+        model,
+        apiKey,
+        wireMessages,
+        wrappedDelta,
+        tools,
+        abortSignal,
+        apiModelId,
+      )
     }
-    return chatOpenAiWithTools(model, apiKey, messages, onDelta, tools, abortSignal, apiModelId)
+  } else {
+    result = await chatAnthropicWithTools(
+      model,
+      apiKey,
+      wireMessages,
+      tools,
+      abortSignal,
+      apiModelId,
+    )
+    if (result.ok) markAiMetricsFirstToken(callId)
   }
-  return chatAnthropicWithTools(model, apiKey, messages, tools, abortSignal, apiModelId)
+  const normalized = normalizeToolsResult(model, result)
+  const usage = normalized.ok
+    ? (normalized.usage ?? estimateTokenUsage(agentInputChars(wireMessages), normalized.text.length))
+    : undefined
+  endAiMetricsCall(
+    callId,
+    {
+      ok: normalized.ok,
+      error: !normalized.ok ? normalized.error : undefined,
+      outputChars: normalized.ok ? normalized.text.length : 0,
+      inputTokens: usage?.promptTokens,
+      outputTokens: usage?.completionTokens,
+      tokensEstimated: usage?.estimated,
+    },
+    metricsMeta,
+  )
+  traceModelCall({
+    source: metricsSource as AiTraceSource,
+    sessionId: traceContext?.sessionId,
+    turn: traceContext?.turn,
+    modelId: model.id,
+    modelName: model.name,
+    provider: model.provider,
+    requestMessages: wireMessages,
+    result: normalized.ok
+      ? {
+          ok: true,
+          text: normalized.text,
+          content: normalized.content,
+          reasoningContent: normalized.reasoningContent,
+          toolCalls: normalized.toolCalls,
+        }
+      : { ok: false, error: normalized.error },
+    durationMs: Date.now() - startedAt,
+  })
+  return normalized
 }

@@ -8,9 +8,15 @@ import type { WindowLayout } from '../../types/axecoder'
 const props = defineProps<{
   primarySidebarVisible: boolean
   aiPanelVisible: boolean
-  workshopVisible: boolean
   projectName: string
   windowLayout: WindowLayout
+  companionMode?: boolean
+  metricsMode?: boolean
+  traceMode?: boolean
+  dualWindowActive?: boolean
+  metricsPanelActive?: boolean
+  tracePanelActive?: boolean
+  companionLayoutReversed?: boolean
 }>()
 
 const titleBarClass = computed(() => {
@@ -21,7 +27,10 @@ const titleBarClass = computed(() => {
 defineEmits<{
   togglePrimarySidebar: []
   toggleAiPanel: []
-  toggleWorkshop: []
+  toggleDualWindow: []
+  toggleCompanionLayout: []
+  toggleMetrics: []
+  toggleTrace: []
   openProject: []
   openModelSettings: []
 }>()
@@ -31,6 +40,7 @@ defineEmits<{
   <header class="title-bar" :class="titleBarClass">
     <div class="title-bar-left">
       <button
+        v-if="!companionMode"
         type="button"
         class="icon-btn"
         :class="{ active: primarySidebarVisible }"
@@ -42,29 +52,36 @@ defineEmits<{
           <rect x="3.5" y="4.5" width="3.5" height="7" rx="0.5" fill="currentColor" stroke="none" />
         </svg>
       </button>
+      <span v-if="companionMode" class="companion-label">{{ t('titlebar.companionTitle') }}</span>
+      <span v-if="metricsMode" class="companion-label">{{ t('titlebar.metricsTitle') }}</span>
+      <span v-if="traceMode" class="companion-label">{{ t('titlebar.traceTitle') }}</span>
     </div>
     <div class="title-bar-spacer" />
     <button
+      v-if="!companionMode"
       type="button"
       class="search-wrap"
       :title="projectName ? t('titlebar.projectLabel', { name: projectName }) : t('titlebar.openProjectHint')"
       @click="$emit('openProject')"
     >
-      <svg class="icon" viewBox="0 0 16 16" fill="currentColor">
+      <svg class="icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path
-          d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.656a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"
+          d="M2.5 3.5A1.5 1.5 0 0 1 4 2h5l3.5 3.5V12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12V3.5zm2 0V6h5V3.5H4.5z"
         />
       </svg>
-      <span class="search-text">{{ projectName || t('titlebar.openProject') }}</span>
+      <span class="search-text">{{
+        projectName ? t('titlebar.projectLabel', { name: projectName }) : t('titlebar.openProject')
+      }}</span>
     </button>
     <div class="title-bar-spacer" />
     <div class="title-actions">
       <button
+        v-if="companionMode"
         type="button"
         class="icon-btn"
-        :class="{ active: workshopVisible }"
-        title="Multi-Agent (Collab Workshop)"
-        @click="$emit('toggleWorkshop')"
+        :class="{ active: companionLayoutReversed }"
+        :title="t('titlebar.swapCompanionLayout')"
+        @click="$emit('toggleCompanionLayout')"
       >
         <svg
           class="title-icon"
@@ -76,13 +93,74 @@ defineEmits<{
           stroke-linejoin="round"
           aria-hidden="true"
         >
-          <circle cx="9" cy="8" r="2.5" />
-          <circle cx="15" cy="8" r="2.5" />
-          <circle cx="12" cy="15" r="2.5" />
-          <path d="M9 10.5 12 12.5 15 10.5" />
+          <path d="M8 7H4l3-3" />
+          <path d="M4 7v10" />
+          <path d="M16 17h4l-3 3" />
+          <path d="M20 17V7" />
+          <path d="M10 12h4" />
         </svg>
       </button>
       <button
+        v-if="!companionMode && !metricsMode && !traceMode"
+        type="button"
+        class="icon-btn"
+        :class="{ active: tracePanelActive }"
+        :title="t('titlebar.toggleTrace')"
+        @click="$emit('toggleTrace')"
+      >
+        <svg class="title-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="12" r="6" fill="#ef4444" />
+        </svg>
+      </button>
+      <button
+        v-if="!companionMode && !metricsMode && !traceMode"
+        type="button"
+        class="icon-btn"
+        :class="{ active: metricsPanelActive }"
+        :title="t('titlebar.toggleMetrics')"
+        @click="$emit('toggleMetrics')"
+      >
+        <svg
+          class="title-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 19V5" />
+          <path d="M4 19h16" />
+          <path d="M8 17V11" />
+          <path d="M12 17V7" />
+          <path d="M16 17v-4" />
+        </svg>
+      </button>
+      <button
+        v-if="!companionMode && !metricsMode && !traceMode"
+        type="button"
+        class="icon-btn"
+        :class="{ active: dualWindowActive }"
+        :title="dualWindowActive ? t('titlebar.closeDualWindow') : t('titlebar.toggleDualWindow')"
+        @click="$emit('toggleDualWindow')"
+      >
+        <svg
+          class="title-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.65"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="3" y="4" width="8" height="16" rx="1.5" />
+          <rect x="13" y="4" width="8" height="16" rx="1.5" />
+        </svg>
+      </button>
+      <button
+        v-if="!companionMode && !metricsMode && !traceMode"
         type="button"
         class="icon-btn"
         :class="{ active: aiPanelVisible }"
@@ -105,6 +183,7 @@ defineEmits<{
         </svg>
       </button>
       <button
+        v-if="!companionMode && !metricsMode && !traceMode"
         type="button"
         class="icon-btn"
         :title="t('common.settings')"
@@ -161,6 +240,13 @@ defineEmits<{
   display: flex;
   align-items: center;
   flex-shrink: 0;
+}
+
+.companion-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wc-text-muted);
+  margin-left: 4px;
 }
 
 .title-bar-spacer {

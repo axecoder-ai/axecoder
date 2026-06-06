@@ -1,23 +1,29 @@
 import { ipcMain, dialog, shell, app, type BrowserWindow } from 'electron'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
 import chokidar, { type FSWatcher } from 'chokidar'
-import { rgPath } from '@vscode/ripgrep'
 import {
   destPathWithSuffix,
   fileNameFromPath,
-  isPathInsideRoot,
-  parseRipgrepJsonLine,
   type ConflictAction,
   type SearchHit,
-  IGNORED_DIR_NAMES,
+  shouldIgnoreWorkspacePath,
+  WORKSPACE_WATCH_IGNORED_GLOBS,
 } from './fs-utils'
 import { getSettings, setSettings } from './settings-store'
 import { copyCompletionSoundFrom, getCompletionSoundDataUrl } from './completion-sound'
 import { copyProfileAvatarFrom } from './profile-avatar'
 import { getUserAvatarDataUrl } from './users-store'
 import { maybeAutoIndexCodeGraph } from './codegraph-ipc'
+import {
+  listProjectFiles,
+  replaceInProject,
+  runRipgrepSearch,
+  type SearchOptions,
+} from './search-utils'
+import mammoth from 'mammoth'
+import { acquireProjectLock } from './project-lock'
+import { t } from './i18n'
 export type FileNode = {
   name: string
   path: string
@@ -37,8 +43,9 @@ const buildTree = async (dirPath: string): Promise<FileNode> => {
   const entries = await fs.readdir(dirPath, { withFileTypes: true })
   const children: FileNode[] = []
   for (const ent of entries) {
-    if (IGNORED_DIR_NAMES.has(ent.name)) continue
     const full = path.join(dirPath, ent.name)
+    if (shouldIgnoreWorkspacePath(full)) continue
+    if (ent.isSymbolicLink()) continue
     if (ent.isDirectory()) {
       children.push(await buildTree(full))
     } else {
@@ -124,46 +131,6 @@ const resolveDestForConflict = async (
   throw new Error('Target already exists')
 }
 
-const runRipgrep = (rootPath: string, query: string): Promise<SearchHit[]> => {
-  return new Promise((resolve, reject) => {
-    const hits: SearchHit[] = []
-    const args = [
-      '--json',
-      '-n',
-      '--glob',
-      '!node_modules/**',
-      '--glob',
-      '!.git/**',
-      '--glob',
-      '!dist/**',
-      '--glob',
-      '!dist-electron/**',
-      query,
-      rootPath,
-    ]
-    const proc = spawn(rgPath, args, { cwd: rootPath })
-    let buf = ''
-    proc.stdout.on('data', (chunk: Buffer) => {
-      buf += chunk.toString()
-      const lines = buf.split('\n')
-      buf = lines.pop() ?? ''
-      for (const line of lines) {
-        const hit = parseRipgrepJsonLine(line)
-        if (hit && isPathInsideRoot(rootPath, hit.file)) hits.push(hit)
-      }
-    })
-    proc.on('error', reject)
-    proc.on('close', (code) => {
-      if (buf.trim()) {
-        const hit = parseRipgrepJsonLine(buf)
-        if (hit && isPathInsideRoot(rootPath, hit.file)) hits.push(hit)
-      }
-      if (code === 0 || code === 1) resolve(hits.slice(0, 500))
-      else reject(new Error(`Search failed (code ${code})`))
-    })
-  })
-}
-
 let workspaceWatcher: FSWatcher | null = null
 const selfWrittenAt = new Map<string, number>()
 const SELF_WRITE_IGNORE_MS = 1000
@@ -207,6 +174,17 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
       folder = result.filePaths[0]
     }
     if (!(await pathExists(folder))) return null
+    const lock = await acquireProjectLock(folder)
+    if (!lock.ok) {
+      const win = getMainWindow()
+      await dialog.showMessageBox(win ?? undefined, {
+        type: 'warning',
+        title: t('projectLock.title'),
+        message: t('projectLock.alreadyOpen', { path: folder }),
+        detail: t('projectLock.alreadyOpenDetail', { pid: String(lock.holder.pid) }),
+      })
+      return null
+    }
     await saveLastProject(folder)
     await pushRecentProject(folder)
     const tree = await buildTree(folder)
@@ -222,10 +200,19 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
     const result = await dialog.showOpenDialog(win ?? undefined, {
       title: 'Open file',
       properties: ['openFile'],
-      filters: [{ name: 'Text', extensions: ['md', 'txt', 'json'] }],
+      filters: [
+        { name: 'All supported', extensions: ['md', 'txt', 'json', 'pdf', 'docx', 'doc'] },
+        { name: 'Documents', extensions: ['pdf', 'docx', 'doc'] },
+        { name: 'Text', extensions: ['md', 'txt', 'json'] },
+      ],
     })
     if (result.canceled || !result.filePaths[0]) return null
     const filePath = result.filePaths[0]
+    const ext = path.extname(filePath).toLowerCase()
+    if (ext === '.pdf' || ext === '.docx' || ext === '.doc') {
+      await pushRecentFile(filePath)
+      return { path: filePath, content: '', binary: true as const }
+    }
     const content = await fs.readFile(filePath, 'utf-8')
     await pushRecentFile(filePath)
     return { path: filePath, content }
@@ -253,6 +240,21 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
     const content = await fs.readFile(filePath, 'utf-8')
     await pushRecentFile(filePath)
     return { content }
+  })
+
+  ipcMain.handle('fs:readFileBase64', async (_, filePath: string) => {
+    const buf = await fs.readFile(filePath)
+    await pushRecentFile(filePath)
+    const ext = path.extname(filePath).toLowerCase()
+    const mimeType = ext === '.pdf' ? 'application/pdf' : 'application/octet-stream'
+    return { base64: buf.toString('base64'), mimeType }
+  })
+
+  ipcMain.handle('fs:previewDocx', async (_, filePath: string) => {
+    const buf = await fs.readFile(filePath)
+    await pushRecentFile(filePath)
+    const result = await mammoth.convertToHtml({ buffer: buf })
+    return { html: result.value }
   })
 
   ipcMain.handle('fs:writeFile', async (_, filePath: string, content: string) => {
@@ -321,11 +323,35 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
     return { ok: true as const }
   })
 
-  ipcMain.handle('fs:search', async (_, rootPath: string, query: string) => {
-    if (!query.trim()) return { hits: [] as SearchHit[] }
-    if (!(await pathExists(rootPath))) return { hits: [] as SearchHit[] }
-    const hits = await runRipgrep(rootPath, query.trim())
-    return { hits }
+  ipcMain.handle(
+    'fs:search',
+    async (_, rootPath: string, query: string, opts?: SearchOptions) => {
+      if (!query.trim()) return { hits: [] as SearchHit[] }
+      if (!(await pathExists(rootPath))) return { hits: [] as SearchHit[] }
+      const hits = await runRipgrepSearch(rootPath, query.trim(), opts ?? {})
+      return { hits }
+    },
+  )
+
+  ipcMain.handle(
+    'fs:searchReplace',
+    async (
+      _,
+      rootPath: string,
+      query: string,
+      replacement: string,
+      opts?: SearchOptions,
+    ) => {
+      if (!query.trim()) return { files: 0, replacements: 0 }
+      if (!(await pathExists(rootPath))) return { files: 0, replacements: 0 }
+      return replaceInProject(rootPath, query.trim(), replacement, opts ?? {})
+    },
+  )
+
+  ipcMain.handle('fs:listProjectFiles', async (_, rootPath: string) => {
+    if (!(await pathExists(rootPath))) return { files: [] as string[] }
+    const files = await listProjectFiles(rootPath)
+    return { files }
   })
 
   ipcMain.handle('fs:getRecentFiles', async () => {
@@ -361,11 +387,12 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
   ipcMain.handle('fs:watchStart', async (_, rootPath: string) => {
     workspaceWatcher?.close()
     workspaceWatcher = chokidar.watch(rootPath, {
-      ignored: (p) => {
-        const base = path.basename(p)
-        return IGNORED_DIR_NAMES.has(base)
-      },
+      ignored: [
+        ...WORKSPACE_WATCH_IGNORED_GLOBS,
+        (p: string) => shouldIgnoreWorkspacePath(p),
+      ],
       ignoreInitial: true,
+      followSymlinks: false,
     })
     const send = (kind: string, filePath: string) => {
       if (kind === 'change' && isSelfWrite(filePath)) return

@@ -98,7 +98,7 @@ export const registerAiIpc = () => {
       const lastUser = [...messages].reverse().find((m) => m.role === 'user')
       const userText = typeof lastUser?.content === 'string' ? lastUser.content : ''
       const apiModelId = await resolveApiModelIdForTask(model, 'main', userText)
-      return chatWithProvider(model, apiKey, messages, onDelta, apiModelId)
+      return chatWithProvider(model, apiKey, messages, onDelta, apiModelId, 'chat')
     },
   )
 }

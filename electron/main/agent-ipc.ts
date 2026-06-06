@@ -29,7 +29,6 @@ import { getSession } from './agent/agent-session-store'
 import { axecoderPath } from './axecoder-dir'
 import type { AgentLoopMessage } from './agent/agent-types'
 import { compactChatHistory } from './chat-compact'
-import { bindAgentProgressWindow } from './agent/agent-progress-emit'
 import { listMcpResources } from './agent/agent-mcp'
 import {
   discoverCustomCommands,
@@ -51,8 +50,7 @@ import {
 import { getConfig, setConfig } from './config-store'
 import { t } from './i18n'
 
-export const registerAgentIpc = (getMainWindow: () => BrowserWindow | null) => {
-  bindAgentProgressWindow(getMainWindow)
+export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => {
   ipcMain.handle(
     'agent:send',
     async (

@@ -1,62 +1,79 @@
 import { ipcMain, type BrowserWindow } from 'electron'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import * as pty from 'node-pty'
+import fs from 'node:fs'
 
-let shellProc: ChildProcessWithoutNullStreams | null = null
+let ptyProc: pty.IPty | null = null
 
 const sendData = (getWin: () => BrowserWindow | null, text: string) => {
   getWin()?.webContents.send('terminal:data', text)
 }
 
-export const registerTerminalIpc = (getWin: () => BrowserWindow | null) => {
-  ipcMain.handle('terminal:start', async (_, cwd: string) => {
-    if (shellProc) {
-      shellProc.kill()
-      shellProc = null
-    }
-    const shell = process.platform === 'win32' ? 'cmd.exe' : process.env.SHELL || '/bin/zsh'
-    const args = process.platform === 'win32' ? [] : ['-l']
-    shellProc = spawn(shell, args, {
-      cwd: cwd || process.env.HOME,
-      env: process.env,
-      stdio: 'pipe',
-      // 独立进程组，便于 Ctrl+C 向整组发 SIGINT（如 go run 子进程）
-      detached: process.platform !== 'win32',
-    }) as ChildProcessWithoutNullStreams
+const resolveCwd = (cwd: string) => {
+  const target = cwd || process.env.HOME || process.cwd()
+  try {
+    if (fs.existsSync(target) && fs.statSync(target).isDirectory()) return target
+  } catch {
+    // ignore
+  }
+  return process.env.HOME || process.cwd()
+}
 
-    shellProc.stdout.on('data', (d) => sendData(getWin, d.toString()))
-    shellProc.stderr.on('data', (d) => sendData(getWin, d.toString()))
-    shellProc.on('close', () => {
+export const registerTerminalIpc = (getWin: () => BrowserWindow | null) => {
+  ipcMain.handle('terminal:start', async (_, cwd: string, cols = 80, rows = 24) => {
+    if (ptyProc) {
+      ptyProc.kill()
+      ptyProc = null
+    }
+    const shell =
+      process.platform === 'win32' ? process.env.COMSPEC || 'cmd.exe' : process.env.SHELL || '/bin/zsh'
+    const args = process.platform === 'win32' ? [] : ['-l']
+    try {
+      ptyProc = pty.spawn(shell, args, {
+        name: 'xterm-256color',
+        cols: Math.max(cols, 2),
+        rows: Math.max(rows, 2),
+        cwd: resolveCwd(cwd),
+        env: process.env as Record<string, string>,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { ok: false as const, error: message }
+    }
+
+    ptyProc.onData((data) => sendData(getWin, data))
+    ptyProc.onExit(() => {
       sendData(getWin, '\r\n[Terminal exited]\r\n')
-      shellProc = null
+      ptyProc = null
     })
 
-    sendData(getWin, `[AxeCoder Terminal] ${cwd || process.env.HOME}\r\n`)
     return { ok: true as const }
   })
 
   ipcMain.handle('terminal:write', async (_, data: string) => {
-    if (!shellProc?.stdin.writable) return { ok: false as const }
-    shellProc.stdin.write(data)
+    if (!ptyProc) return { ok: false as const }
+    ptyProc.write(data)
     return { ok: true as const }
   })
 
-  ipcMain.handle('terminal:interrupt', async () => {
-    if (!shellProc?.pid) return { ok: false as const }
-    if (process.platform === 'win32') {
-      if (shellProc.stdin?.writable) shellProc.stdin.write('\x03')
-      return { ok: true as const }
-    }
+  ipcMain.handle('terminal:resize', async (_, cols: number, rows: number) => {
+    if (!ptyProc) return { ok: false as const }
     try {
-      process.kill(-shellProc.pid, 'SIGINT')
+      ptyProc.resize(Math.max(cols, 2), Math.max(rows, 2))
+      return { ok: true as const }
     } catch {
-      if (shellProc.stdin?.writable) shellProc.stdin.write('\x03')
+      return { ok: false as const }
     }
+  })
+
+  ipcMain.handle('terminal:interrupt', async () => {
+    if (!ptyProc) return { ok: false as const }
+    ptyProc.write('\x03')
     return { ok: true as const }
   })
 
   ipcMain.handle('terminal:stop', async () => {
-    shellProc?.kill()
-    shellProc = null
+    ptyProc?.kill()
+    ptyProc = null
     return { ok: true as const }
   })
 }

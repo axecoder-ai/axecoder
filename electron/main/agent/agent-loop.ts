@@ -2,6 +2,7 @@ import type { ModelEntry } from '../models-types'
 import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 import { chatWithToolsForModel } from '../ai/chat-with-tools'
+import { checkVisionBeforeChat } from '../ai/ai-vision-guard'
 import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
 import { t } from '../i18n'
 import { AGENT_TOOLS, buildAgentSystemPrompt, buildFullAgentTools } from './agent-tool-defs'
@@ -34,6 +35,7 @@ import {
 } from './agent-session-store'
 import { executeAgentTool, type AgentContext, type ToolRunResult } from './tool-executor'
 import { emitAgentProgress } from './agent-progress-emit'
+import { traceToolCall, traceToolResult } from '../ai-trace-store'
 import { getConfig } from '../config-store'
 import { resolveToolPermission } from './agent-permissions'
 import { isReadOnlyBashCommand } from './agent-bash-readonly'
@@ -111,6 +113,8 @@ const runModelStep = async (session: StoredAgentSession, sessionId: string) => {
     session.activeTools,
     getAgentRunAbortSignal(sessionId),
     apiModelId,
+    sessionId.startsWith('workshop-') ? 'workshop' : 'agent',
+    { sessionId, turn: session.turn },
   )
 }
 
@@ -347,6 +351,12 @@ export const runAgentLoopUntilDoneOrPending = async (
           toolName: tc.name,
           summary: toolSummary,
         })
+        traceToolCall({
+          sessionId,
+          turn: session.turn,
+          toolName: tc.name,
+          args: tc.arguments,
+        })
 
         const bashCommand = tc.name === 'Bash' ? strArg(tc.arguments as Record<string, unknown>, 'command') : ''
         const bashReadOnly = bashCommand ? isReadOnlyBashCommand(bashCommand) : false
@@ -367,6 +377,13 @@ export const runAgentLoopUntilDoneOrPending = async (
             toolName: tc.name,
             summary: toolSummary,
             ok: false,
+          })
+          traceToolResult({
+            sessionId,
+            turn: session.turn,
+            toolName: tc.name,
+            ok: false,
+            content: denied.content,
           })
           return { tc, run: denied }
         }
@@ -390,6 +407,13 @@ export const runAgentLoopUntilDoneOrPending = async (
               summary: 'hook blocked',
               ok: false,
             })
+            traceToolResult({
+              sessionId,
+              turn: session.turn,
+              toolName: tc.name,
+              ok: false,
+              content: blocked.content,
+            })
             return { tc, run: blocked }
           }
         }
@@ -408,6 +432,13 @@ export const runAgentLoopUntilDoneOrPending = async (
             toolName: tc.name,
             summary: toolSummary,
             ok: false,
+          })
+          traceToolResult({
+            sessionId,
+            turn: session.turn,
+            toolName: tc.name,
+            ok: false,
+            content: aborted.content,
           })
           return { tc, run: aborted }
         }
@@ -481,6 +512,13 @@ export const runAgentLoopUntilDoneOrPending = async (
           if (pr?.url) session.linkedPrUrl = pr.url
         }
 
+        traceToolResult({
+          sessionId,
+          turn: session.turn,
+          toolName: tc.name,
+          ok: run.log.ok,
+          content: run.kind === 'immediate' ? run.content : run.kind,
+        })
         return { tc, run }
       }
 
@@ -589,6 +627,15 @@ export const startAgentTurn = async (
   if (!projectRoot.trim()) return { ok: false, error: t('errors.noProject') }
   const model = await getModelById(modelId)
   if (!model) return { ok: false, error: t('errors.modelNotFound') }
+  const visionBlocked = checkVisionBeforeChat(
+    model,
+    history.map((m) => ({
+      role: m.role,
+      content: m.content,
+      ...(m.images?.length ? { images: m.images } : {}),
+    })),
+  )
+  if (visionBlocked) return visionBlocked
   const cfg = await getConfig()
 
   const sessionId = createSessionId()

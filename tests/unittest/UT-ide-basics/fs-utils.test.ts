@@ -4,6 +4,7 @@ import {
   fileNameFromPath,
   isPathInsideRoot,
   parseRipgrepJsonLine,
+  shouldIgnoreWorkspacePath,
 } from '../../../electron/main/fs-utils'
 
 describe('fileNameFromPath', () => {
@@ -74,5 +75,26 @@ describe('parseRipgrepJsonLine', () => {
 
   it('非 match 返回 null', () => {
     expect(parseRipgrepJsonLine(JSON.stringify({ type: 'begin' }))).toBeNull()
+  })
+})
+
+describe('shouldIgnoreWorkspacePath', () => {
+  it('忽略 release、vscode 与 asar', () => {
+    expect(shouldIgnoreWorkspacePath('/proj/release/0.2.0/foo')).toBe(true)
+    expect(shouldIgnoreWorkspacePath('/proj/vscode/extensions/foo')).toBe(true)
+    expect(
+      shouldIgnoreWorkspacePath(
+        '/proj/release/0.2.0/AxeCoder.app/Contents/Resources/app.asar',
+      ),
+    ).toBe(true)
+    expect(
+      shouldIgnoreWorkspacePath(
+        '/proj/vscode/extensions/css-language-features/server/test/pathCompletionFixtures/src/data/foo.asar',
+      ),
+    ).toBe(true)
+  })
+
+  it('普通源码不忽略', () => {
+    expect(shouldIgnoreWorkspacePath('/proj/src/App.vue')).toBe(false)
   })
 })

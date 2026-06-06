@@ -69,6 +69,17 @@ const onAgentAutoApply = (v: boolean) => {
   emit('save', { agentAutoApplyWrites: v })
 }
 
+const onAgentOsSandbox = (v: boolean) => {
+  emit('save', { agentOsSandboxEnabled: v })
+}
+
+const onAi524MaxRetries = (e: Event) => {
+  const n = Number((e.target as HTMLInputElement).value)
+  if (!Number.isFinite(n) || n < 0 || n > 10) return
+  if (n === (props.settings.aiRequestMaxRetries ?? 2)) return
+  emit('save', { aiRequestMaxRetries: Math.floor(n) })
+}
+
 const onOutputStyle = (e: Event) => {
   const v = (e.target as HTMLSelectElement).value as AgentOutputStyleId
   if (v === props.settings.agentOutputStyle) return
@@ -168,6 +179,35 @@ const clearCompletionSound = () => {
           <SwitchToggle
             :model-value="!!settings.agentAutoApplyWrites"
             @update:model-value="onAgentAutoApply"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.osSandbox') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.osSandboxHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <SwitchToggle
+            :model-value="settings.agentOsSandboxEnabled !== false"
+            @update:model-value="onAgentOsSandbox"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.ai524MaxRetries') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.ai524MaxRetriesHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <input
+            type="number"
+            class="delay-input"
+            min="0"
+            max="10"
+            step="1"
+            :value="settings.aiRequestMaxRetries ?? 2"
+            @change="onAi524MaxRetries"
           />
         </div>
       </div>

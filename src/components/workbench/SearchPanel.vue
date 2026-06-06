@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import type { SearchHit } from '../../types/axecoder'
+import { ref, computed, watch } from 'vue'
+import { useI18n } from '../../i18n'
+import type { SearchHit, SearchOptions } from '../../types/axecoder'
 
 defineProps<{
   visible: boolean
@@ -8,16 +9,35 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  search: [query: string]
+  search: [query: string, opts: SearchOptions, gen: number]
+  replace: [query: string, replacement: string, opts: SearchOptions]
   open: [hit: SearchHit]
 }>()
 
+const { t } = useI18n()
+
 const query = ref('')
+const replaceText = ref('')
+const replaceExpanded = ref(true)
+const caseSensitive = ref(false)
+const wholeWord = ref(false)
+const useRegex = ref(false)
+const includeGlob = ref('')
+const excludeGlob = ref('')
 const hits = ref<SearchHit[]>([])
 const searching = ref(false)
 const searchInput = ref<HTMLInputElement | null>(null)
-/** Use object not Set for stable Vue tracking of expand state */
 const expandedFiles = ref<Record<string, boolean>>({})
+let searchGen = 0
+let debounceTimer: ReturnType<typeof setTimeout> | undefined
+
+const searchOpts = computed((): SearchOptions => ({
+  caseSensitive: caseSensitive.value,
+  wholeWord: wholeWord.value,
+  regex: useRegex.value,
+  include: includeGlob.value.trim() || undefined,
+  exclude: excludeGlob.value.trim() || undefined,
+}))
 
 type SearchFileGroup = {
   file: string
@@ -45,6 +65,14 @@ const groups = computed((): SearchFileGroup[] => {
   return out
 })
 
+const resultsSummary = computed(() => {
+  if (!groups.value.length) return ''
+  return t('searchPanel.resultsSummary', {
+    count: hits.value.length,
+    files: groups.value.length,
+  })
+})
+
 const fileKind = (name: string) => {
   const n = name.toLowerCase()
   if (n.endsWith('.md')) return 'kind-md'
@@ -57,6 +85,10 @@ const fileKind = (name: string) => {
 
 const isExpanded = (file: string) => !!expandedFiles.value[file]
 
+const anyResultExpanded = computed(() =>
+  groups.value.some((g) => isExpanded(g.file)),
+)
+
 const toggleFile = (file: string) => {
   if (expandedFiles.value[file]) {
     const next = { ...expandedFiles.value }
@@ -65,6 +97,16 @@ const toggleFile = (file: string) => {
   } else {
     expandedFiles.value = { ...expandedFiles.value, [file]: true }
   }
+}
+
+const toggleAllResults = () => {
+  if (anyResultExpanded.value) {
+    expandedFiles.value = {}
+    return
+  }
+  const exp: Record<string, boolean> = {}
+  for (const g of groups.value) exp[g.file] = true
+  expandedFiles.value = exp
 }
 
 const escapeHtml = (s: string) =>
@@ -78,73 +120,225 @@ const highlightLine = (text: string, q: string) => {
   const raw = text.trim() || ' '
   const safe = escapeHtml(raw)
   const needle = q.trim()
-  if (!needle) return safe
+  if (!needle || useRegex.value) return safe
   const lower = raw.toLowerCase()
   const nLower = needle.toLowerCase()
   let out = ''
   let i = 0
   while (i < raw.length) {
-    const idx = lower.indexOf(nLower, i)
+    const idx = caseSensitive.value
+      ? raw.indexOf(needle, i)
+      : lower.indexOf(nLower, i)
     if (idx < 0) {
       out += escapeHtml(raw.slice(i))
       break
     }
+    const len = needle.length
     out += escapeHtml(raw.slice(i, idx))
-    out += `<mark class="match-hl">${escapeHtml(raw.slice(idx, idx + needle.length))}</mark>`
-    i = idx + needle.length
+    out += `<mark class="match-hl">${escapeHtml(raw.slice(idx, idx + len))}</mark>`
+    i = idx + len
   }
   return out
 }
 
-const runSearch = async () => {
-  searching.value = true
-  try {
-    emit('search', query.value)
-  } finally {
+const runSearchNow = () => {
+  const q = query.value.trim()
+  if (!q) {
+    hits.value = []
     searching.value = false
+    return
   }
+  searching.value = true
+  const gen = ++searchGen
+  emit('search', q, searchOpts.value, gen)
 }
 
-const setHits = (list: SearchHit[]) => {
+const scheduleSearch = () => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    debounceTimer = undefined
+    runSearchNow()
+  }, 300)
+}
+
+watch(query, () => scheduleSearch())
+watch([caseSensitive, wholeWord, useRegex, includeGlob, excludeGlob], () => {
+  if (query.value.trim()) scheduleSearch()
+})
+
+const setHits = (list: SearchHit[], gen?: number) => {
+  if (gen !== undefined && gen !== searchGen) return
   hits.value = list
+  searching.value = false
   const exp: Record<string, boolean> = {}
   for (const h of list) exp[h.file] = true
   expandedFiles.value = exp
+}
+
+const setQuery = (q: string) => {
+  query.value = q
+  if (q.trim()) scheduleSearch()
 }
 
 const focusInput = () => {
   searchInput.value?.focus()
 }
 
-defineExpose({ setHits, focusInput })
+const onReplaceAll = () => {
+  const q = query.value.trim()
+  if (!q) return
+  emit('replace', q, replaceText.value, searchOpts.value)
+}
+
+const clearSearch = () => {
+  query.value = ''
+  replaceText.value = ''
+  hits.value = []
+  searching.value = false
+}
+
+const refreshSearch = () => {
+  if (query.value.trim()) runSearchNow()
+}
+
+defineExpose({ setHits, focusInput, setQuery })
 </script>
 
 <template>
   <aside v-show="visible" class="search-panel">
-    <div class="panel-header">
-      <span class="panel-title">Search</span>
-      <span class="sub" :title="projectName">{{ projectName || 'No project open' }}</span>
+    <div class="search-form">
+      <div class="toolbar">
+        <span class="toolbar-spacer" />
+        <button type="button" class="tb-btn" :title="t('searchPanel.clearSearch')" @click="clearSearch">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M12 2H8.5L8 1H5l-.5 1H2v1h10V2zm-1 2H5l1 9h4l1-9z"/></svg>
+        </button>
+        <button type="button" class="tb-btn" :title="t('searchPanel.refreshSearch')" @click="refreshSearch">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M11.5 2a4.5 4.5 0 0 1 3.2 7.7L13 11h2.5v1H10v-3.5h1v2.2l1.2-1.2A3.5 3.5 0 1 0 8 11.5H7a4.5 4.5 0 0 1 4.5-9.5zM4.5 14A4.5 4.5 0 0 1 1.3 6.3L3 5H.5V4H5v3.5H4V5.3L2.8 6.5A3.5 3.5 0 1 0 8 4.5h1A4.5 4.5 0 0 1 4.5 14z"/></svg>
+        </button>
+        <button
+          type="button"
+          class="tb-btn"
+          :title="anyResultExpanded ? t('searchPanel.collapseAllResults') : t('searchPanel.expandAllResults')"
+          :disabled="!groups.length"
+          @click="toggleAllResults"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 5.5 8 10l5-4.5v1.8L8 11.7 3 7.3V5.5zm10 5L8 10 3 10.5V8.7L8 13.1l5-4.4v1.8z"/></svg>
+        </button>
+        <button
+          type="button"
+          class="tb-btn text"
+          :class="{ on: caseSensitive }"
+          :title="t('searchPanel.matchCase')"
+          @click="caseSensitive = !caseSensitive"
+        >
+          Aa
+        </button>
+        <button
+          type="button"
+          class="tb-btn text whole"
+          :class="{ on: wholeWord }"
+          :title="t('searchPanel.matchWholeWord')"
+          @click="wholeWord = !wholeWord"
+        >
+          ab
+        </button>
+        <button
+          type="button"
+          class="tb-btn text"
+          :class="{ on: useRegex }"
+          :title="t('searchPanel.useRegex')"
+          @click="useRegex = !useRegex"
+        >
+          .*
+        </button>
+        <button
+          type="button"
+          class="tb-btn"
+          :class="{ on: includeGlob.trim() || excludeGlob.trim() }"
+          :title="t('searchPanel.excludeGlob')"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 3.5h12v1H2v-1zm0 3h12v1H2v-1zm0 3h8v1H2v-1z"/></svg>
+        </button>
+      </div>
+
+      <div class="field-row search-row">
+        <button
+          type="button"
+          class="field-chevron"
+          :class="{ open: replaceExpanded }"
+          :title="t('searchPanel.toggleReplace')"
+          @click.stop="replaceExpanded = !replaceExpanded"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 4.5 10 8l-4 3.5V4.5z"/></svg>
+        </button>
+        <input
+          ref="searchInput"
+          v-model="query"
+          type="text"
+          class="field-input"
+          :placeholder="t('searchPanel.placeholder')"
+          @keydown.enter="runSearchNow"
+        />
+      </div>
+
+      <div v-show="replaceExpanded" class="field-row replace-row">
+          <span class="field-indent" aria-hidden="true" />
+          <input
+            v-model="replaceText"
+            type="text"
+            class="field-input"
+            :placeholder="t('searchPanel.replacePlaceholder')"
+            @keydown.enter="onReplaceAll"
+          />
+          <div class="row-actions">
+            <button type="button" class="tb-btn" :title="t('searchPanel.replaceOne')" @click="onReplaceAll">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 3h5.5L12 5.5V12H4V3zm1 1v7h6V6H9V4H5zm7.5-.5L11 2H6L5.5 2.5H3v1h9.5z"/></svg>
+            </button>
+            <button type="button" class="tb-btn" :title="t('searchPanel.replaceAll')" @click="onReplaceAll">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M11.5 2a4.5 4.5 0 0 1 3.2 7.7L13 11h2.5v1H10v-3.5h1v2.2l1.2-1.2A3.5 3.5 0 1 0 8 11.5H7a4.5 4.5 0 0 1 4.5-9.5zM4.5 14A4.5 4.5 0 0 1 1.3 6.3L3 5H.5V4H5v3.5H4V5.3L2.8 6.5A3.5 3.5 0 1 0 8 4.5h1A4.5 4.5 0 0 1 4.5 14z"/></svg>
+            </button>
+          </div>
+        </div>
+      <div class="field-row glob">
+          <svg class="field-glyph" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 2h8l3 3v9H3V2zm7 1v3h3M5 8h6M5 10h4"/></svg>
+          <input
+            v-model="includeGlob"
+            type="text"
+            class="field-input"
+            :placeholder="t('searchPanel.includeGlob')"
+          />
+        </div>
+        <div class="field-row glob">
+          <svg class="field-glyph exclude" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 3h12v1H2V3zm0 3h8.5L8.8 8.8 8 8l-.8.8L5.5 7H2V6zm0 3h4.5L5.2 11.8 4.4 12.6 3.6 11.8 2 10.2V9zm12 4H2v-1h12v1z"/></svg>
+          <input
+            v-model="excludeGlob"
+            type="text"
+            class="field-input"
+            :placeholder="t('searchPanel.excludeGlob')"
+          />
+        </div>
     </div>
-    <div class="search-box">
-      <input
-        ref="searchInput"
-        v-model="query"
-        type="text"
-        placeholder="Search in project..."
-        @keydown.enter="runSearch"
-      />
-      <button type="button" :disabled="searching" @click="runSearch">Search</button>
-    </div>
+
     <div class="results">
-      <p v-if="!groups.length && query.trim()" class="empty">No results</p>
-      <section v-for="group in groups" :key="group.file" class="file-group">
+      <p v-if="searching" class="results-meta">{{ t('searchPanel.searching') }}</p>
+      <p v-else-if="!groups.length && query.trim()" class="results-meta">{{ t('searchPanel.noResults') }}</p>
+      <p v-else-if="resultsSummary" class="results-meta">{{ resultsSummary }}</p>
+
+      <section
+        v-for="group in groups"
+        :key="group.file"
+        class="file-group"
+        :class="{ open: isExpanded(group.file) }"
+      >
         <button
           type="button"
           class="file-row"
           :title="group.file"
           @click="toggleFile(group.file)"
         >
-          <span class="chevron" :class="{ open: isExpanded(group.file) }">›</span>
+          <span class="file-chevron" :class="{ open: isExpanded(group.file) }">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 4.5 10 8l-4 3.5V4.5z"/></svg>
+          </span>
           <span class="file-icon" :class="fileKind(group.fileName)" />
           <span class="file-name">{{ group.fileName }}</span>
           <span class="match-badge">{{ group.hits.length }}</span>
@@ -173,56 +367,170 @@ defineExpose({ setHits, focusInput })
   flex-direction: column;
   background: var(--wc-sidebar);
   min-height: 0;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
-.panel-header {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--wc-border);
+.search-form {
   flex-shrink: 0;
-}
-
-.panel-title {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--wc-text-muted);
-}
-
-.sub {
-  display: block;
-  font-size: 12px;
-  margin-top: 4px;
-  color: var(--wc-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.search-box {
+  padding: 0 6px 6px;
   display: flex;
-  gap: 6px;
-  padding: 8px;
+  flex-direction: column;
+  gap: var(--wc-search-field-gap);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--wc-search-toolbar-h);
+  padding: 0 0 0 2px;
+}
+
+.toolbar-spacer {
+  flex: 1;
+  min-width: 4px;
+}
+
+.tb-btn {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--wc-search-toggle-fg);
+  cursor: pointer;
+}
+
+.tb-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tb-btn.text {
+  width: auto;
+  min-width: 22px;
+  padding: 0 3px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--wc-font-sans);
+}
+
+.tb-btn.whole.on {
+  box-shadow: inset 0 -1px 0 var(--wc-search-toggle-on-fg);
+}
+
+.tb-btn:hover {
+  background: var(--wc-search-toggle-hover-bg);
+  color: var(--wc-search-toggle-hover-fg);
+}
+
+.tb-btn.on {
+  background: var(--wc-search-toggle-on-bg);
+  color: var(--wc-search-toggle-on-fg);
+}
+
+.tb-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+.field-row.search-row {
+  padding-left: 4px;
+}
+
+.field-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--wc-search-toggle-fg);
+  cursor: pointer;
+}
+
+.field-chevron svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.12s ease;
+}
+
+.field-chevron:hover {
+  color: var(--wc-search-toggle-hover-fg);
+}
+
+.field-chevron.open svg {
+  transform: rotate(90deg);
+}
+
+.field-indent {
+  width: 16px;
   flex-shrink: 0;
 }
 
-.search-box input {
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  min-height: var(--wc-search-field-h);
+  padding: 0 4px 0 var(--wc-search-field-indent);
+  border: 1px solid var(--wc-search-field-border);
+  border-radius: var(--wc-search-field-radius);
+  background: var(--wc-search-field-bg);
+}
+
+.field-row.replace-row {
+  padding-left: 4px;
+}
+
+.field-row:focus-within {
+  border-color: var(--wc-search-focus-border);
+}
+
+.field-row.glob {
+  padding-left: 6px;
+}
+
+.field-glyph {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--wc-search-glyph-fg);
+}
+
+.field-input {
   flex: 1;
   min-width: 0;
-  padding: 6px 8px;
-  font-size: 12px;
-  background: var(--wc-input-bg);
-  border: 1px solid var(--wc-border);
-  border-radius: 4px;
+  height: var(--wc-search-field-h);
+  padding: 0;
+  font-size: 13px;
+  line-height: var(--wc-search-field-h);
+  background: transparent;
+  border: none;
   color: var(--wc-text);
 }
 
-.search-box button {
-  padding: 6px 10px;
-  font-size: 12px;
-  border-radius: 4px;
-  border: 1px solid var(--wc-border);
-  background: var(--wc-active);
-  color: var(--wc-text);
+.field-input::placeholder {
+  color: var(--wc-text-dim);
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-right: 2px;
 }
 
 .results {
@@ -231,14 +539,35 @@ defineExpose({ setHits, focusInput })
   overflow: auto;
 }
 
-.empty {
-  padding: 12px;
-  color: var(--wc-text-muted);
-  font-size: 12px;
+.results-meta {
+  padding: 10px 18px 4px;
+  color: var(--wc-search-meta-fg);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .file-group {
   margin: 0;
+}
+
+.file-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wc-search-toggle-fg);
+}
+
+.file-chevron svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.12s ease;
+}
+
+.file-chevron.open svg {
+  transform: rotate(90deg);
 }
 
 .file-row {
@@ -246,30 +575,36 @@ defineExpose({ setHits, focusInput })
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px 3px 4px;
+  height: 22px;
+  padding: 0 8px 0 4px;
   font-size: 13px;
   text-align: left;
-  color: var(--wc-text);
+  color: var(--wc-search-file-fg);
   border: none;
   background: transparent;
   cursor: pointer;
 }
 
 .file-row:hover {
-  background: var(--wc-hover);
+  background: var(--wc-search-result-hover-bg);
 }
 
-.chevron {
-  width: 16px;
-  flex-shrink: 0;
-  text-align: center;
-  font-size: 14px;
-  color: var(--wc-text-muted);
-  transition: transform 0.15s;
+.match-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
 }
 
-.chevron.open {
-  transform: rotate(90deg);
+.file-group.open .match-list::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--wc-search-tree-guide);
+  pointer-events: none;
 }
 
 .file-icon {
@@ -279,7 +614,7 @@ defineExpose({ setHits, focusInput })
 }
 
 .file-icon.kind-file {
-  background: var(--wc-text-muted);
+  background: var(--wc-search-toggle-fg);
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M4 1h6l4 4v10H4V1zm5 1v3h3'/%3E%3C/svg%3E")
     center/contain no-repeat;
 }
@@ -287,17 +622,11 @@ defineExpose({ setHits, focusInput })
 .file-icon.kind-md {
   border-radius: 2px;
   background-color: #519aba;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='white' d='M8 11.5 4.5 8h7L8 11.5z'/%3E%3C/svg%3E");
-  background-size: 10px 10px;
-  background-position: center;
-  background-repeat: no-repeat;
 }
 
 .file-icon.kind-ts {
   border-radius: 2px;
   background-color: #3178c6;
-  mask: none;
-  background-image: none;
   position: relative;
 }
 
@@ -311,14 +640,11 @@ defineExpose({ setHits, focusInput })
   font-size: 7px;
   font-weight: 700;
   color: #fff;
-  line-height: 1;
 }
 
 .file-icon.kind-sh {
   border-radius: 2px;
   background-color: #6b8e23;
-  mask: none;
-  background-image: none;
   position: relative;
 }
 
@@ -334,13 +660,13 @@ defineExpose({ setHits, focusInput })
   color: #fff;
 }
 
-.file-icon.kind-image {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='2' y='5' width='7' height='7' rx='1' fill='none' stroke='%23a855f7' stroke-width='1'/%3E%3Crect x='5' y='2' width='7' height='7' rx='1' fill='%23252526' stroke='%23a855f7' stroke-width='1'/%3E%3C/svg%3E")
+.file-icon.kind-vue {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%2342b883' d='M8 2.5L2 13h3.5l.5-1h4l.5 1H14L8 2.5zm0 3.2l2.8 5.3H5.2L8 5.7z'/%3E%3C/svg%3E")
     center/contain no-repeat;
 }
 
-.file-icon.kind-vue {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%2342b883' d='M8 2.5L2 13h3.5l.5-1h4l.5 1H14L8 2.5zm0 3.2l2.8 5.3H5.2L8 5.7z'/%3E%3C/svg%3E")
+.file-icon.kind-image {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='2' y='5' width='7' height='7' rx='1' fill='none' stroke='%23a855f7' stroke-width='1'/%3E%3C/svg%3E")
     center/contain no-repeat;
 }
 
@@ -354,45 +680,42 @@ defineExpose({ setHits, focusInput })
 
 .match-badge {
   flex-shrink: 0;
-  min-width: 18px;
-  height: 18px;
+  min-width: 16px;
+  height: 16px;
   padding: 0 5px;
-  border-radius: 9px;
-  background: var(--wc-search-badge-bg, var(--wc-accent));
-  color: var(--wc-search-badge-fg, #fff);
+  border-radius: 8px;
+  background: var(--wc-search-badge-bg);
+  color: var(--wc-search-badge-fg);
   font-size: 11px;
   font-weight: 600;
-  line-height: 18px;
+  line-height: 16px;
   text-align: center;
-}
-
-.match-list {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 2px;
 }
 
 .match-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
-  padding: 2px 8px 2px 36px;
-  font-size: 12px;
+  height: 22px;
+  padding: 0 8px 0 36px;
+  font-size: 13px;
   font-family: var(--wc-font-mono);
   cursor: pointer;
-  color: var(--wc-text-muted);
+  color: var(--wc-search-result-fg);
 }
 
 .match-loc {
   flex-shrink: 0;
   min-width: 2.5em;
   text-align: right;
-  color: var(--wc-text-dim);
+  color: var(--wc-search-loc-fg);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .match-row:hover {
-  background: var(--wc-hover);
-  color: var(--wc-text);
+  background: var(--wc-search-result-hover-bg);
+  color: var(--wc-search-result-hover-fg);
 }
 
 .match-text {
@@ -404,9 +727,10 @@ defineExpose({ setHits, focusInput })
 }
 
 .match-text :deep(.match-hl) {
-  background: var(--wc-search-match-bg, rgba(55, 148, 255, 0.28));
-  color: var(--wc-text);
+  background: var(--wc-search-match-hl-bg);
+  color: var(--wc-search-match-hl-fg);
   border-radius: 2px;
   padding: 0 1px;
+  box-decoration-break: clone;
 }
 </style>

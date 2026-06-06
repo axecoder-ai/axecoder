@@ -10,7 +10,7 @@ import {
 import { sendWorkshopMessage } from './workshop/workshop-turn-orchestrator'
 import { buildWorkshopRouterLlm } from './workshop/workshop-router-llm'
 import { buildAgentRoleSpeaker } from './workshop/workshop-agent-speaker'
-import { bindWorkshopProgressWindow, emitWorkshopProgress } from './workshop/workshop-progress-emit'
+import { emitWorkshopProgress } from './workshop/workshop-progress-emit'
 import type { WorkshopSession } from './workshop/workshop-types'
 import { getModelById } from './models-store'
 import { resolveChatImageRefs, chatImageRefPreviewDataUrl, type ChatImageRef } from './chat-attachments'
@@ -19,10 +19,10 @@ import {
   scriptedMemberSpeaker,
   scriptedRouterLlm,
 } from './workshop/workshop-turn-orchestrator'
+import { modelSupportsVision } from '../../shared/ai/vision'
+import { visionUnsupportedError } from './ai/ai-vision-guard'
 
-export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) => {
-  bindWorkshopProgressWindow(getMainWindow)
-
+export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) => {
   ipcMain.handle('workshop:getSessions', async (_, projectRoot: string) =>
     listWorkshopSessions(typeof projectRoot === 'string' ? projectRoot : ''),
   )
@@ -82,6 +82,9 @@ export const registerWorkshopIpc = (getMainWindow: () => BrowserWindow | null) =
     if (!useScripted && process.env.AXECODER_WORKSHOP_SCRIPTED !== '1') {
       const model = await getModelById(session.modelId)
       if (!model) return { ok: false as const, error: 'Model not found' }
+      if (refs.length && !modelSupportsVision(model)) {
+        return { ok: false as const, error: visionUnsupportedError(model) }
+      }
     }
     const res = await sendWorkshopMessage(
       session,

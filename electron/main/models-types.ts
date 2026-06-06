@@ -43,6 +43,8 @@ export type AppConfig = {
   theme: AppTheme
   /** Agent Write/Edit/Delete/Move 不经confirm直接写盘 */
   agentAutoApplyWrites: boolean
+  /** Agent Bash OS 沙箱（macOS Seatbelt + execpolicy）；false 时裸执行 */
+  agentOsSandboxEnabled?: boolean
   /** Agent System提示Output风格（内置 id 或自定义 output-styles 目录中的 slug） */
   agentOutputStyle: string
   /** Wave4：联网Search（需 API Key） */
@@ -88,6 +90,8 @@ export type AppConfig = {
   gitForgeWebBase?: string
   /** GitHub PAT 或 Gitee access token（存本地 config，慎用） */
   gitForgeAccessToken?: string
+  /** AI 请求遇 524 时的最大重试次数（不含首次请求） */
+  aiRequestMaxRetries?: number
 }
 
 export type AiChatMessage = {
@@ -99,8 +103,14 @@ export type AiChatMessage = {
   reasoningContent?: string
 }
 
+export type AiTokenUsage = {
+  promptTokens: number
+  completionTokens: number
+  estimated: boolean
+}
+
 export type AiChatResult =
-  | { ok: true; text: string; content: string; reasoningContent?: string }
+  | { ok: true; text: string; content: string; reasoningContent?: string; usage?: AiTokenUsage }
   | { ok: false; error: string }
 
 export type ModelSaveInput = ModelEntry & { apiKey?: string }

@@ -14,6 +14,19 @@ export type SearchHit = {
   text: string
 }
 
+export type SearchOptions = {
+  caseSensitive?: boolean
+  wholeWord?: boolean
+  regex?: boolean
+  include?: string
+  exclude?: string
+}
+
+export type SearchReplaceResult = {
+  files: number
+  replacements: number
+}
+
 export type AppTheme = 'vscode' | 'aura-light' | 'aura-dark'
 
 export type AgentOutputStyleId = 'default' | 'Explanatory' | 'Learning'
@@ -28,6 +41,8 @@ export type AppSettings = {
   fontSize: number
   theme: AppTheme
   agentAutoApplyWrites: boolean
+  /** Agent Bash OS 沙箱（macOS Seatbelt + execpolicy） */
+  agentOsSandboxEnabled?: boolean
   agentOutputStyle: AgentOutputStyleId
   agentCompletionSoundEnabled?: boolean
   agentCompletionSoundPath?: string
@@ -40,6 +55,8 @@ export type AppSettings = {
   gitForgeApiBase?: string
   gitForgeWebBase?: string
   gitForgeAccessToken?: string
+  /** AI 请求遇 524 时的最大重试次数（不含首次请求） */
+  aiRequestMaxRetries?: number
 }
 
 export type PickProfileAvatarResult =
@@ -482,10 +499,127 @@ export type MenuChannel =
   | 'menu:toggleAgents'
   | 'menu:toggleTerminal'
   | 'menu:commandPalette'
+  | 'menu:quickOpen'
 
 export type WindowLayout = {
   fullscreen: boolean
   platform: string
+}
+
+export type WorkbenchWindowRole = 'main' | 'companion' | 'metrics' | 'trace'
+
+export type AiTraceEventKind = 'model_call' | 'tool_call' | 'tool_result'
+
+export type AiTraceEvent = {
+  id: string
+  ts: number
+  kind: AiTraceEventKind
+  source: string
+  sessionId?: string
+  turn?: number
+  modelId?: string
+  modelName?: string
+  provider?: string
+  toolName?: string
+  ok?: boolean
+  durationMs?: number
+  request?: string
+  response?: string
+  detail?: string
+}
+
+export type AiTraceState = {
+  recording: boolean
+  events: AiTraceEvent[]
+  eventCount: number
+}
+
+export type AiMetricsSource = 'chat' | 'agent' | 'workshop' | 'other'
+
+export type AiMetricsTimeRange = 'session' | '1h'
+
+export type AiMetricsFilter = {
+  modelId?: string
+  source?: AiMetricsSource
+  provider?: string
+  timeRange?: AiMetricsTimeRange
+}
+
+export type AiMetricsModelSummary = {
+  modelId: string
+  modelName: string
+  provider: string
+  primarySource: AiMetricsSource
+  callCount: number
+  ttftP95: number
+  e2eP95: number
+  tps: number
+  errorRate: number
+  totalTokens: number
+  inputTokens: number
+  outputTokens: number
+  tokensEstimated: boolean
+}
+
+export type AiMetricsSeriesPoint = {
+  label: string
+  ttftP50: number
+  ttftP95: number
+  e2eP95: number
+  tps: number
+  qps: number
+  errorRate: number
+  tokensPerMin: number
+  inputTokens: number
+  outputTokens: number
+  cumulativeTokens: number
+  okCount: number
+  failCount: number
+  sloBreach: boolean
+}
+
+export type AiMetricsSourceBreakdown = {
+  source: AiMetricsSource
+  calls: number
+  tokens: number
+}
+
+export type AiMetricsHistogramBin = {
+  label: string
+  count: number
+}
+
+export type AiMetricsKpis = {
+  ttftP50: number
+  ttftP95: number
+  e2eP95: number
+  tps: number
+  qps: number
+  errorRate: number
+  tokensPerMin: number
+  totalCalls: number
+  totalTokens: number
+  inputTokens: number
+  outputTokens: number
+  tokensEstimated: boolean
+}
+
+export type AiMetricsBlock = {
+  kpis: AiMetricsKpis
+  models: AiMetricsModelSummary[]
+}
+
+export type AiMetricsSnapshot = {
+  updatedAt: number
+  concurrent: number
+  providers: string[]
+  sources: AiMetricsSource[]
+  sloThresholdMs: number
+  sourceBreakdown: AiMetricsSourceBreakdown[]
+  inputTokenHistogram: AiMetricsHistogramBin[]
+  realtime: AiMetricsBlock
+  cumulative: AiMetricsBlock
+  series: AiMetricsSeriesPoint[]
 }
 
 export type CodeGraphPublicStatus = {
@@ -500,12 +634,34 @@ export type CodeGraphPublicStatus = {
 export type AxeCoderFs = {
   getWindowLayout: () => Promise<WindowLayout>
   onWindowLayout: (callback: (layout: WindowLayout) => void) => () => void
+  getWindowRole: () => Promise<WorkbenchWindowRole>
+  isCompanionWindowOpen: () => Promise<boolean>
+  openCompanionWindow: () => Promise<boolean>
+  closeCompanionWindow: () => Promise<boolean>
+  onCompanionWindowState: (callback: (open: boolean) => void) => () => void
+  isMetricsWindowDetached: () => Promise<boolean>
+  openMetricsWindow: () => Promise<boolean>
+  closeMetricsWindow: () => Promise<boolean>
+  setWindowBackgroundTheme: (theme: AppTheme) => Promise<boolean>
+  onMetricsWindowDetached: (callback: (detached: boolean) => void) => () => void
+  getAiMetricsSnapshot: (filter?: string | AiMetricsFilter) => Promise<AiMetricsSnapshot>
+  onAiMetricsUpdate: (callback: (snapshot: AiMetricsSnapshot) => void) => () => void
+  isTraceWindowDetached: () => Promise<boolean>
+  openTraceWindow: () => Promise<boolean>
+  closeTraceWindow: () => Promise<boolean>
+  onTraceWindowDetached: (callback: (detached: boolean) => void) => () => void
+  getAiTraceState: () => Promise<AiTraceState>
+  setAiTraceRecording: (on: boolean) => Promise<AiTraceState>
+  clearAiTrace: () => Promise<AiTraceState>
+  saveAiTrace: () => Promise<{ ok: true; path: string } | { ok: false; error: string }>
+  onAiTraceUpdate: (callback: (state: AiTraceState) => void) => () => void
+  getStartupProjectPath: () => Promise<string | null>
   getLastProject: () => Promise<string | null>
   openProject: (rootPath?: string) => Promise<{ rootPath: string; tree: FileNode } | null>
   openFolder: () => Promise<{ rootPath: string; tree: FileNode } | null>
   codeGraphStatus: (projectRoot: string) => Promise<CodeGraphPublicStatus>
   codeGraphIndex: (projectRoot: string) => Promise<{ ok: true } | { ok: false; error: string }>
-  openFile: () => Promise<{ path: string; content: string } | null>
+  openFile: () => Promise<{ path: string; content: string; binary?: true } | null>
   onOpenProject: (callback: () => void) => () => void
   onMenuAction: (callback: (channel: MenuChannel) => void) => () => void
   onBeforeQuit: (callback: () => void) => () => void
@@ -513,6 +669,8 @@ export type AxeCoderFs = {
   confirmQuit: () => void
   readTree: (rootPath: string) => Promise<{ rootPath: string; tree: FileNode }>
   readFile: (filePath: string) => Promise<{ content: string }>
+  readFileBase64: (filePath: string) => Promise<{ base64: string; mimeType: string }>
+  previewDocx: (filePath: string) => Promise<{ html: string }>
   writeFile: (filePath: string, content: string) => Promise<{ ok: true }>
   saveAs: (content: string, defaultPath?: string) => Promise<{ path: string } | null>
   createFile: (parentPath: string, name: string) => Promise<{ path: string }>
@@ -536,13 +694,25 @@ export type AxeCoderFs = {
   exportMarkdownDocx: (
     filePath: string,
   ) => Promise<{ ok: true; path: string } | { cancelled: true }>
-  search: (rootPath: string, query: string) => Promise<{ hits: SearchHit[] }>
+  search: (
+    rootPath: string,
+    query: string,
+    opts?: SearchOptions,
+  ) => Promise<{ hits: SearchHit[] }>
+  searchReplace: (
+    rootPath: string,
+    query: string,
+    replacement: string,
+    opts?: SearchOptions,
+  ) => Promise<SearchReplaceResult>
+  listProjectFiles: (rootPath: string) => Promise<{ files: string[] }>
   getRecentFiles: () => Promise<{ files: string[] }>
   getRecentProjects: () => Promise<{ projects: string[] }>
   watchStart: (rootPath: string) => Promise<{ ok: true }>
   watchStop: () => Promise<{ ok: true }>
   getSettings: () => Promise<AppSettings>
   setSettings: (partial: Partial<AppSettings>) => Promise<AppSettings>
+  onThemeChange: (callback: (theme: AppTheme) => void) => () => void
   pickCompletionSound: () => Promise<PickCompletionSoundResult>
   getCompletionSoundDataUrl: () => Promise<CompletionSoundDataUrlResult>
   pickProfileAvatar: () => Promise<PickProfileAvatarResult>
@@ -764,8 +934,11 @@ export type AxeCoderFs = {
     cwd: string,
   ) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
   gitOpenUrl: (url: string) => Promise<{ ok: true } | { ok: false; error: string }>
-  terminalStart: (cwd: string) => Promise<{ ok: true }>
+  terminalStart: (cwd: string, cols?: number, rows?: number) => Promise<
+    { ok: true } | { ok: false; error: string }
+  >
   terminalWrite: (data: string) => Promise<{ ok: boolean }>
+  terminalResize: (cols: number, rows: number) => Promise<{ ok: boolean }>
   terminalInterrupt: () => Promise<{ ok: boolean }>
   terminalStop: () => Promise<{ ok: true }>
   onTerminalData: (callback: (text: string) => void) => () => void

@@ -18,6 +18,7 @@
     }
   },
   "include": ["src", "shared"],
+  "exclude": ["src/demos"],
   "references": [
     { "path": "./tsconfig.node.json" }
   ]

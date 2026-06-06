@@ -12,6 +12,7 @@ const defaults: AppConfig = {
   fontSize: 14,
   theme: 'vscode',
   agentAutoApplyWrites: false,
+  agentOsSandboxEnabled: true,
   agentOutputStyle: 'default',
   agentPermissionMode: 'default',
   agentAllowedTools: [],
@@ -32,6 +33,7 @@ const defaults: AppConfig = {
   gitForgeApiBase: '',
   gitForgeWebBase: '',
   gitForgeAccessToken: '',
+  aiRequestMaxRetries: 2,
 }
 
 const configPath = () => axecoderPath('config.json')
@@ -56,6 +58,7 @@ export const getConfig = async (): Promise<AppConfig> => {
     fontSize: raw.fontSize ?? defaults.fontSize,
     theme: raw.theme ?? defaults.theme,
     agentAutoApplyWrites: raw.agentAutoApplyWrites ?? defaults.agentAutoApplyWrites,
+    agentOsSandboxEnabled: raw.agentOsSandboxEnabled ?? defaults.agentOsSandboxEnabled,
     agentOutputStyle: raw.agentOutputStyle ?? defaults.agentOutputStyle,
     agentFeatureWebSearch: raw.agentFeatureWebSearch ?? false,
     agentWebSearchApiKey: raw.agentWebSearchApiKey ?? '',
@@ -90,6 +93,7 @@ export const getConfig = async (): Promise<AppConfig> => {
     gitForgeApiBase: raw.gitForgeApiBase ?? defaults.gitForgeApiBase,
     gitForgeWebBase: raw.gitForgeWebBase ?? defaults.gitForgeWebBase,
     gitForgeAccessToken: raw.gitForgeAccessToken ?? defaults.gitForgeAccessToken,
+    aiRequestMaxRetries: raw.aiRequestMaxRetries ?? defaults.aiRequestMaxRetries,
   }
 }
 
@@ -104,6 +108,10 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
     fontSize: partial.fontSize ?? cur.fontSize,
     theme: partial.theme ?? cur.theme,
     agentAutoApplyWrites: partial.agentAutoApplyWrites ?? cur.agentAutoApplyWrites,
+    agentOsSandboxEnabled:
+      partial.agentOsSandboxEnabled !== undefined
+        ? partial.agentOsSandboxEnabled
+        : cur.agentOsSandboxEnabled,
     agentOutputStyle: partial.agentOutputStyle ?? cur.agentOutputStyle,
     agentFeatureWebSearch: partial.agentFeatureWebSearch ?? cur.agentFeatureWebSearch,
     agentWebSearchApiKey: partial.agentWebSearchApiKey ?? cur.agentWebSearchApiKey,
@@ -158,6 +166,10 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
       partial.gitForgeAccessToken !== undefined
         ? partial.gitForgeAccessToken
         : cur.gitForgeAccessToken,
+    aiRequestMaxRetries:
+      partial.aiRequestMaxRetries !== undefined
+        ? partial.aiRequestMaxRetries
+        : cur.aiRequestMaxRetries,
   }
   await fs.writeFile(configPath(), JSON.stringify(next, null, 2), 'utf-8')
   invalidateMainLocaleCache()

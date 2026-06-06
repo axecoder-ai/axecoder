@@ -1,5 +1,10 @@
 import { ref, computed } from 'vue'
-import type { AppSettings, SearchHit } from '../types/axecoder'
+import type {
+  AppSettings,
+  SearchHit,
+  SearchOptions,
+  SearchReplaceResult,
+} from '../types/axecoder'
 import { applyTheme } from '../utils/apply-theme'
 import { normalizeLocale, setAppLocale } from '../i18n'
 import { useI18n } from '../i18n'
@@ -13,6 +18,7 @@ import {
   type OpenFile,
   type SaveStatus,
 } from './workbench-state'
+import { documentPreviewKind } from '../utils/document-preview'
 
 export const useWorkbench = () => {
   const { t } = useI18n()
@@ -124,18 +130,50 @@ export const useWorkbench = () => {
       activePath.value = path
       return
     }
-    let text: string
-    if (content !== undefined) {
-      text = content
+    const previewKind = documentPreviewKind(path)
+    let file: OpenFile
+    if (previewKind === 'pdf') {
+      const { base64 } = await fs.readFileBase64(path)
+      file = {
+        path,
+        name: fileNameFromPath(path),
+        content: '',
+        dirty: false,
+        previewKind: 'pdf',
+        previewBase64: base64,
+      }
+    } else if (previewKind === 'docx') {
+      const { html } = await fs.previewDocx(path)
+      file = {
+        path,
+        name: fileNameFromPath(path),
+        content: '',
+        dirty: false,
+        previewKind: 'docx',
+        previewHtml: html,
+      }
+    } else if (previewKind === 'doc') {
+      file = {
+        path,
+        name: fileNameFromPath(path),
+        content: '',
+        dirty: false,
+        previewKind: 'doc',
+      }
     } else {
-      const res = await fs.readFile(path)
-      text = res.content
-    }
-    const file: OpenFile = {
-      path,
-      name: fileNameFromPath(path),
-      content: text,
-      dirty: false,
+      let text: string
+      if (content !== undefined) {
+        text = content
+      } else {
+        const res = await fs.readFile(path)
+        text = res.content
+      }
+      file = {
+        path,
+        name: fileNameFromPath(path),
+        content: text,
+        dirty: false,
+      }
     }
     openFiles.value = upsertOpenFile(openFiles.value, file)
     activePath.value = path
@@ -144,6 +182,10 @@ export const useWorkbench = () => {
   const openFileFromDisk = async () => {
     const res = await fs.openFile()
     if (!res) return
+    if ('binary' in res && res.binary) {
+      await openFileAtPath(res.path)
+      return
+    }
     await openFileAtPath(res.path, res.content)
   }
 
@@ -250,6 +292,7 @@ export const useWorkbench = () => {
     onToggleAgents?: () => void
     onToggleTerminal?: () => void
     onCommandPalette?: () => void
+    onQuickOpen?: () => void
   }) => {
     offMenu = fs.onMenuAction((ch) => {
       if (ch === 'menu:save') void saveCurrent()
@@ -265,6 +308,7 @@ export const useWorkbench = () => {
       else if (ch === 'menu:toggleAgents') handlers.onToggleAgents?.()
       else if (ch === 'menu:toggleTerminal') handlers.onToggleTerminal?.()
       else if (ch === 'menu:commandPalette') handlers.onCommandPalette?.()
+      else if (ch === 'menu:quickOpen') handlers.onQuickOpen?.()
     })
     offQuit = fs.onBeforeQuit(() => {
       void handleBeforeQuit()
@@ -297,10 +341,28 @@ export const useWorkbench = () => {
     applyTheme(settings.value.theme)
   }
 
-  const searchProject = async (query: string): Promise<SearchHit[]> => {
+  const searchProject = async (
+    query: string,
+    opts?: SearchOptions,
+  ): Promise<SearchHit[]> => {
     if (!projectRoot.value || !query.trim()) return []
-    const { hits } = await fs.search(projectRoot.value, query)
+    const { hits } = await fs.search(projectRoot.value, query, opts)
     return hits
+  }
+
+  const replaceInProject = async (
+    query: string,
+    replacement: string,
+    opts?: SearchOptions,
+  ): Promise<SearchReplaceResult> => {
+    if (!projectRoot.value || !query.trim()) return { files: 0, replacements: 0 }
+    return fs.searchReplace(projectRoot.value, query, replacement, opts)
+  }
+
+  const listProjectFiles = async (): Promise<string[]> => {
+    if (!projectRoot.value) return []
+    const { files } = await fs.listProjectFiles(projectRoot.value)
+    return files
   }
 
   return {
@@ -326,5 +388,7 @@ export const useWorkbench = () => {
     loadSettings,
     applySettings,
     searchProject,
+    replaceInProject,
+    listProjectFiles,
   }
 }

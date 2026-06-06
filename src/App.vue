@@ -9,10 +9,13 @@ import WelcomePage from './components/workbench/WelcomePage.vue'
 import ChatPane from './components/workbench/ChatPane.vue'
 import AgentsPanel from './components/workbench/AgentsPanel.vue'
 import BottomPanel from './components/workbench/BottomPanel.vue'
+import AiMetricsPanel from './components/workbench/AiMetricsPanel.vue'
+import AiTracePanel from './components/workbench/AiTracePanel.vue'
 import StatusBar from './components/workbench/StatusBar.vue'
 import SettingsModal from './components/workbench/SettingsModal.vue'
 import SettingsPanel from './components/workbench/SettingsPanel.vue'
 import CommandPalette from './components/workbench/CommandPalette.vue'
+import QuickOpenPalette from './components/workbench/QuickOpenPalette.vue'
 import { useWorkbench } from './composables/useWorkbench'
 import {
   clampAgentsWidth,
@@ -27,7 +30,17 @@ import {
   WC_EDITOR_MIN,
   WC_SIDEBAR_DEFAULT,
 } from './utils/agents-panel'
-import type { SearchHit, SessionKind, WindowLayout } from './types/axecoder'
+import type {
+  SearchHit,
+  SearchOptions,
+  SessionKind,
+  WindowLayout,
+  WorkbenchWindowRole,
+} from './types/axecoder'
+import { parseWorkbenchRoleFromLocation } from './utils/workbench-window-role'
+import { applyTheme } from './utils/apply-theme'
+import { applyMetricsWindowTheme } from './utils/metrics-window-theme'
+import type { AppTheme } from './types/axecoder'
 import { languageLabelForPath } from './utils/editor-language'
 import { useI18n } from './i18n'
 import { appT } from './i18n/translate'
@@ -53,12 +66,19 @@ const activeChatSessionId = ref('')
 const activeSessionKind = ref<SessionKind>('agent')
 const primarySidebarVisible = ref(true)
 const terminalVisible = ref(false)
+const metricsPanelVisible = ref(false)
+const metricsDetached = ref(false)
+const tracePanelVisible = ref(false)
+const traceDetached = ref(false)
+const bottomPanelTab = ref<'terminal' | 'output' | 'problems' | 'metrics' | 'trace'>('terminal')
 const editorMode = ref<'markdown' | 'preview'>('markdown')
 const cursorLine = ref(1)
 const cursorCol = ref(1)
 const settingsVisible = ref(false)
 const settingsPanelVisible = ref(false)
 const paletteVisible = ref(false)
+const quickOpenVisible = ref(false)
+const quickOpenPaths = ref<string[]>([])
 const recentFiles = ref<string[]>([])
 const recentProjects = ref<string[]>([])
 const WELCOME_ON_STARTUP_KEY = 'axecoder.welcomeOnStartup'
@@ -67,7 +87,32 @@ const windowLayout = ref<WindowLayout>({
   fullscreen: false,
   platform: typeof navigator !== 'undefined' ? navigator.platform.toLowerCase().includes('mac') ? 'darwin' : 'win32' : 'darwin',
 })
+const workbenchWindowRole = ref<WorkbenchWindowRole>('main')
+const companionWindowOpen = ref(false)
+const COMPANION_LAYOUT_REVERSED_KEY = 'axecoder.companionLayoutReversed'
+const companionLayoutReversed = ref(false)
+const isCompanionWindow = computed(() => workbenchWindowRole.value === 'companion')
+const isMetricsWindow = computed(() => workbenchWindowRole.value === 'metrics')
+const isTraceWindow = computed(() => workbenchWindowRole.value === 'trace')
+const chatDetachedToCompanion = computed(
+  () => !isCompanionWindow.value && companionWindowOpen.value,
+)
+const bottomPanelVisible = computed(
+  () =>
+    terminalVisible.value ||
+    (metricsPanelVisible.value && !metricsDetached.value) ||
+    (tracePanelVisible.value && !traceDetached.value),
+)
+const metricsPanelActive = computed(
+  () => metricsPanelVisible.value || metricsDetached.value,
+)
+const tracePanelActive = computed(() => tracePanelVisible.value || traceDetached.value)
 let offWindowLayout: (() => void) | undefined
+let onWindowResize: (() => void) | undefined
+let offCompanionWindowState: (() => void) | undefined
+let offMetricsDetached: (() => void) | undefined
+let offTraceDetached: (() => void) | undefined
+let offThemeChange: (() => void) | undefined
 
 const fileExplorerRef = ref<InstanceType<typeof FileExplorer> | null>(null)
 const searchPanelRef = ref<InstanceType<typeof SearchPanel> | null>(null)
@@ -77,14 +122,20 @@ const settingsPanelRef = ref<InstanceType<typeof SettingsPanel> | null>(null)
 const agentsPanelRef = ref<InstanceType<typeof AgentsPanel> | null>(null)
 const bottomPanelRef = ref<InstanceType<typeof BottomPanel> | null>(null)
 const workbenchBodyRef = ref<HTMLElement | null>(null)
+const workbenchMainRef = ref<HTMLElement | null>(null)
 const aiSidePanelRef = ref<HTMLElement | null>(null)
+
+const WC_BOTTOM_DEFAULT = 220
+const WC_BOTTOM_MIN = 120
 
 const sidebarWidth = ref(WC_SIDEBAR_DEFAULT)
 const aiPanelWidth = ref(WC_AI_PANEL_DEFAULT)
 const agentsWidth = ref(WC_AGENTS_DEFAULT)
+const bottomPanelHeight = ref(WC_BOTTOM_DEFAULT)
 const aiPanelSplitDragging = ref(false)
 const agentsSplitDragging = ref(false)
 const primarySplitDragging = ref(false)
+const bottomSplitDragging = ref(false)
 
 let offOpenProject: (() => void) | null = null
 
@@ -120,7 +171,12 @@ const showChatPane = computed(
 const showAgentsAside = computed(
   () => agentsSidebarVisible.value && showChatAside.value,
 )
-const showSessionAside = computed(() => showChatPane.value || showAgentsAside.value)
+const showSessionAsideCore = computed(() => showChatPane.value || showAgentsAside.value)
+const showSessionAside = computed(() => {
+  if (isCompanionWindow.value) return true
+  if (chatDetachedToCompanion.value) return false
+  return showSessionAsideCore.value
+})
 const aiSidePanelAgentsOnly = computed(
   () => showEditorArea.value && showAgentsAside.value && !showChatPane.value,
 )
@@ -133,10 +189,15 @@ const showWelcomePage = computed(
     !aiPanelVisible.value,
 )
 const aiPanelFillsCenter = computed(
-  () => showChatAside.value && !showWelcomePage.value && !showEditorArea.value,
+  () =>
+    isCompanionWindow.value ||
+    (showChatAside.value && !showWelcomePage.value && !showEditorArea.value),
 )
 const aiPanelUsesFixedWidth = computed(
-  () => showSessionAside.value && (showWelcomePage.value || showEditorArea.value),
+  () =>
+    showSessionAside.value &&
+    !isCompanionWindow.value &&
+    (showWelcomePage.value || showEditorArea.value),
 )
 
 const aiAsideMinWidth = () => {
@@ -268,18 +329,40 @@ const onAgentsSplitPointerDown = (e: PointerEvent) => {
   )
 }
 
-watch(hasOpenEditorTabs, () => {})
-
-const toggleWorkshop = async () => {
-  aiPanelVisible.value = true
-  await nextTick()
-  await chatPaneRef.value?.loadWorkshop?.()
-  await chatPaneRef.value?.newWorkshop()
-  activeChatSessionId.value = chatPaneRef.value?.workshopActiveId ?? ''
-  activeSessionKind.value = chatPaneRef.value?.activeTabKind ?? 'workshop'
-  await chatPaneRef.value?.loadWorkshopUsers()
-  await agentsPanelRef.value?.load()
+const clampBottomPanelHeight = (h: number, mainH: number) => {
+  const max = Math.max(WC_BOTTOM_MIN, Math.floor(mainH * 0.75))
+  return Math.min(max, Math.max(WC_BOTTOM_MIN, h))
 }
+
+const clampBottomPanelLayout = () => {
+  const main = workbenchMainRef.value
+  if (!main) return
+  bottomPanelHeight.value = clampBottomPanelHeight(
+    bottomPanelHeight.value,
+    main.getBoundingClientRect().height,
+  )
+}
+
+const onBottomSplitPointerDown = (e: PointerEvent) => {
+  const main = workbenchMainRef.value
+  if (!main) return
+  bottomSplitDragging.value = true
+  const startY = e.clientY
+  const startH = bottomPanelHeight.value
+  const mainH = main.getBoundingClientRect().height
+  trackColumnDrag(
+    e,
+    (ev) => {
+      const delta = startY - ev.clientY
+      bottomPanelHeight.value = clampBottomPanelHeight(startH + delta, mainH)
+    },
+    () => {
+      bottomSplitDragging.value = false
+    },
+  )
+}
+
+watch(hasOpenEditorTabs, () => {})
 
 type SettingsTabId = 'general' | 'models' | 'users' | 'rules'
 
@@ -315,6 +398,8 @@ const paletteCommands = computed(() => [
   { id: 'toggleChat', label: t('palette.toggleAi'), shortcut: '' },
   { id: 'toggleAgents', label: t('palette.toggleAi'), shortcut: '' },
   { id: 'toggleTerminal', label: t('palette.toggleTerminal'), shortcut: '' },
+  { id: 'toggleMetrics', label: t('titlebar.toggleMetrics'), shortcut: '' },
+  { id: 'toggleTrace', label: t('titlebar.toggleTrace'), shortcut: '' },
   { id: 'settings', label: t('palette.settings'), shortcut: '' },
 ])
 
@@ -360,12 +445,41 @@ const onActivitySelect = (id: string) => {
 }
 
 const toggleAiPanel = () => {
+  if (chatDetachedToCompanion.value) return
   aiPanelVisible.value = !aiPanelVisible.value
+}
+
+const toggleDualWindow = async () => {
+  if (isCompanionWindow.value) return
+  const open = await window.axecoder.isCompanionWindowOpen()
+  if (open) {
+    await window.axecoder.closeCompanionWindow()
+    return
+  }
+  aiPanelVisible.value = true
+  agentsSidebarVisible.value = true
+  await window.axecoder.openCompanionWindow()
+}
+
+const onChatPaneClose = () => {
+  if (isCompanionWindow.value) {
+    void window.axecoder.closeCompanionWindow()
+    return
+  }
+  aiPanelVisible.value = false
 }
 
 const toggleAgentsSidebar = () => {
   agentsSidebarVisible.value = !agentsSidebarVisible.value
   nextTick(() => clampLayoutWidths())
+}
+
+const toggleCompanionLayout = () => {
+  companionLayoutReversed.value = !companionLayoutReversed.value
+  localStorage.setItem(
+    COMPANION_LAYOUT_REVERSED_KEY,
+    companionLayoutReversed.value ? '1' : '0',
+  )
 }
 
 const togglePrimarySidebar = () => {
@@ -374,6 +488,76 @@ const togglePrimarySidebar = () => {
 
 const toggleTerminal = () => {
   terminalVisible.value = !terminalVisible.value
+  if (terminalVisible.value) bottomPanelTab.value = 'terminal'
+}
+
+const onMetricsDock = () => {
+  void window.axecoder.closeMetricsWindow()
+}
+
+const onMetricsDetach = () => {
+  metricsDetached.value = true
+  metricsPanelVisible.value = false
+  if (terminalVisible.value) {
+    bottomPanelTab.value = 'terminal'
+  } else if (tracePanelVisible.value && !traceDetached.value) {
+    bottomPanelTab.value = 'trace'
+  }
+}
+
+const onTraceDock = () => {
+  void window.axecoder.closeTraceWindow()
+}
+
+const onTraceDetach = () => {
+  traceDetached.value = true
+  tracePanelVisible.value = false
+  if (terminalVisible.value) {
+    bottomPanelTab.value = 'terminal'
+  } else if (metricsPanelVisible.value && !metricsDetached.value) {
+    bottomPanelTab.value = 'metrics'
+  }
+}
+
+const collapseBottomPanel = () => {
+  terminalVisible.value = false
+  metricsPanelVisible.value = false
+  tracePanelVisible.value = false
+}
+
+const toggleTrace = async () => {
+  if (isTraceWindow.value) return
+  if (traceDetached.value) {
+    const open = await window.axecoder.isTraceWindowDetached()
+    if (open) {
+      await window.axecoder.openTraceWindow()
+      return
+    }
+    traceDetached.value = false
+  }
+  tracePanelVisible.value = !tracePanelVisible.value
+  if (tracePanelVisible.value) {
+    bottomPanelTab.value = 'trace'
+    terminalVisible.value = false
+    metricsPanelVisible.value = false
+  }
+}
+
+const toggleMetrics = async () => {
+  if (isMetricsWindow.value) return
+  if (metricsDetached.value) {
+    const open = await window.axecoder.isMetricsWindowDetached()
+    if (open) {
+      await window.axecoder.openMetricsWindow()
+      return
+    }
+    metricsDetached.value = false
+  }
+  metricsPanelVisible.value = !metricsPanelVisible.value
+  if (metricsPanelVisible.value) {
+    bottomPanelTab.value = 'metrics'
+    terminalVisible.value = false
+  }
 }
 
 const triggerOpenProject = () => {
@@ -434,9 +618,28 @@ const onFileDeleted = async (path: string) => {
   await wb.onFileDeleted(path)
 }
 
-const onSearch = async (query: string) => {
-  const hits = await wb.searchProject(query)
+const onSearch = async (query: string, opts: SearchOptions, gen: number) => {
+  try {
+    const hits = await wb.searchProject(query, opts)
+    searchPanelRef.value?.setHits(hits, gen)
+  } catch {
+    searchPanelRef.value?.setHits([], gen)
+  }
+}
+
+const onSearchReplace = async (query: string, replacement: string, opts: SearchOptions) => {
+  const ok = window.confirm(appT('searchPanel.replaceConfirm', { query }))
+  if (!ok) return
+  const result = await wb.replaceInProject(query, replacement, opts)
+  window.alert(
+    appT('searchPanel.replaceDone', {
+      files: String(result.files),
+      count: String(result.replacements),
+    }),
+  )
+  const hits = await wb.searchProject(query, opts)
   searchPanelRef.value?.setHits(hits)
+  fileExplorerRef.value?.refresh?.()
 }
 
 const onSearchOpen = async (hit: SearchHit) => {
@@ -450,7 +653,28 @@ const onSearchOpen = async (hit: SearchHit) => {
 const onFindInFiles = () => {
   activeActivity.value = 'search'
   primarySidebarVisible.value = true
-  setTimeout(() => searchPanelRef.value?.focusInput(), 50)
+  const sel = editorPaneRef.value?.getEditorSelection?.() ?? ''
+  setTimeout(() => {
+    if (sel.trim()) searchPanelRef.value?.setQuery(sel.trim())
+    else searchPanelRef.value?.focusInput()
+  }, 50)
+}
+
+const onQuickOpen = async () => {
+  if (!projectRoot.value) {
+    triggerOpenProject()
+    return
+  }
+  quickOpenPaths.value = await wb.listProjectFiles()
+  quickOpenVisible.value = true
+}
+
+const onQuickOpenFile = async (relPath: string) => {
+  const root = projectRoot.value
+  if (!root) return
+  const sep = root.includes('\\') ? '\\' : '/'
+  const full = `${root.replace(/[/\\]+$/, '')}${sep}${relPath.replace(/^[/\\]+/, '')}`
+  await wb.openFileAtPath(full)
 }
 
 const onFind = () => {
@@ -471,6 +695,8 @@ const onPaletteRun = (id: string) => {
   else if (id === 'findInFiles') onFindInFiles()
   else if (id === 'toggleChat' || id === 'toggleAgents') toggleAiPanel()
   else if (id === 'toggleTerminal') toggleTerminal()
+  else if (id === 'toggleMetrics') void toggleMetrics()
+  else if (id === 'toggleTrace') void toggleTrace()
   else if (id === 'settings') void openSettingsPanel('general')
 }
 
@@ -531,9 +757,79 @@ const onChatSessionsChanged = async () => {
 onMounted(async () => {
   const stored = localStorage.getItem(WELCOME_ON_STARTUP_KEY)
   welcomeOnStartup.value = stored !== '0'
+  const roleFromIpc = await window.axecoder.getWindowRole()
+  const roleFromHash = parseWorkbenchRoleFromLocation(window.location)
+  workbenchWindowRole.value =
+    roleFromIpc === 'trace' || roleFromHash === 'trace'
+      ? 'trace'
+      : roleFromIpc === 'metrics' || roleFromHash === 'metrics'
+        ? 'metrics'
+        : roleFromIpc === 'companion' || roleFromHash === 'companion'
+          ? 'companion'
+          : 'main'
+  if (isCompanionWindow.value) {
+    aiPanelVisible.value = true
+    agentsSidebarVisible.value = true
+    companionLayoutReversed.value =
+      localStorage.getItem(COMPANION_LAYOUT_REVERSED_KEY) === '1'
+  } else if (!isMetricsWindow.value && !isTraceWindow.value) {
+    companionWindowOpen.value = await window.axecoder.isCompanionWindowOpen()
+    metricsDetached.value = await window.axecoder.isMetricsWindowDetached()
+    traceDetached.value = await window.axecoder.isTraceWindowDetached()
+  }
+  offCompanionWindowState = window.axecoder.onCompanionWindowState((open) => {
+    companionWindowOpen.value = open
+    if (!open && !isCompanionWindow.value) {
+      aiPanelVisible.value = true
+      nextTick(() => clampLayoutWidths())
+    }
+  })
+  offMetricsDetached = window.axecoder.onMetricsWindowDetached((detached) => {
+    metricsDetached.value = detached
+    if (detached) {
+      metricsPanelVisible.value = false
+      if (terminalVisible.value) {
+        bottomPanelTab.value = 'terminal'
+      } else if (tracePanelVisible.value && !traceDetached.value) {
+        bottomPanelTab.value = 'trace'
+      }
+    } else if (!isMetricsWindow.value) {
+      metricsPanelVisible.value = true
+      bottomPanelTab.value = 'metrics'
+    }
+  })
+  offTraceDetached = window.axecoder.onTraceWindowDetached((detached) => {
+    traceDetached.value = detached
+    if (detached) {
+      tracePanelVisible.value = false
+      if (terminalVisible.value) {
+        bottomPanelTab.value = 'terminal'
+      } else if (metricsPanelVisible.value && !metricsDetached.value) {
+        bottomPanelTab.value = 'metrics'
+      }
+    } else if (!isTraceWindow.value) {
+      tracePanelVisible.value = true
+      bottomPanelTab.value = 'trace'
+    }
+  })
   await wb.loadSettings()
+  const applyGlobalTheme = (theme: AppTheme) => {
+    if (workbenchWindowRole.value === 'metrics') {
+      const effective = applyMetricsWindowTheme(theme)
+      void window.axecoder.setWindowBackgroundTheme(effective)
+    } else {
+      settings.value = { ...settings.value, theme }
+      applyTheme(theme)
+    }
+  }
+  applyGlobalTheme(settings.value.theme)
+  offThemeChange = window.axecoder.onThemeChange(applyGlobalTheme)
   await loadRecent()
-  window.addEventListener('resize', clampLayoutWidths)
+  onWindowResize = () => {
+    clampLayoutWidths()
+    clampBottomPanelLayout()
+  }
+  window.addEventListener('resize', onWindowResize)
   void window.axecoder.getWindowLayout().then((layout) => {
     windowLayout.value = layout
   })
@@ -542,6 +838,7 @@ onMounted(async () => {
   })
   await nextTick()
   clampLayoutWidths()
+  clampBottomPanelLayout()
   offOpenProject = window.axecoder.onOpenProject(triggerOpenProject)
   wb.bindMenu({
     onNewFile: () => fileExplorerRef.value?.newFile(),
@@ -553,12 +850,19 @@ onMounted(async () => {
     onCommandPalette: () => {
       paletteVisible.value = true
     },
+    onQuickOpen: () => {
+      void onQuickOpen()
+    },
   })
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', clampLayoutWidths)
+  if (onWindowResize) window.removeEventListener('resize', onWindowResize)
   offWindowLayout?.()
+  offCompanionWindowState?.()
+  offMetricsDetached?.()
+  offTraceDetached?.()
+  offThemeChange?.()
   offOpenProject?.()
   wb.unbindMenu()
 })
@@ -569,19 +873,49 @@ onUnmounted(() => {
     <TitleBar
       :primary-sidebar-visible="primarySidebarVisible"
       :ai-panel-visible="aiPanelVisible"
-      :workshop-visible="activeSessionKind === 'workshop'"
       :project-name="projectName"
       :window-layout="windowLayout"
+      :companion-mode="isCompanionWindow"
+      :metrics-mode="isMetricsWindow"
+      :trace-mode="isTraceWindow"
+      :dual-window-active="companionWindowOpen"
+      :metrics-panel-active="metricsPanelActive"
+      :trace-panel-active="tracePanelActive"
+      :companion-layout-reversed="companionLayoutReversed"
       @toggle-primary-sidebar="togglePrimarySidebar"
       @toggle-ai-panel="toggleAiPanel"
-      @toggle-workshop="toggleWorkshop"
+      @toggle-dual-window="toggleDualWindow"
+      @toggle-companion-layout="toggleCompanionLayout"
+      @toggle-metrics="toggleMetrics"
+      @toggle-trace="toggleTrace"
       @open-project="triggerOpenProject"
       @open-model-settings="openModelsSettings"
     />
-    <div class="workbench-main">
-      <div ref="workbenchBodyRef" class="workbench-body">
+    <div ref="workbenchMainRef" class="workbench-main">
+      <div
+        ref="workbenchBodyRef"
+        class="workbench-body"
+        :class="{
+          'workbench-body--companion': isCompanionWindow,
+          'workbench-body--metrics': isMetricsWindow,
+          'workbench-body--trace': isTraceWindow,
+        }"
+      >
+        <div v-if="isMetricsWindow" class="metrics-window-body">
+          <AiMetricsPanel
+            expanded
+            detached
+            show-detach-controls
+            :global-theme="settings.theme"
+            @dock="onMetricsDock"
+          />
+        </div>
+        <div v-else-if="isTraceWindow" class="trace-window-body">
+          <AiTracePanel expanded detached show-detach-controls @dock="onTraceDock" />
+        </div>
+        <template v-else>
         <div
-          v-show="primarySidebarVisible"
+          v-show="!isCompanionWindow && primarySidebarVisible"
           class="primary-side"
           :style="{ width: `${sidebarWidth}px` }"
         >
@@ -603,18 +937,19 @@ onUnmounted(() => {
               :visible="showSearch()"
               :project-name="projectName"
               @search="onSearch"
+              @replace="onSearchReplace"
               @open="onSearchOpen"
             />
           </div>
         </div>
         <div
-          v-show="primarySidebarVisible"
+          v-show="!isCompanionWindow && primarySidebarVisible"
           class="primary-split-handle"
           :class="{ dragging: primarySplitDragging }"
           @pointerdown="onPrimarySplitPointerDown"
         />
         <WelcomePage
-          v-show="showWelcomePage"
+          v-show="!isCompanionWindow && showWelcomePage"
           :recent-projects="recentProjects"
           :recent-files="recentFiles"
           :has-project="!!projectRoot"
@@ -627,7 +962,7 @@ onUnmounted(() => {
           @update:show-on-startup="onWelcomeShowOnStartupChange"
         />
         <EditorPane
-          v-if="showEditorArea"
+          v-if="!isCompanionWindow && showEditorArea"
           ref="editorPaneRef"
           :tabs="openFiles"
           :active-path="activePath"
@@ -642,7 +977,7 @@ onUnmounted(() => {
           @cursor-change="(l, c) => { cursorLine = l; cursorCol = c }"
         />
         <div
-          v-show="aiPanelUsesFixedWidth"
+          v-show="!isCompanionWindow && aiPanelUsesFixedWidth"
           class="editor-ai-split-handle"
           :class="{ dragging: aiPanelSplitDragging }"
           @pointerdown="onAiPanelSplitPointerDown"
@@ -654,6 +989,9 @@ onUnmounted(() => {
           :class="{
             'ai-side-panel--fill': aiPanelFillsCenter,
             'ai-side-panel--agents-only': aiSidePanelAgentsOnly,
+            'ai-side-panel--companion': isCompanionWindow,
+            'ai-side-panel--reversed':
+              isCompanionWindow && companionLayoutReversed,
           }"
           :style="
             aiPanelUsesFixedWidth
@@ -681,7 +1019,7 @@ onUnmounted(() => {
             @update:agent-auto-apply-writes="
               onSettingsSave({ agentAutoApplyWrites: $event })
             "
-            @close="aiPanelVisible = false"
+            @close="onChatPaneClose"
             @show-agents-sidebar="agentsSidebarVisible = true"
             @open-models-settings="openModelsSettings"
             @active-change="onChatActiveChange"
@@ -709,14 +1047,31 @@ onUnmounted(() => {
             @delete-session="onDeleteSession"
           />
         </aside>
+        </template>
       </div>
+      <div
+        v-if="!isCompanionWindow && !isMetricsWindow && !isTraceWindow && bottomPanelVisible"
+        class="bottom-split-handle"
+        :class="{ dragging: bottomSplitDragging }"
+        @pointerdown="onBottomSplitPointerDown"
+      />
       <BottomPanel
+        v-if="!isCompanionWindow && !isMetricsWindow && !isTraceWindow"
         ref="bottomPanelRef"
-        :visible="terminalVisible"
+        :visible="bottomPanelVisible"
+        :height="bottomPanelHeight"
         :project-root="projectRoot"
+        :app-theme="settings.theme"
+        :initial-tab="bottomPanelTab"
+        :metrics-detached="metricsDetached"
+        :trace-detached="traceDetached"
+        @metrics-detach="onMetricsDetach"
+        @trace-detach="onTraceDetach"
+        @collapse="collapseBottomPanel"
       />
     </div>
     <StatusBar
+      v-if="!isCompanionWindow && !isMetricsWindow && !isTraceWindow"
       :line="cursorLine"
       :col="cursorCol"
       :language="statusLanguage"
@@ -745,6 +1100,12 @@ onUnmounted(() => {
       @close="paletteVisible = false"
       @run="onPaletteRun"
     />
+    <QuickOpenPalette
+      :visible="quickOpenVisible"
+      :paths="quickOpenPaths"
+      @close="quickOpenVisible = false"
+      @open="onQuickOpenFile"
+    />
   </div>
 </template>
 
@@ -770,6 +1131,31 @@ onUnmounted(() => {
   min-height: 0;
 }
 
+.workbench-body--companion .ai-side-panel--companion {
+  flex: 1;
+  width: 100% !important;
+  max-width: none;
+  min-width: 0;
+}
+
+.workbench-body--metrics {
+  flex: 1;
+  min-height: 0;
+}
+
+.metrics-window-body,
+.trace-window-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--wc-bg);
+}
+
+.workbench-body--trace {
+  flex: 1;
+  min-height: 0;
+}
+
 .primary-side {
   display: flex;
   flex-direction: column;
@@ -790,6 +1176,33 @@ onUnmounted(() => {
   flex: 1;
   min-height: 0;
   width: 100%;
+}
+
+.bottom-split-handle {
+  flex-shrink: 0;
+  height: 5px;
+  margin: -2px 0;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+.bottom-split-handle::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--wc-border);
+}
+
+.bottom-split-handle:hover::before,
+.bottom-split-handle.dragging::before {
+  background: var(--wc-border-light);
 }
 
 .primary-split-handle,
@@ -844,5 +1257,9 @@ onUnmounted(() => {
 
 .ai-side-panel--agents-only {
   flex-shrink: 0;
+}
+
+.ai-side-panel--companion.ai-side-panel--reversed {
+  flex-direction: row-reverse;
 }
 </style>

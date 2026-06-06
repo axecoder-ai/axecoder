@@ -22,6 +22,8 @@ const editorReady = ref(false)
 const loadError = ref<string | null>(null)
 let monaco: typeof Monaco | null = null
 let editor: Monaco.editor.IStandaloneCodeEditor | null = null
+/** 切换标签 / 外部同步内容时 setValue 也会触发 onDidChangeModelContent，需屏蔽以免误标 dirty 并自动保存 */
+let syncingModelValue = false
 
 const mountEditor = async () => {
   if (!container.value || editor) return
@@ -46,6 +48,7 @@ const mountEditor = async () => {
       readOnly: props.readOnly,
     })
     editor.onDidChangeModelContent(() => {
+      if (syncingModelValue) return
       emit('update:modelValue', editor?.getValue() ?? '')
     })
     editor.onDidChangeCursorPosition((e) => {
@@ -66,7 +69,13 @@ onMounted(() => {
 watch(
   () => props.modelValue,
   (val) => {
-    if (editor && editor.getValue() !== val) editor.setValue(val)
+    if (!editor || editor.getValue() === val) return
+    syncingModelValue = true
+    try {
+      editor.setValue(val)
+    } finally {
+      syncingModelValue = false
+    }
   },
 )
 

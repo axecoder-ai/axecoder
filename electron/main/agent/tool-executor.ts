@@ -16,6 +16,7 @@ import {
   parseBashTimeoutMs,
   runAgentBash,
 } from './agent-bash'
+import { evaluateExecPolicy } from './agent-execpolicy'
 import { startBackgroundBash } from './agent-bash-tasks'
 import {
   deleteProjectPath,
@@ -370,6 +371,19 @@ export const executeAgentTool = async (
         log: { name, summary: 'Bash', ok: false },
       }
     }
+    const cfg = await getConfig()
+    const sandboxOn = cfg.agentOsSandboxEnabled !== false
+    if (sandboxOn) {
+      const execPolicy = evaluateExecPolicy(command)
+      if (execPolicy.kind === 'deny') {
+        return {
+          kind: 'immediate',
+          content: `BLOCKED: ${execPolicy.reason}`,
+          log: { name, summary: 'Bash blocked (execpolicy)', ok: false },
+        }
+      }
+    }
+
     const timeoutMs = parseBashTimeoutMs(args)
     const description = str(args.description) || undefined
     const runInBackground = args.run_in_background === true
@@ -386,11 +400,16 @@ export const executeAgentTool = async (
         ...(description ? { description } : {}),
         ...(runInBackground ? { runInBackground: true } : {}),
         apply: async () => {
-          const cfg = await getConfig()
-          const forgeCtx = await buildGitForgeContext(ctx.projectRoot, cfg)
-          const bashEnv = forgeEnvForBash(cfg, forgeCtx)
+          const applyCfg = await getConfig()
+          const forgeCtx = await buildGitForgeContext(ctx.projectRoot, applyCfg)
+          const bashEnv = forgeEnvForBash(applyCfg, forgeCtx)
+          const sandboxOn = applyCfg.agentOsSandboxEnabled !== false
           if (runInBackground) {
-            const bg = startBackgroundBash(ctx.projectRoot, command, { timeoutMs, description })
+            const bg = await startBackgroundBash(ctx.projectRoot, command, {
+              timeoutMs,
+              description,
+              sandboxEnabled: sandboxOn,
+            })
             if (!bg.ok) return { ok: false as const, error: bg.error }
             return {
               ok: true as const,

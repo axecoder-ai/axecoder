@@ -8,8 +8,36 @@ export const IGNORED_DIR_NAMES = new Set([
   '.codegraph',
   'dist',
   'dist-electron',
+  'release',
+  // 项目根目录参考仓库符号链接（勿递归进入）
+  'vscode',
+  'opencode',
+  'claude-code',
   '.DS_Store',
 ])
+
+/** chokidar 用 glob，在 readdirp stat 之前跳过 asar / 参考仓库 */
+export const WORKSPACE_WATCH_IGNORED_GLOBS = [
+  '**/*.asar',
+  '**/*.app/**',
+  '**/node_modules/**',
+  '**/.git/**',
+  '**/release/**',
+  '**/vscode/**',
+  '**/opencode/**',
+  '**/claude-code/**',
+]
+
+/** chokidar / 资源树：跳过打包产物与 asar/app 包，避免 Invalid package 崩溃 */
+export const shouldIgnoreWorkspacePath = (p: string): boolean => {
+  const parts = p.split(/[/\\]/)
+  for (const part of parts) {
+    if (IGNORED_DIR_NAMES.has(part)) return true
+    if (part.endsWith('.asar')) return true
+    if (part.endsWith('.app')) return true
+  }
+  return false
+}
 
 export const fileNameFromPath = (p: string) => {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))

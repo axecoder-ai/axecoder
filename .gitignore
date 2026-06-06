@@ -26,6 +26,7 @@ release
 
 # 本地参考仓库（符号链接）
 claude-code
+codegraph
 
 # lockfile
 package-lock.json

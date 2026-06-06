@@ -16,17 +16,19 @@ const electronApp = (): { isPackaged: boolean; getAppPath: () => string } | null
   }
 }
 
-/** 开发：electron/main/codegraph/dist；打包：resources/codegraph */
+/** 开发：electron/main/codegraph/dist；打包：resources/codegraph（含 node_modules） */
 export const resolveCodeGraphDistRoot = (): string => {
   if (distRootCache) return distRootCache
 
   const candidates: string[] = []
-  if (process.env.APP_ROOT) {
-    candidates.push(path.join(process.env.APP_ROOT, 'electron/main/codegraph/dist'))
-  }
   const app = electronApp()
+  // 打包后 asar 里也有 electron/main/codegraph/dist，但没有 node_modules；
+  // extraResources 拷到 Resources/codegraph 的才是完整运行时，必须优先。
   if (app?.isPackaged) {
     candidates.push(path.join(process.resourcesPath, 'codegraph'))
+  }
+  if (process.env.APP_ROOT) {
+    candidates.push(path.join(process.env.APP_ROOT, 'electron/main/codegraph/dist'))
   }
   if (app) {
     candidates.push(path.join(app.getAppPath(), 'electron/main/codegraph/dist'))
@@ -66,7 +68,8 @@ let toolsMod: { ToolHandler: new (cg: unknown) => VendoredToolHandler } | null =
 export const loadVendoredCodeGraph = (): VendoredCodeGraph => {
   if (!codeGraphMod) {
     const distRoot = resolveCodeGraphDistRoot()
-    codeGraphMod = require(path.join(distRoot, 'index.js')) as { default: VendoredCodeGraph }
+    const distRequire = createRequire(path.join(distRoot, 'package.json'))
+    codeGraphMod = distRequire('./index.js') as { default: VendoredCodeGraph }
   }
   return codeGraphMod.default
 }
@@ -74,7 +77,8 @@ export const loadVendoredCodeGraph = (): VendoredCodeGraph => {
 export const createVendoredToolHandler = (cg: unknown): VendoredToolHandler => {
   if (!toolsMod) {
     const distRoot = resolveCodeGraphDistRoot()
-    toolsMod = require(path.join(distRoot, 'mcp', 'tools.js')) as {
+    const distRequire = createRequire(path.join(distRoot, 'package.json'))
+    toolsMod = distRequire('./mcp/tools.js') as {
       ToolHandler: new (cg: unknown) => VendoredToolHandler
     }
   }

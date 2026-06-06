@@ -19,6 +19,7 @@ const menuChannels: MenuChannel[] = [
   'menu:toggleAgents',
   'menu:toggleTerminal',
   'menu:commandPalette',
+  'menu:quickOpen',
 ]
 
 contextBridge.exposeInMainWorld('axecoder', {
@@ -29,6 +30,61 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.on('window:layout', listener)
     return () => ipcRenderer.off('window:layout', listener)
   },
+  getWindowRole: () =>
+    ipcRenderer.invoke('window:getRole') as Promise<'main' | 'companion' | 'metrics' | 'trace'>,
+  isCompanionWindowOpen: () => ipcRenderer.invoke('window:isCompanionOpen') as Promise<boolean>,
+  openCompanionWindow: () => ipcRenderer.invoke('window:openCompanion') as Promise<boolean>,
+  closeCompanionWindow: () => ipcRenderer.invoke('window:closeCompanion') as Promise<boolean>,
+  onCompanionWindowState: (callback: (open: boolean) => void) => {
+    const listener = (_: unknown, open: boolean) => callback(open)
+    ipcRenderer.on('window:companionState', listener)
+    return () => ipcRenderer.off('window:companionState', listener)
+  },
+  isMetricsWindowDetached: () => ipcRenderer.invoke('window:isMetricsDetached') as Promise<boolean>,
+  openMetricsWindow: () => ipcRenderer.invoke('window:openMetrics') as Promise<boolean>,
+  closeMetricsWindow: () => ipcRenderer.invoke('window:closeMetrics') as Promise<boolean>,
+  setWindowBackgroundTheme: (theme: import('../../src/types/axecoder').AppTheme) =>
+    ipcRenderer.invoke('window:setBackgroundTheme', theme) as Promise<boolean>,
+  onMetricsWindowDetached: (callback: (detached: boolean) => void) => {
+    const listener = (_: unknown, detached: boolean) => callback(detached)
+    ipcRenderer.on('window:metricsDetached', listener)
+    return () => ipcRenderer.off('window:metricsDetached', listener)
+  },
+  getAiMetricsSnapshot: (filter?: string | import('../../src/types/axecoder').AiMetricsFilter) =>
+    ipcRenderer.invoke('aiMetrics:getSnapshot', filter) as Promise<
+      import('../../src/types/axecoder').AiMetricsSnapshot
+    >,
+  onAiMetricsUpdate: (callback: (snapshot: import('../../src/types/axecoder').AiMetricsSnapshot) => void) => {
+    const listener = (_: unknown, snapshot: import('../../src/types/axecoder').AiMetricsSnapshot) =>
+      callback(snapshot)
+    ipcRenderer.on('aiMetrics:update', listener)
+    return () => ipcRenderer.off('aiMetrics:update', listener)
+  },
+  isTraceWindowDetached: () => ipcRenderer.invoke('window:isTraceDetached') as Promise<boolean>,
+  openTraceWindow: () => ipcRenderer.invoke('window:openTrace') as Promise<boolean>,
+  closeTraceWindow: () => ipcRenderer.invoke('window:closeTrace') as Promise<boolean>,
+  onTraceWindowDetached: (callback: (detached: boolean) => void) => {
+    const listener = (_: unknown, detached: boolean) => callback(detached)
+    ipcRenderer.on('window:traceDetached', listener)
+    return () => ipcRenderer.off('window:traceDetached', listener)
+  },
+  getAiTraceState: () =>
+    ipcRenderer.invoke('aiTrace:getState') as Promise<import('../../src/types/axecoder').AiTraceState>,
+  setAiTraceRecording: (on: boolean) =>
+    ipcRenderer.invoke('aiTrace:setRecording', on) as Promise<import('../../src/types/axecoder').AiTraceState>,
+  clearAiTrace: () =>
+    ipcRenderer.invoke('aiTrace:clear') as Promise<import('../../src/types/axecoder').AiTraceState>,
+  saveAiTrace: () =>
+    ipcRenderer.invoke('aiTrace:save') as Promise<
+      { ok: true; path: string } | { ok: false; error: string }
+    >,
+  onAiTraceUpdate: (callback: (state: import('../../src/types/axecoder').AiTraceState) => void) => {
+    const listener = (_: unknown, state: import('../../src/types/axecoder').AiTraceState) => callback(state)
+    ipcRenderer.on('aiTrace:update', listener)
+    return () => ipcRenderer.off('aiTrace:update', listener)
+  },
+  getStartupProjectPath: () =>
+    ipcRenderer.invoke('app:getStartupProjectPath') as Promise<string | null>,
   getLastProject: () => ipcRenderer.invoke('fs:getLastProject') as Promise<string | null>,
   openProject: (rootPath?: string) =>
     ipcRenderer.invoke('fs:openProject', rootPath) as Promise<{ rootPath: string; tree: import('../main/fs-ipc').FileNode } | null>,
@@ -72,6 +128,10 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('fs:readTree', rootPath) as Promise<{ rootPath: string; tree: import('../main/fs-ipc').FileNode }>,
   readFile: (filePath: string) =>
     ipcRenderer.invoke('fs:readFile', filePath) as Promise<{ content: string }>,
+  readFileBase64: (filePath: string) =>
+    ipcRenderer.invoke('fs:readFileBase64', filePath) as Promise<{ base64: string; mimeType: string }>,
+  previewDocx: (filePath: string) =>
+    ipcRenderer.invoke('fs:previewDocx', filePath) as Promise<{ html: string }>,
   writeFile: (filePath: string, content: string) =>
     ipcRenderer.invoke('fs:writeFile', filePath, content) as Promise<{ ok: true }>,
   saveAs: (content: string, defaultPath?: string) =>
@@ -97,8 +157,19 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('fs:exportMarkdownDocx', filePath) as Promise<
       { ok: true; path: string } | { cancelled: true }
     >,
-  search: (rootPath: string, query: string) =>
-    ipcRenderer.invoke('fs:search', rootPath, query) as Promise<{ hits: import('../../src/types/axecoder').SearchHit[] }>,
+  search: (rootPath: string, query: string, opts?: import('../../src/types/axecoder').SearchOptions) =>
+    ipcRenderer.invoke('fs:search', rootPath, query, opts) as Promise<{ hits: import('../../src/types/axecoder').SearchHit[] }>,
+  searchReplace: (
+    rootPath: string,
+    query: string,
+    replacement: string,
+    opts?: import('../../src/types/axecoder').SearchOptions,
+  ) =>
+    ipcRenderer.invoke('fs:searchReplace', rootPath, query, replacement, opts) as Promise<
+      import('../../src/types/axecoder').SearchReplaceResult
+    >,
+  listProjectFiles: (rootPath: string) =>
+    ipcRenderer.invoke('fs:listProjectFiles', rootPath) as Promise<{ files: string[] }>,
   getRecentFiles: () => ipcRenderer.invoke('fs:getRecentFiles') as Promise<{ files: string[] }>,
   getRecentProjects: () =>
     ipcRenderer.invoke('fs:getRecentProjects') as Promise<{ projects: string[] }>,
@@ -107,6 +178,11 @@ contextBridge.exposeInMainWorld('axecoder', {
   getSettings: () => ipcRenderer.invoke('fs:getSettings') as Promise<import('../../src/types/axecoder').AppSettings>,
   setSettings: (partial: Partial<import('../../src/types/axecoder').AppSettings>) =>
     ipcRenderer.invoke('fs:setSettings', partial) as Promise<import('../../src/types/axecoder').AppSettings>,
+  onThemeChange: (callback: (theme: import('../../src/types/axecoder').AppTheme) => void) => {
+    const listener = (_: unknown, theme: import('../../src/types/axecoder').AppTheme) => callback(theme)
+    ipcRenderer.on('settings:theme', listener)
+    return () => ipcRenderer.off('settings:theme', listener)
+  },
   pickCompletionSound: () =>
     ipcRenderer.invoke('fs:pickCompletionSound') as Promise<
       import('../../src/types/axecoder').PickCompletionSoundResult
@@ -470,8 +546,13 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('git:openUrl', url) as Promise<
       { ok: true } | { ok: false; error: string }
     >,
-  terminalStart: (cwd: string) => ipcRenderer.invoke('terminal:start', cwd) as Promise<{ ok: true }>,
+  terminalStart: (cwd: string, cols?: number, rows?: number) =>
+    ipcRenderer.invoke('terminal:start', cwd, cols, rows) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
   terminalWrite: (data: string) => ipcRenderer.invoke('terminal:write', data) as Promise<{ ok: boolean }>,
+  terminalResize: (cols: number, rows: number) =>
+    ipcRenderer.invoke('terminal:resize', cols, rows) as Promise<{ ok: boolean }>,
   terminalInterrupt: () => ipcRenderer.invoke('terminal:interrupt') as Promise<{ ok: boolean }>,
   terminalStop: () => ipcRenderer.invoke('terminal:stop') as Promise<{ ok: true }>,
   onTerminalData: (callback: (text: string) => void) => {

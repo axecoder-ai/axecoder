@@ -1,9 +1,9 @@
 {
   "name": "axecoder",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "main": "dist-electron/main/index.js",
   "description": "代码编写桌面 IDE — Electron + Vue 3 + Monaco",
-  "author": "草鞋没号 <308487730@qq.com>",
+  "author": "崔老六 <cuiyunfeng@huazhengit.com>",
   "license": "MIT",
   "private": true,
   "keywords": [
@@ -27,8 +27,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "codegraph:build": "tsc -p electron/main/codegraph/tsconfig.json && node electron/main/codegraph/copy-assets.mjs",
-    "postinstall": "npx @electron/rebuild -w better-sqlite3 -f",
-    "verify:codegraph": "npm run codegraph:build && ELECTRON_RUN_AS_NODE=1 electron scripts/probe-codegraph-electron.cjs && node scripts/probe-codegraph-bundle.cjs"
+    "postinstall": "npx @electron/rebuild -w better-sqlite3 node-pty -f && node scripts/fix-node-pty-perms.mjs",
+    "verify:codegraph": "npm run codegraph:build && ELECTRON_RUN_AS_NODE=1 electron scripts/probe-codegraph-electron.cjs && node scripts/probe-codegraph-bundle.cjs && node scripts/probe-codegraph-packaged.cjs"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",
@@ -50,14 +50,18 @@
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@vscode/ripgrep": "^1.15.11",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "better-sqlite3": "^11.10.0",
     "chokidar": "^4.0.3",
     "diff": "^7.0.0",
     "electron-store": "^10.0.0",
     "html-to-docx": "^1.8.0",
     "ignore": "^7.0.5",
+    "mammoth": "^1.12.0",
     "markdown-it": "^14.2.0",
     "monaco-editor": "^0.55.1",
+    "node-pty": "^1.1.0",
     "picomatch": "^4.0.3",
     "tree-sitter-wasms": "^0.1.11",
     "vscode-jsonrpc": "^8.2.1",
@@ -82,7 +86,15 @@
       }
     ],
     "asarUnpack": [
-      "**/node_modules/better-sqlite3/**"
+      "**/node_modules/better-sqlite3/**",
+      "**/node_modules/node-pty/**"
+    ],
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json",
+      "!release",
+      "!release/**"
     ],
     "mac": {
       "target": [

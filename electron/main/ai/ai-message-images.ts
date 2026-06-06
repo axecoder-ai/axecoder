@@ -1,9 +1,35 @@
 import type { AiChatImagePart, AiChatMessage } from '../models-types'
+import type { AgentLoopMessage } from '../agent/agent-types'
 
 export const messageHasImages = (m: AiChatMessage) =>
   m.role === 'user' && Array.isArray(m.images) && m.images.length > 0
 
 export const anyMessageHasImages = (messages: AiChatMessage[]) => messages.some(messageHasImages)
+
+export const lastUserMessageHasImages = (messages: AiChatMessage[]) => {
+  const last = [...messages].reverse().find((m) => m.role === 'user')
+  return !!last && messageHasImages(last)
+}
+
+/** 非视觉模型：历史中的图片从 API 载荷剥离，仅保留文本占位 */
+export const stripImagesFromMessages = (messages: AiChatMessage[]): AiChatMessage[] =>
+  messages.map((m) => {
+    if (m.role !== 'user' || !m.images?.length) return m
+    const { images: _images, ...rest } = m
+    return { ...rest, content: m.content.trim() || userTextContent('') }
+  })
+
+export const lastAgentUserMessageHasImages = (messages: AgentLoopMessage[]) => {
+  const last = [...messages].reverse().find((m) => m.role === 'user')
+  return !!last && last.role === 'user' && !!last.images?.length
+}
+
+export const stripImagesFromAgentMessages = (messages: AgentLoopMessage[]): AgentLoopMessage[] =>
+  messages.map((m) => {
+    if (m.role !== 'user' || !m.images?.length) return m
+    const { images: _images, ...rest } = m
+    return { ...rest, content: m.content.trim() || userTextContent('') }
+  })
 
 export const userTextContent = (content: string) => content || 'Describe or analyze the attached image(s).'
 

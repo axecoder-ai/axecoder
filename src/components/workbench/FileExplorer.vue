@@ -23,6 +23,7 @@ const clipboard = ref<{ mode: 'copy' | 'cut'; path: string } | null>(null)
 const menuVisible = ref(false)
 const menuX = ref(0)
 const menuY = ref(0)
+const menuRef = ref<HTMLElement | null>(null)
 const menuTarget = ref<FileNode | null>(null)
 
 const PENDING_FILE = '__pending_file__'
@@ -65,6 +66,31 @@ const refresh = async () => {
   expanded.value.add(res.rootPath)
 }
 
+const isInsideProject = (filePath: string) => {
+  const root = rootPath.value
+  if (!root) return false
+  const sep = root.includes('\\') ? '\\' : '/'
+  return filePath === root || filePath.startsWith(root + sep)
+}
+
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+const scheduleRefresh = () => {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null
+    void refresh()
+  }, 250)
+}
+
+let offFileChanged: (() => void) | null = null
+const bindFileChanged = () => {
+  offFileChanged?.()
+  offFileChanged = fs.onFileChanged((payload) => {
+    if (!rootPath.value || !isInsideProject(payload.path)) return
+    if (payload.kind === 'add' || payload.kind === 'unlink') scheduleRefresh()
+  })
+}
+
 const projectTitle = computed(() => {
   if (!rootPath.value) return 'No project open'
   return baseName(rootPath.value)
@@ -74,6 +100,7 @@ const applyProject = (res: { rootPath: string; tree: FileNode }) => {
   rootPath.value = res.rootPath
   tree.value = res.tree
   expanded.value = new Set([res.rootPath])
+  bindFileChanged()
   emit('project-opened', res.rootPath)
 }
 
@@ -115,6 +142,8 @@ const collapseAll = () => {
 const fileKind = (name: string) => {
   const n = name.toLowerCase()
   if (n.endsWith('.md')) return 'kind-md'
+  if (n.endsWith('.pdf')) return 'kind-pdf'
+  if (/\.(docx?|doc)$/.test(n)) return 'kind-word'
   if (/\.(png|jpe?g|gif|webp|ico|svg)$/.test(n)) return 'kind-image'
   if (n.endsWith('.vue')) return 'kind-vue'
   return 'kind-file'
@@ -137,6 +166,16 @@ const openMenu = (e: MouseEvent, node: FileNode | null) => {
   menuX.value = e.clientX
   menuY.value = e.clientY
   menuVisible.value = true
+  void nextTick(() => {
+    const el = menuRef.value
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const pad = 8
+    if (rect.right > window.innerWidth - pad) menuX.value -= rect.right - (window.innerWidth - pad)
+    if (rect.bottom > window.innerHeight - pad) menuY.value -= rect.bottom - (window.innerHeight - pad)
+    if (rect.left < pad) menuX.value += pad - rect.left
+    if (rect.top < pad) menuY.value += pad - rect.top
+  })
 }
 
 const targetParent = () => {
@@ -506,13 +545,22 @@ defineExpose({
   getRootPath: () => rootPath.value,
 })
 
-onMounted(() => {
-  loadLastProject()
+onMounted(async () => {
+  bindFileChanged()
+  const startup = await window.axecoder.getStartupProjectPath()
+  if (startup) {
+    await openProjectAt(startup)
+  } else {
+    await loadLastProject()
+  }
   document.addEventListener('click', onDocClick)
   panelRef.value?.addEventListener('keydown', onTreeKeydown)
 })
 
 onUnmounted(() => {
+  offFileChanged?.()
+  offFileChanged = null
+  if (refreshTimer) clearTimeout(refreshTimer)
   document.removeEventListener('click', onDocClick)
   panelRef.value?.removeEventListener('keydown', onTreeKeydown)
 })
@@ -639,6 +687,7 @@ onUnmounted(() => {
 
     <ul
       v-if="menuVisible"
+      ref="menuRef"
       class="context-menu"
       :style="{ left: `${menuX}px`, top: `${menuY}px` }"
       @click.stop
@@ -874,6 +923,20 @@ onUnmounted(() => {
   background-size: 10px 10px;
   background-position: center;
   background-repeat: no-repeat;
+}
+
+.file-icon.kind-pdf {
+  border-radius: 2px;
+  background-color: #e74c3c;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M4 1h6l4 4v10H4V1zm5 1v3h3'/%3E%3C/svg%3E")
+    center/contain no-repeat;
+}
+
+.file-icon.kind-word {
+  border-radius: 2px;
+  background-color: #2b579a;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M4 1h6l4 4v10H4V1zm5 1v3h3'/%3E%3C/svg%3E")
+    center/contain no-repeat;
 }
 
 .file-icon.kind-image {

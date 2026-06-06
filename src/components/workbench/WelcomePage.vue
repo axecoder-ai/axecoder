@@ -142,9 +142,12 @@ const fileName = (p: string) => {
 .welcome-page {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   height: 100%;
-  padding: 48px 56px 32px;
-  overflow: auto;
+  padding: 48px 56px 0;
+  overflow: hidden;
   background: var(--wc-bg);
   color: var(--wc-text);
 }
@@ -172,6 +175,8 @@ const fileName = (p: string) => {
   gap: 48px;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 16px;
 }
 
 .col-title {
@@ -266,7 +271,11 @@ const fileName = (p: string) => {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 24px;
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 14px 0 20px;
+  border-top: 1px solid var(--wc-border);
+  background: var(--wc-bg);
   font-size: 13px;
   color: var(--wc-text-dim);
   cursor: pointer;

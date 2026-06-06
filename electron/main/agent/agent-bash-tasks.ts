@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process'
+import { getConfig } from '../config-store'
 import { isDangerousGitCommand, trimBashOutput } from './agent-bash'
+import { evaluateExecPolicy } from './agent-execpolicy'
+import { buildShellSpawnSpec } from './agent-sandbox'
 
 export type BackgroundShellRun = {
   id: string
@@ -36,11 +39,11 @@ export const formatShellTaskOutput = (run: BackgroundShellRun): string => {
 }
 
 /** 用户批准后异步执行 shell；立即返回 task id */
-export const startBackgroundBash = (
+export const startBackgroundBash = async (
   projectRoot: string,
   command: string,
-  opts?: { timeoutMs?: number; description?: string },
-): { ok: true; taskId: string } | { ok: false; error: string } => {
+  opts?: { timeoutMs?: number; description?: string; sandboxEnabled?: boolean },
+): Promise<{ ok: true; taskId: string } | { ok: false; error: string }> => {
   const cmd = command.trim()
   if (!cmd) return { ok: false, error: 'command is required' }
   if (!projectRoot.trim()) return { ok: false, error: 'project root is required' }
@@ -49,6 +52,17 @@ export const startBackgroundBash = (
     return {
       ok: false,
       error: `Rejected dangerous git operation (${gitRisk}). Do not run without explicit user approval.`,
+    }
+  }
+
+  const sandboxOn =
+    opts?.sandboxEnabled !== undefined
+      ? opts.sandboxEnabled
+      : (await getConfig()).agentOsSandboxEnabled !== false
+  if (sandboxOn) {
+    const policy = evaluateExecPolicy(cmd)
+    if (policy.kind === 'deny') {
+      return { ok: false, error: policy.reason }
     }
   }
 
@@ -66,11 +80,9 @@ export const startBackgroundBash = (
   }
   runs.set(id, run)
 
-  const isWin = process.platform === 'win32'
-  const shell = isWin ? process.env.COMSPEC || 'cmd.exe' : process.env.SHELL || '/bin/sh'
-  const shellArgs = isWin ? ['/d', '/s', '/c', cmd] : ['-lc', cmd]
+  const spawnSpec = buildShellSpawnSpec(projectRoot, cmd, { enabled: sandboxOn })
 
-  const proc = spawn(shell, shellArgs, {
+  const proc = spawn(spawnSpec.program, spawnSpec.args, {
     cwd: projectRoot,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],

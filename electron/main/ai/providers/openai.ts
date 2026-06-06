@@ -1,4 +1,6 @@
-import type { AiChatMessage } from '../../models-types'
+import type { AiChatMessage, AiTokenUsage } from '../../models-types'
+import { parseOpenAiUsage } from '../parse-token-usage'
+import { fetchAiWithRetry, formatAiRequestFailedError } from '../ai-request-retry'
 import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from '../request-timeout'
 import { aiChatToOpenAiWire, parseOpenAiAssistantParts } from '../openai-messages'
 import {
@@ -23,7 +25,7 @@ export const chatOpenAi = async (
   messages: AiChatMessage[],
   onDelta?: (delta: OpenAiStreamDelta) => void,
 ): Promise<
-  | { ok: true; text: string; content: string; reasoningContent?: string }
+  | { ok: true; text: string; content: string; reasoningContent?: string; usage?: AiTokenUsage }
   | { ok: false; error: string }
 > => {
   const url = buildOpenAiChatUrl(baseUrl)
@@ -31,7 +33,7 @@ export const chatOpenAi = async (
   if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
   const useStream = !!onDelta
   try {
-    const res = await fetch(url, {
+    const { res, meta } = await fetchAiWithRetry(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -43,11 +45,14 @@ export const chatOpenAi = async (
     })
     if (!res.ok) {
       const errText = await res.text()
-      return { ok: false, error: `request failed (${res.status}): ${errText.slice(0, 300)}` }
+      return { ok: false, error: formatAiRequestFailedError(res.status, errText, meta) }
     }
     if (useStream) {
       const accum = emptyOpenAiStreamAccum()
+      let usage: AiTokenUsage | undefined
       await consumeOpenAiSse(res, (obj) => {
+        const u = parseOpenAiUsage(obj)
+        if (u) usage = u
         const { contentDelta, reasoningDelta } = mergeOpenAiStreamChunk(accum, obj)
         if (contentDelta) onDelta!({ content: contentDelta })
         if (reasoningDelta) onDelta!({ reasoning: reasoningDelta })
@@ -58,11 +63,22 @@ export const chatOpenAi = async (
         text: parts.displayText,
         content: parts.content,
         reasoningContent: parts.reasoningContent,
+        usage,
       }
     }
-    const data = (await res.json()) as { choices?: { message?: Record<string, unknown> }[] }
+    const data = (await res.json()) as {
+      choices?: { message?: Record<string, unknown> }[]
+      usage?: Record<string, unknown>
+    }
     const parts = parseOpenAiAssistantParts(data.choices?.[0]?.message)
-    return { ok: true, text: parts.displayText, content: parts.content, reasoningContent: parts.reasoningContent }
+    const usage = data.usage ? parseOpenAiUsage({ usage: data.usage }) : undefined
+    return {
+      ok: true,
+      text: parts.displayText,
+      content: parts.content,
+      reasoningContent: parts.reasoningContent,
+      usage,
+    }
   } catch (e) {
     return { ok: false, error: formatAiFetchError(e) }
   }

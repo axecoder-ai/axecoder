@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, screen, type MenuItemConstructorOptions } from 'electron'
 import { registerFsIpc } from './fs-ipc'
 import { registerCodeGraphIpc } from './codegraph-ipc'
 import { registerMarkdownExportIpc } from './markdown-export-ipc'
@@ -15,6 +15,13 @@ import { registerRulesIpc } from './rules/rules-ipc'
 import { registerSkillsIpc } from './skills/skills-ipc'
 import { runMigrate } from './migrate-axecoder'
 import { refreshMainLocale } from './i18n'
+import { parseStartupProjectPath } from './startup-args'
+import { releaseHeldProjectLock } from './project-lock'
+import { launchNewAppInstance } from './launch-new-instance'
+import { registerAiMetricsIpc } from './ai-metrics-ipc'
+import { registerAiTraceIpc } from './ai-trace-ipc'
+import { getConfig } from './config-store'
+import { themeBackgroundColor } from './theme-colors'
 import Store from 'electron-store'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -48,12 +55,12 @@ app.setName('AxeCoder')
 
 if (process.platform === 'win32') app.setAppUserModelId('com.axecoder.app')
 
-if (!app.requestSingleInstanceLock()) {
-  app.quit()
-  process.exit(0)
-}
+const startupProjectPath = parseStartupProjectPath(process.argv.slice(1))
 
 let win: BrowserWindow | null = null
+let companionWin: BrowserWindow | null = null
+let metricsWin: BrowserWindow | null = null
+let traceWin: BrowserWindow | null = null
 let allowQuit = false
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
@@ -65,6 +72,171 @@ const getWindowLayout = () => ({
 
 const sendWindowLayout = () => {
   win?.webContents.send('window:layout', getWindowLayout())
+}
+
+const notifyCompanionState = (open: boolean) => {
+  win?.webContents.send('window:companionState', open)
+}
+
+const notifyMetricsDetached = (detached: boolean) => {
+  win?.webContents.send('window:metricsDetached', detached)
+}
+
+const notifyTraceDetached = (detached: boolean) => {
+  win?.webContents.send('window:traceDetached', detached)
+}
+
+const companionWindowOpen = () =>
+  companionWin !== null && !companionWin.isDestroyed()
+
+const closeCompanionWindow = () => {
+  if (!companionWindowOpen()) return
+  companionWin?.close()
+}
+
+const companionWorkArea = () => {
+  const displays = screen.getAllDisplays()
+  const primary = screen.getPrimaryDisplay()
+  const secondary = displays.find((d) => d.id !== primary.id)
+  return (secondary ?? primary).workArea
+}
+
+const createCompanionWindow = () => {
+  if (companionWindowOpen()) {
+    companionWin?.focus()
+    return
+  }
+  const area = companionWorkArea()
+  const width = Math.min(560, Math.max(400, Math.floor(area.width * 0.38)))
+  const height = Math.max(640, Math.floor(area.height * 0.88))
+  const x = area.x + Math.max(0, area.width - width - 24)
+  const y = area.y + Math.max(0, Math.floor((area.height - height) / 2))
+
+  companionWin = new BrowserWindow({
+    title: 'AxeCoder — Chat',
+    width,
+    height,
+    minWidth: 360,
+    minHeight: 480,
+    x,
+    y,
+    backgroundColor: '#1e1e1e',
+    icon: path.join(process.env.APP_ROOT!, 'build', 'icon.png'),
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
+    webPreferences: { preload },
+  })
+
+  if (VITE_DEV_SERVER_URL) {
+    void companionWin.loadURL(`${VITE_DEV_SERVER_URL}#companion`)
+  } else {
+    void companionWin.loadFile(indexHtml, { hash: 'companion' })
+  }
+
+  companionWin.on('closed', () => {
+    companionWin = null
+    notifyCompanionState(false)
+  })
+
+  notifyCompanionState(true)
+}
+
+const metricsWindowOpen = () => metricsWin !== null && !metricsWin.isDestroyed()
+
+const closeMetricsWindow = () => {
+  if (!metricsWindowOpen()) return
+  metricsWin?.close()
+}
+
+const createMetricsWindow = async () => {
+  if (metricsWindowOpen()) {
+    metricsWin?.focus()
+    return
+  }
+  const config = await getConfig()
+  const backgroundColor = themeBackgroundColor(config.theme)
+  const area = companionWorkArea()
+  const width = Math.min(920, Math.max(640, Math.floor(area.width * 0.55)))
+  const height = Math.max(520, Math.floor(area.height * 0.72))
+  const x = area.x + Math.max(0, Math.floor((area.width - width) / 2))
+  const y = area.y + Math.max(0, Math.floor((area.height - height) / 2))
+
+  metricsWin = new BrowserWindow({
+    title: 'AxeCoder — AI Performance',
+    width,
+    height,
+    minWidth: 520,
+    minHeight: 400,
+    x,
+    y,
+    backgroundColor,
+    icon: path.join(process.env.APP_ROOT!, 'build', 'icon.png'),
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
+    webPreferences: { preload },
+  })
+
+  if (VITE_DEV_SERVER_URL) {
+    void metricsWin.loadURL(`${VITE_DEV_SERVER_URL}#metrics`)
+  } else {
+    void metricsWin.loadFile(indexHtml, { hash: 'metrics' })
+  }
+
+  metricsWin.on('closed', () => {
+    metricsWin = null
+    notifyMetricsDetached(false)
+  })
+
+  notifyMetricsDetached(true)
+}
+
+const traceWindowOpen = () => traceWin !== null && !traceWin.isDestroyed()
+
+const closeTraceWindow = () => {
+  if (!traceWindowOpen()) return
+  traceWin?.close()
+}
+
+const createTraceWindow = async () => {
+  if (traceWindowOpen()) {
+    traceWin?.focus()
+    return
+  }
+  const config = await getConfig()
+  const backgroundColor = themeBackgroundColor(config.theme)
+  const area = companionWorkArea()
+  const width = Math.min(960, Math.max(680, Math.floor(area.width * 0.58)))
+  const height = Math.max(560, Math.floor(area.height * 0.75))
+  const x = area.x + Math.max(0, Math.floor((area.width - width) / 2))
+  const y = area.y + Math.max(0, Math.floor((area.height - height) / 2))
+
+  traceWin = new BrowserWindow({
+    title: 'AxeCoder — AI Trace',
+    width,
+    height,
+    minWidth: 560,
+    minHeight: 420,
+    x,
+    y,
+    backgroundColor,
+    icon: path.join(process.env.APP_ROOT!, 'build', 'icon.png'),
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
+    webPreferences: { preload },
+  })
+
+  if (VITE_DEV_SERVER_URL) {
+    void traceWin.loadURL(`${VITE_DEV_SERVER_URL}#trace`)
+  } else {
+    void traceWin.loadFile(indexHtml, { hash: 'trace' })
+  }
+
+  traceWin.on('closed', () => {
+    traceWin = null
+    notifyTraceDetached(false)
+  })
+
+  notifyTraceDetached(true)
 }
 
 const sendMenu = (channel: string) => {
@@ -99,6 +271,11 @@ const setupAppMenu = (getWin: () => BrowserWindow | null) => {
           label: 'Open Project...',
           accelerator: 'CmdOrCtrl+O',
           click: sendOpenProject,
+        },
+        {
+          label: 'New Window',
+          accelerator: 'CmdOrCtrl+Shift+N',
+          click: () => launchNewAppInstance(),
         },
         {
           label: 'Open File...',
@@ -158,6 +335,11 @@ const setupAppMenu = (getWin: () => BrowserWindow | null) => {
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Quick Open',
+          accelerator: 'CmdOrCtrl+P',
+          click: () => sendMenu('menu:quickOpen'),
+        },
         {
           label: 'Command Palette',
           accelerator: 'CmdOrCtrl+Shift+P',
@@ -295,7 +477,57 @@ app.whenReady().then(async () => {
   registerAiIpc()
   registerAgentIpc(() => win)
   registerWorkshopIpc(() => win)
+  registerAiMetricsIpc()
+  registerAiTraceIpc()
+  ipcMain.handle('app:getStartupProjectPath', () => startupProjectPath ?? null)
   ipcMain.handle('window:getLayout', () => getWindowLayout())
+  ipcMain.handle('window:getRole', (event) => {
+    if (companionWin && !companionWin.isDestroyed() && event.sender === companionWin.webContents) {
+      return 'companion' as const
+    }
+    if (metricsWin && !metricsWin.isDestroyed() && event.sender === metricsWin.webContents) {
+      return 'metrics' as const
+    }
+    if (traceWin && !traceWin.isDestroyed() && event.sender === traceWin.webContents) {
+      return 'trace' as const
+    }
+    return 'main' as const
+  })
+  ipcMain.handle('window:isCompanionOpen', () => companionWindowOpen())
+  ipcMain.handle('window:openCompanion', () => {
+    createCompanionWindow()
+    return true
+  })
+  ipcMain.handle('window:closeCompanion', () => {
+    closeCompanionWindow()
+    return true
+  })
+  ipcMain.handle('window:isMetricsDetached', () => metricsWindowOpen())
+  ipcMain.handle('window:openMetrics', async () => {
+    await createMetricsWindow()
+    return true
+  })
+  ipcMain.handle('window:closeMetrics', () => {
+    closeMetricsWindow()
+    return true
+  })
+  ipcMain.handle('window:setBackgroundTheme', (event, theme: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return false
+    const t =
+      theme === 'aura-light' || theme === 'aura-dark' || theme === 'vscode' ? theme : 'vscode'
+    win.setBackgroundColor(themeBackgroundColor(t))
+    return true
+  })
+  ipcMain.handle('window:isTraceDetached', () => traceWindowOpen())
+  ipcMain.handle('window:openTrace', async () => {
+    await createTraceWindow()
+    return true
+  })
+  ipcMain.handle('window:closeTrace', () => {
+    closeTraceWindow()
+    return true
+  })
   setupAppMenu(() => win)
   createWindow()
 })
@@ -309,6 +541,10 @@ app.on('before-quit', (e) => {
 })
 
 ipcMain.on('app:confirmQuit', async () => {
+  closeCompanionWindow()
+  closeMetricsWindow()
+  closeTraceWindow()
+  await releaseHeldProjectLock()
   const { shutdownLspServerManager } = await import('./lsp/lsp-manager')
   await shutdownLspServerManager()
   allowQuit = true
@@ -317,13 +553,6 @@ ipcMain.on('app:confirmQuit', async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
-})
-
-app.on('second-instance', () => {
-  if (win) {
-    if (win.isMinimized()) win.restore()
-    win.focus()
-  }
 })
 
 app.on('activate', () => {
@@ -335,18 +564,3 @@ app.on('activate', () => {
   }
 })
 
-ipcMain.handle('open-win', (_, arg) => {
-  const childWindow = new BrowserWindow({
-    webPreferences: {
-      preload,
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
-  })
-
-  if (VITE_DEV_SERVER_URL) {
-    childWindow.loadURL(`${VITE_DEV_SERVER_URL}#${arg}`)
-  } else {
-    childWindow.loadFile(indexHtml, { hash: arg })
-  }
-})

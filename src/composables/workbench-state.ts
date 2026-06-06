@@ -1,8 +1,13 @@
+import type { DocumentPreviewKind } from '../utils/document-preview'
+
 export type OpenFile = {
   path: string
   name: string
   content: string
   dirty: boolean
+  previewKind?: DocumentPreviewKind
+  previewBase64?: string
+  previewHtml?: string
 }
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'

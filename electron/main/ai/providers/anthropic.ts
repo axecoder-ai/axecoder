@@ -1,5 +1,6 @@
-import type { AiChatMessage } from '../../models-types'
+import type { AiChatMessage, AiTokenUsage } from '../../models-types'
 import { userMessageToAnthropicContent } from '../ai-message-images'
+import { fetchAiWithRetry, formatAiRequestFailedError } from '../ai-request-retry'
 import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from '../request-timeout'
 
 export const buildAnthropicMessagesUrl = (baseUrl: string): string => {
@@ -26,13 +27,13 @@ export const chatAnthropic = async (
   apiKey: string,
   messages: AiChatMessage[],
 ): Promise<
-  | { ok: true; text: string; content: string; reasoningContent?: string }
+  | { ok: true; text: string; content: string; reasoningContent?: string; usage?: AiTokenUsage }
   | { ok: false; error: string }
 > => {
   if (!apiKey.trim()) return { ok: false, error: 'Anthropic requires an API Key' }
   const url = buildAnthropicMessagesUrl(baseUrl)
   try {
-    const res = await fetch(url, {
+    const { res, meta } = await fetchAiWithRetry(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -48,12 +49,24 @@ export const chatAnthropic = async (
     })
     if (!res.ok) {
       const errText = await res.text()
-      return { ok: false, error: `request failed (${res.status}): ${errText.slice(0, 300)}` }
+      return { ok: false, error: formatAiRequestFailedError(res.status, errText, meta) }
     }
-    const data = (await res.json()) as { content?: { type: string; text?: string }[] }
+    const data = (await res.json()) as {
+      content?: { type: string; text?: string }[]
+      usage?: { input_tokens?: number; output_tokens?: number }
+    }
     const block = data.content?.find((c) => c.type === 'text')
     const text = block?.text ?? ''
-    return { ok: true, text, content: text }
+    const usage: AiTokenUsage | undefined =
+      data.usage &&
+      (typeof data.usage.input_tokens === 'number' || typeof data.usage.output_tokens === 'number')
+        ? {
+            promptTokens: data.usage.input_tokens ?? 0,
+            completionTokens: data.usage.output_tokens ?? 0,
+            estimated: false,
+          }
+        : undefined
+    return { ok: true, text, content: text, usage }
   } catch (e) {
     return { ok: false, error: formatAiFetchError(e) }
   }

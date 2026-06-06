@@ -20,6 +20,7 @@ const fastModelId = ref('')
 const baseUrl = ref('https://api.openai.com/v1')
 const apiKey = ref('')
 const enabled = ref(true)
+const supportsVision = ref(false)
 
 const defaultUrl = (p: ModelProvider) => {
   if (p === 'openai') return 'https://api.openai.com/v1'
@@ -40,6 +41,7 @@ watch(
       fastModelId.value = props.editing.fastApiModelId ?? ''
       baseUrl.value = props.editing.baseUrl
       enabled.value = props.editing.enabled
+      supportsVision.value = props.editing.supportsVision === true
       apiKey.value = ''
     } else {
       name.value = ''
@@ -49,6 +51,7 @@ watch(
       baseUrl.value = defaultUrl('openai')
       apiKey.value = ''
       enabled.value = true
+      supportsVision.value = false
     }
   },
 )
@@ -70,6 +73,7 @@ const onSave = () => {
       ...(fast && fast !== deep ? { fastApiModelId: fast } : {}),
       baseUrl: baseUrl.value.trim(),
       enabled: enabled.value,
+      ...(supportsVision.value ? { supportsVision: true } : {}),
     },
     apiKey: apiKey.value,
   })
@@ -116,6 +120,10 @@ const onSave = () => {
       <label class="row row-switch">
         <span>Enabled</span>
         <SwitchToggle v-model="enabled" />
+      </label>
+      <label class="row row-switch">
+        <span>Supports images (vision)</span>
+        <SwitchToggle v-model="supportsVision" />
       </label>
       <div class="actions">
         <button type="button" @click="emit('close')">Cancel</button>

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 性能监控 — 实时示例</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle { color: #64748b; font-size: 0.85rem; margin-top: 4px; }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
+      50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+    }
+
+    /* KPI 卡片 */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .kpi {
+      background: #1a1d27;
+      border: 1px solid #2a2f3d;
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+
+    .kpi-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+
+    .kpi-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+
+    .kpi-unit { font-size: 0.85rem; font-weight: 400; color: #94a3b8; margin-left: 2px; }
+
+    .kpi-delta {
+      font-size: 0.75rem;
+      margin-top: 6px;
+    }
+
+    .up { color: #22c55e; }
+    .down { color: #ef4444; }
+    .neutral { color: #64748b; }
+
+    /* 图表网格 */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 900px) {
+      .chart-grid { grid-template-columns: 1fr; }
+    }
+
+    .chart-card {
+      background: #1a1d27;
+      border: 1px solid #2a2f3d;
+      border-radius: 10px;
+      padding: 16px 18px 12px;
+    }
+
+    .chart-card.wide { grid-column: 1 / -1; }
+
+    .chart-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 12px;
+    }
+
+    .chart-wrap { position: relative; height: 200px; }
+    .chart-wrap.tall { height: 240px; }
+
+    footer {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>AI 性能监控面板</h1>
+    <p class="subtitle">模拟实时数据 · 每 1.5 秒刷新</p>
+  </div>
+  <div class="status">
+    <span class="dot"></span>
+    <span id="clock">--:--:--</span>
+    <span>· 模型: gpt-4o</span>
+  </div>
+</header>
+
+<!-- KPI 概览 -->
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-label">TTFT P95</div>
+    <div class="kpi-value" id="kpi-ttft">--<span class="kpi-unit">ms</span></div>
+    <div class="kpi-delta up" id="delta-ttft">↓ 较上分钟 -3%</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">生成速度 TPS</div>
+    <div class="kpi-value" id="kpi-tps">--<span class="kpi-unit">tok/s</span></div>
+    <div class="kpi-delta up" id="delta-tps">↑ 较上分钟 +5%</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">请求 QPS</div>
+    <div class="kpi-value" id="kpi-qps">--<span class="kpi-unit">/s</span></div>
+    <div class="kpi-delta neutral" id="delta-qps">→ 稳定</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">错误率</div>
+    <div class="kpi-value" id="kpi-error">--<span class="kpi-unit">%</span></div>
+    <div class="kpi-delta up" id="delta-error">↓ 正常范围</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Token 消耗</div>
+    <div class="kpi-value" id="kpi-tokens">--<span class="kpi-unit">k/min</span></div>
+    <div class="kpi-delta neutral" id="delta-tokens">累计今日 1.2M</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">并发数</div>
+    <div class="kpi-value" id="kpi-concurrent">--<span class="kpi-unit">req</span></div>
+    <div class="kpi-delta neutral" id="delta-concurrent">队列 0</div>
+  </div>
+</div>
+
+<!-- 图表 -->
+<div class="chart-grid">
+  <div class="chart-card">
+    <div class="chart-title">TTFT 延迟 (P50 / P95 / P99) — ms</div>
+    <div class="chart-wrap"><canvas id="chart-ttft"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">生成速度 TPS — tokens/s</div>
+    <div class="chart-wrap"><canvas id="chart-tps"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">请求吞吐 QPS</div>
+    <div class="chart-wrap"><canvas id="chart-qps"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">错误率 & 超时率 — %</div>
+    <div class="chart-wrap"><canvas id="chart-error"></canvas></div>
+  </div>
+  <div class="chart-card wide">
+    <div class="chart-title">Token 消耗速率 — tokens/min（输入 vs 输出）</div>
+    <div class="chart-wrap tall"><canvas id="chart-tokens"></canvas></div>
+  </div>
+</div>
+
+<footer>示例页面 · 数据为随机模拟 · 用浏览器直接打开本文件即可预览</footer>
+
+<script>
+  // ── 工具：随机游走，让曲线看起来自然 ──
+  function walk(prev, min, max, step) {
+    let v = prev + (Math.random() - 0.48) * step;
+    return Math.max(min, Math.min(max, v));
+  }
+
+  // ── 时间标签，保留最近 30 个点 ──
+  const MAX = 30;
+  const labels = [];
+  for (let i = MAX - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 1500);
+    labels.push(d.toLocaleTimeString('zh-CN', { hour12: false, minute: '2-digit', second: '2-digit' }));
+  }
+
+  // ── 初始数据 ──
+  let ttftP50 = 320, ttftP95 = 580, ttftP99 = 920;
+  let tps = 42;
+  let qps = 8.5;
+  let errRate = 0.3, timeoutRate = 0.1;
+  let tokIn = 12000, tokOut = 8500;
+  let concurrent = 12;
+
+  const data = {
+    ttftP50: Array(MAX).fill(320),
+    ttftP95: Array(MAX).fill(580),
+    ttftP99: Array(MAX).fill(920),
+    tps:     Array(MAX).fill(42),
+    qps:     Array(MAX).fill(8.5),
+    err:     Array(MAX).fill(0.3),
+    timeout: Array(MAX).fill(0.1),
+    tokIn:   Array(MAX).fill(12000),
+    tokOut:  Array(MAX).fill(8500),
+  };
+
+  // ── Chart.js 通用配置 ──
+  const gridColor = 'rgba(100, 116, 139, 0.15)';
+  const tickColor = '#64748b';
+
+  function baseOptions(yLabel) {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: '#94a3b8', boxWidth: 12, font: { size: 11 } }
+        },
+        tooltip: {
+          backgroundColor: '#1e2230',
+          borderColor: '#334155',
+          borderWidth: 1,
+          titleColor: '#e2e8f0',
+          bodyColor: '#94a3b8',
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: tickColor, maxTicksLimit: 6, font: { size: 10 } },
+          grid: { color: gridColor }
+        },
+        y: {
+          ticks: { color: tickColor, font: { size: 10 } },
+          grid: { color: gridColor },
+          title: yLabel ? { display: true, text: yLabel, color: tickColor, font: { size: 10 } } : undefined
+        }
+      }
+    };
+  }
+
+  function makeLineChart(canvasId, datasets, yLabel) {
+    return new Chart(document.getElementById(canvasId), {
+      type: 'line',
+      data: { labels, datasets },
+      options: baseOptions(yLabel)
+    });
+  }
+
+  // ── 创建各图表 ──
+  const chartTtft = makeLineChart('chart-ttft', [
+    { label: 'P50', data: data.ttftP50, borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.08)', tension: 0.35, fill: true, pointRadius: 0, borderWidth: 2 },
+    { label: 'P95', data: data.ttftP95, borderColor: '#f59e0b', backgroundColor: 'transparent', tension: 0.35, pointRadius: 0, borderWidth: 2 },
+    { label: 'P99', data: data.ttftP99, borderColor: '#ef4444', backgroundColor: 'transparent', tension: 0.35, pointRadius: 0, borderWidth: 1.5, borderDash: [4, 3] },
+  ], 'ms');
+
+  const chartTps = makeLineChart('chart-tps', [
+    { label: 'TPS', data: data.tps, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.12)', tension: 0.35, fill: true, pointRadius: 0, borderWidth: 2 },
+  ], 'tok/s');
+
+  const chartQps = makeLineChart('chart-qps', [
+    { label: 'QPS', data: data.qps, borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.12)', tension: 0.35, fill: true, pointRadius: 0, borderWidth: 2 },
+  ], 'req/s');
+
+  const chartError = makeLineChart('chart-error', [
+    { label: '错误率', data: data.err, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', tension: 0.35, fill: true, pointRadius: 0, borderWidth: 2 },
+    { label: '超时率', data: data.timeout, borderColor: '#f97316', backgroundColor: 'transparent', tension: 0.35, pointRadius: 0, borderWidth: 1.5, borderDash: [4, 3] },
+  ], '%');
+
+  const chartTokens = makeLineChart('chart-tokens', [
+    { label: '输入 tokens/min', data: data.tokIn, borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)', tension: 0.35, fill: true, pointRadius: 0, borderWidth: 2 },
+    { label: '输出 tokens/min', data: data.tokOut, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', tension: 0.35, fill: true, pointRadius: 0, borderWidth: 2 },
+  ], 'tokens/min');
+
+  // ── 更新 KPI 数字 ──
+  function setKpi(id, val, decimals) {
+    document.getElementById(id).innerHTML =
+      (decimals !== undefined ? val.toFixed(decimals) : Math.round(val)) +
+      document.getElementById(id).querySelector('.kpi-unit').outerHTML;
+  }
+
+  // ── 每 1.5 秒推入新数据点 ──
+  function tick() {
+    // 时钟
+    document.getElementById('clock').textContent =
+      new Date().toLocaleTimeString('zh-CN', { hour12: false });
+
+    // 随机游走
+    ttftP50 = walk(ttftP50, 200, 500, 40);
+    ttftP95 = walk(ttftP95, 400, 900, 60);
+    ttftP99 = walk(ttftP99, 700, 1400, 80);
+    tps     = walk(tps, 25, 65, 6);
+    qps     = walk(qps, 4, 15, 1.5);
+    errRate = walk(errRate, 0, 2, 0.3);
+    timeoutRate = walk(timeoutRate, 0, 1, 0.15);
+    tokIn   = walk(tokIn, 6000, 20000, 2000);
+    tokOut  = walk(tokOut, 4000, 15000, 1500);
+    concurrent = Math.round(walk(concurrent, 2, 30, 4));
+
+    // 滚动数组
+    function push(arr, v) { arr.shift(); arr.push(v); }
+
+    push(labels, new Date().toLocaleTimeString('zh-CN', { hour12: false, minute: '2-digit', second: '2-digit' }));
+    push(data.ttftP50, ttftP50);
+    push(data.ttftP95, ttftP95);
+    push(data.ttftP99, ttftP99);
+    push(data.tps, tps);
+    push(data.qps, qps);
+    push(data.err, errRate);
+    push(data.timeout, timeoutRate);
+    push(data.tokIn, tokIn);
+    push(data.tokOut, tokOut);
+
+    // 刷新图表
+    [chartTtft, chartTps, chartQps, chartError, chartTokens].forEach(c => c.update('none'));
+
+    // 刷新 KPI
+    setKpi('kpi-ttft', ttftP95, 0);
+    setKpi('kpi-tps', tps, 1);
+    setKpi('kpi-qps', qps, 1);
+    setKpi('kpi-error', errRate, 2);
+    setKpi('kpi-tokens', (tokIn + tokOut) / 1000, 1);
+    setKpi('kpi-concurrent', concurrent, 0);
+
+    document.getElementById('delta-concurrent').textContent =
+      concurrent > 20 ? '⚠ 队列 ' + Math.round(concurrent * 0.3) : '队列 0';
+    document.getElementById('delta-concurrent').className =
+      'kpi-delta ' + (concurrent > 20 ? 'down' : 'neutral');
+  }
+
+  tick();
+  setInterval(tick, 1500);
+</script>
+
+</body>
+</html>
