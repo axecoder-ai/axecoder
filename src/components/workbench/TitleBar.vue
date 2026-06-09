@@ -14,8 +14,7 @@ const props = defineProps<{
   metricsMode?: boolean
   traceMode?: boolean
   dualWindowActive?: boolean
-  metricsPanelActive?: boolean
-  tracePanelActive?: boolean
+  bottomPanelVisible?: boolean
   companionLayoutReversed?: boolean
 }>()
 
@@ -29,8 +28,7 @@ defineEmits<{
   toggleAiPanel: []
   toggleDualWindow: []
   toggleCompanionLayout: []
-  toggleMetrics: []
-  toggleTrace: []
+  toggleBottomPanel: []
   openProject: []
   openModelSettings: []
 }>()
@@ -104,21 +102,9 @@ defineEmits<{
         v-if="!companionMode && !metricsMode && !traceMode"
         type="button"
         class="icon-btn"
-        :class="{ active: tracePanelActive }"
-        :title="t('titlebar.toggleTrace')"
-        @click="$emit('toggleTrace')"
-      >
-        <svg class="title-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <circle cx="12" cy="12" r="6" fill="#ef4444" />
-        </svg>
-      </button>
-      <button
-        v-if="!companionMode && !metricsMode && !traceMode"
-        type="button"
-        class="icon-btn"
-        :class="{ active: metricsPanelActive }"
-        :title="t('titlebar.toggleMetrics')"
-        @click="$emit('toggleMetrics')"
+        :class="{ active: bottomPanelVisible }"
+        :title="t('titlebar.toggleBottomPanel')"
+        @click="$emit('toggleBottomPanel')"
       >
         <svg
           class="title-icon"
@@ -130,11 +116,10 @@ defineEmits<{
           stroke-linejoin="round"
           aria-hidden="true"
         >
-          <path d="M4 19V5" />
-          <path d="M4 19h16" />
-          <path d="M8 17V11" />
-          <path d="M12 17V7" />
-          <path d="M16 17v-4" />
+          <path d="M3 20h18" />
+          <path d="M7 16V9" />
+          <path d="M12 16V6" />
+          <path d="M17 16v-7" />
         </svg>
       </button>
       <button

@@ -23,12 +23,15 @@ import {
   markWorkshopAgentStreamKey,
   markWorkshopLiveRole,
 } from '../../utils/workshop-live-turn'
+import { detectThinkingType } from '../../utils/thinking-parser'
 import {
   prepareRoleWorkflowSendPlan,
 } from '../../utils/role-workflow-send'
 import { parseCommittedRoleMention } from '../../utils/role-mention'
 import { formatAiChatRequestError, visionUnsupportedMessage } from '../../utils/ai-chat-error'
 import { visionBlockedForPendingImages } from '../../utils/chat-vision'
+import { expandUserMessageForApi } from '../../utils/expand-user-message'
+import { useStickToBottomScroll } from '../../composables/useStickToBottomScroll'
 
 const props = defineProps<{
   projectRoot: string
@@ -83,11 +86,14 @@ const activeModel = computed(() =>
 const loading = ref(false)
 const thinkingRole = ref<WorkshopProgressPayload['roleId'] | null>(null)
 const streamText = ref('')
+const thinkingText = ref('')
+const thinkingTypeLabel = ref('')
 const streamRoleId = ref<WorkshopRoleId | null>(null)
 const streamSpeakerUserId = ref<string | null>(null)
 const modelId = ref('')
 const enabledModels = ref<ModelEntry[]>([])
-const listEl = ref<HTMLElement | null>(null)
+const { scrollEl: listEl, onScrollContainer, scrollToBottom: scrollBottom } =
+  useStickToBottomScroll()
 const userAvatarUrls = ref<Record<string, string>>({})
 const usersList = ref<UserEntry[]>([])
 const profileAvatarUrl = ref('')
@@ -97,16 +103,6 @@ let offAgentProgress: (() => void) | undefined
 const progressSteps = ref<AgentProgressStep[]>([])
 const agentProgressActive = ref(false)
 const liveTurnState = createWorkshopLiveTurnState()
-
-/** 角色切换时冻结的进行中 Thinking/工具步骤（不是撤回聊天记录） */
-type PinnedLiveTurn = {
-  id: string
-  roleId: WorkshopRoleId
-  speakerUserId: string | null
-  steps: AgentProgressStep[]
-  streamText: string
-}
-const pinnedLiveTurns = ref<PinnedLiveTurn[]>([])
 
 const hasProject = computed(() => !!props.projectRoot?.trim())
 const pendingQuestion = computed(() => active.value?.pendingQuestion ?? '')
@@ -171,43 +167,19 @@ watch(
 
 const clearStreamUi = () => {
   streamText.value = ''
+  thinkingText.value = ''
+  thinkingTypeLabel.value = ''
   streamRoleId.value = null
   streamSpeakerUserId.value = null
   progressSteps.value = []
-  pinnedLiveTurns.value = []
   clearWorkshopLiveTurnState(liveTurnState)
 }
 
-const pinCurrentLiveTurn = () => {
-  if (!progressSteps.value.length && !streamText.value.trim()) return
-  const role = streamRoleId.value ?? thinkingRole.value
-  if (!role || role === 'system' || role === 'user') return
-  pinnedLiveTurns.value.push({
-    id: `pin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    roleId: role,
-    speakerUserId: streamSpeakerUserId.value,
-    steps: [...progressSteps.value],
-    streamText: streamText.value,
-  })
-}
-
-const prunePinnedLiveTurns = (session: WorkshopSession) => {
-  const visible = session.messages.filter((m) => !m.hidden)
-  pinnedLiveTurns.value = pinnedLiveTurns.value.filter((pin) => {
-    const settled = visible.some(
-      (m) =>
-        m.roleId === pin.roleId &&
-        (!pin.speakerUserId || m.speakerUserId === pin.speakerUserId) &&
-        !!(m.text.trim() || m.reasoningContent?.trim()),
-    )
-    return !settled
-  })
-}
-
 const resetLiveProgressSteps = () => {
-  pinCurrentLiveTurn()
   progressSteps.value = []
   streamText.value = ''
+  thinkingText.value = ''
+  thinkingTypeLabel.value = ''
 }
 
 const workshopAgentPrefix = () =>
@@ -221,14 +193,19 @@ const unbindWorkshopAgentProgress = () => {
 
 const bindWorkshopAgentProgress = () => {
   unbindWorkshopAgentProgress()
-  pinnedLiveTurns.value = []
   progressSteps.value = []
   streamText.value = ''
+  thinkingText.value = ''
+  thinkingTypeLabel.value = ''
+  const currentWorkshopId = active.value?.id
   agentProgressActive.value = true
   offAgentProgress = window.axecoder.onAgentProgress((payload) => {
     if (!agentProgressActive.value) return
+    // 严格过滤：只处理属于当前 workshop session 的进度消息
     const prefix = workshopAgentPrefix()
     if (!prefix || !payload.sessionId.startsWith(prefix)) return
+    // 二次检查：确保当前 active.value.id 没有变化
+    if (!active.value || active.value.id !== currentWorkshopId) return
     const roleKey = active.value
       ? parseWorkshopStreamRole(payload.sessionId, active.value.id)
       : null
@@ -248,6 +225,11 @@ const bindWorkshopAgentProgress = () => {
       thinkingRole.value = null
     }
     if (payload.kind === 'delta') {
+      streamText.value += payload.delta
+    } else if (payload.kind === 'thinking_delta') {
+      thinkingText.value += payload.delta
+      thinkingTypeLabel.value = detectThinkingType(thinkingText.value)
+    } else if (payload.kind === 'content_delta') {
       streamText.value += payload.delta
     } else {
       progressSteps.value = applyProgressPayload(progressSteps.value, payload)
@@ -380,12 +362,6 @@ const roleProps = (roleId: WorkshopRoleId, speakerUserId?: string | null) => {
   return { unbound: true }
 }
 
-const scrollBottom = async () => {
-  await nextTick()
-  const el = listEl.value
-  if (el) el.scrollTop = el.scrollHeight
-}
-
 /** 协作进行中：每个角色 done 后从磁盘拉取最新消息，避免下一位接话时上一条「消失」 */
 const syncWorkshopSession = async () => {
   const id = active.value?.id
@@ -394,7 +370,6 @@ const syncWorkshopSession = async () => {
   if (!session || session.id !== id) return
   active.value = session
   activePersisted = true
-  prunePinnedLiveTurns(session)
   await scrollBottom()
 }
 
@@ -461,10 +436,13 @@ const rollbackOptimisticUser = () => {
   }
 }
 
-const expandWithFiles = async (text: string, filePaths: string[]) => {
-  if (!filePaths.length) return text
-  return window.axecoder.expandChatUserWithFiles(props.projectRoot, text, filePaths)
-}
+const expandWithFiles = async (text: string, filePaths: string[]) =>
+  expandUserMessageForApi(
+    props.projectRoot,
+    text,
+    filePaths.length ? filePaths : undefined,
+    usersList.value,
+  )
 
 const pushLocalSystemMessage = (text: string) => {
   const now = Date.now()
@@ -517,20 +495,20 @@ const sendPayload = async (opts: {
   const useModelId = opts.modelIdOverride?.trim() || modelId.value
   if (!useModelId) {
     pushLocalSystemMessage('请先在设置中启用模型，或在输入框底部选择可用模型。')
-    void scrollBottom()
+    void scrollBottom(true)
     return { ok: false, error: 'No model' }
   }
   const model = activeModel.value
   const pendingImages = opts.imageRefs?.length ?? 0
   if (model && visionBlockedForPendingImages(model, pendingImages)) {
     pushLocalSystemMessage(visionUnsupportedMessage(model))
-    void scrollBottom()
+    void scrollBottom(true)
     return { ok: false, error: visionUnsupportedMessage(model) }
   }
   const filePaths = opts.filePaths ?? []
   const displayText = opts.displayText?.trim() || text || '(image)'
   const workshopId = pushOptimisticUser(displayText, imageRefs, opts.imagePreviews)
-  await scrollBottom()
+  await scrollBottom(true)
   loading.value = true
   thinkingRole.value = 'manager'
   clearStreamUi()
@@ -548,21 +526,21 @@ const sendPayload = async (opts: {
     if (!res.ok) {
       rollbackOptimisticUser()
       pushLocalSystemMessage(formatAiChatRequestError(res.error, model))
-      await scrollBottom()
+      await scrollBottom(true)
       return { ok: false, error: res.error }
     }
     active.value = res.session
     activePersisted = true
     emitWorkshopActive(res.session.id)
     await hydrateWorkshopImagePreviews(res.session.messages)
-    await scrollBottom()
+    await scrollBottom(true)
     emit('sessionsChanged')
     return { ok: true }
   } catch (e) {
     rollbackOptimisticUser()
     const msg = e instanceof Error ? e.message : String(e)
     pushLocalSystemMessage(`协作请求异常：${msg}`)
-    await scrollBottom()
+    await scrollBottom(true)
     return { ok: false, error: msg }
   } finally {
     loading.value = false
@@ -579,7 +557,7 @@ const sendText = async (raw: string, isClarify: boolean) => {
   const plan = await prepareRoleWorkflowSendPlan(text, usersList.value, props.projectRoot)
   if (plan.kind === 'error') {
     pushLocalSystemMessage(plan.message)
-    void scrollBottom()
+    void scrollBottom(true)
     return
   }
   const mention = parseCommittedRoleMention(text, usersList.value)
@@ -643,7 +621,7 @@ const selectSession = async (id: string) => {
   active.value = session
   activePersisted = !!session
   if (session) emitWorkshopActive(session.id)
-  await scrollBottom()
+  await scrollBottom(true)
 }
 
 const openForAgentChat = async (agentChatId: string) => {
@@ -657,7 +635,7 @@ const openForAgentChat = async (agentChatId: string) => {
     activePersisted = true
     modelId.value = session.modelId || modelId.value
     emitWorkshopActive(id)
-    await scrollBottom()
+    await scrollBottom(true)
     return
   }
   const now = Date.now()
@@ -784,7 +762,7 @@ defineExpose({
 <template>
   <div class="workshop-chat-section">
     <div v-if="!hasProject" class="workshop-empty">Open a project first</div>
-    <div v-else ref="listEl" class="message-list">
+    <div v-else ref="listEl" class="message-list" @scroll="onScrollContainer">
       <div v-if="showEmptyHint" class="workshop-empty-hint">
         <p class="workshop-empty-title">Multi-Agent 协作</p>
         <p class="workshop-empty-desc">在下方描述任务，Tech Lead 会协调各角色 Agent 协作完成。</p>
@@ -806,20 +784,16 @@ defineExpose({
         @open-file="openMountedFile"
       />
       <WorkshopMessageItem
-        v-for="pin in pinnedLiveTurns"
-        :key="pin.id"
-        :role-id="pin.roleId"
-        text=""
-        streaming
-        :live-progress="{ steps: pin.steps, streamText: pin.streamText }"
-        v-bind="roleProps(pin.roleId, pin.speakerUserId)"
-      />
-      <WorkshopMessageItem
         v-if="showLiveAgentItem && liveRoleId"
         :role-id="liveRoleId"
         text=""
         streaming
-        :live-progress="{ steps: progressSteps, streamText: '' }"
+        :live-progress="{
+          steps: progressSteps,
+          streamText: streamText,
+          thinkingText: thinkingText,
+          thinkingType: thinkingTypeLabel,
+        }"
         v-bind="roleProps(liveRoleId)"
       />
       <WorkshopMessageItem

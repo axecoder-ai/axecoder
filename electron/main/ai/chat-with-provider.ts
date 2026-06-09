@@ -13,6 +13,7 @@ import { chatOllama } from './providers/ollama'
 import { chatAnthropic } from './providers/anthropic'
 import { normalizeAiChatResult, prepareMessagesForVisionModel } from './ai-vision-guard'
 import { estimateTokenUsage } from './parse-token-usage'
+import { reasoningEffortForApi, type ReasoningEffortLevel } from '../../../shared/reasoning-effort'
 
 const messageInputChars = (messages: AiChatMessage[]) =>
   messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0)
@@ -25,6 +26,7 @@ export const chatWithProvider = async (
   apiModelId?: string,
   metricsSource: AiMetricsSource = 'other',
   traceContext?: AiTraceContext,
+  reasoningEffort?: ReasoningEffortLevel,
 ): Promise<AiChatResult> => {
   if (!model.enabled) return { ok: false, error: 'Model is disabled' }
   const prepared = prepareMessagesForVisionModel(model, messages)
@@ -50,7 +52,14 @@ export const chatWithProvider = async (
     if (!apiKey.trim()) {
       result = { ok: false, error: 'OpenAI-compatible API requires an API Key' }
     } else {
-      result = await chatOpenAi(model.baseUrl, apiName, apiKey, wireMessages, wrappedDelta)
+      result = await chatOpenAi(
+        model.baseUrl,
+        apiName,
+        apiKey,
+        wireMessages,
+        wrappedDelta,
+        reasoningEffortForApi(reasoningEffort ?? 'auto'),
+      )
     }
   } else if (model.provider === 'ollama') {
     result = await chatOllama(model.baseUrl, apiName, apiKey, wireMessages)

@@ -14,6 +14,17 @@ import {
   type PendingBashInternal,
   type PendingWriteInternal,
 } from './tool-executor'
+import {
+  applyStormBreaker,
+  checkRepeatBeforeExecute,
+  createLoopGuardState,
+  exceededToolRoundLimit,
+  recordRepeatSuccess,
+  resolveLoopGuardConfig,
+  type GuardToolOutcome,
+  type LoopGuardState,
+} from './agent-loop-guard'
+import { getConfig } from '../config-store'
 import { getSubagentTypeConfig, normalizeSubagentType } from './agent-subagent-types'
 import {
   createSubagentAgentId,
@@ -157,9 +168,15 @@ export const runSubAgentTask = async (
   const pendingBashById = new Map<string, PendingBashInternal>()
   const pendingAskById = new Map<string, PendingAskUserInternal>()
 
+  const cfg = await getConfig()
+  const guardCfg = resolveLoopGuardConfig(cfg)
+  const loopGuard: LoopGuardState = createLoopGuardState()
+
+  const configMaxRounds = guardCfg.maxToolRounds > 0 ? guardCfg.maxToolRounds : Infinity
   const maxTurns = Math.min(
     Math.max(options?.maxTurns ?? typeCfg.maxTurns ?? DEFAULT_MAX_SUB_TURNS, 1),
     MAX_SUB_TURNS_CAP,
+    configMaxRounds,
   )
 
   const apiModelId = await resolveApiModelIdForTask(model, typeCfg.modelTaskKind, prompt)
@@ -185,6 +202,14 @@ export const runSubAgentTask = async (
     if (!res.ok) return { ok: false, error: res.error }
 
     if (res.toolCalls.length) {
+      loopGuard.toolRounds += 1
+      if (exceededToolRoundLimit(loopGuard, guardCfg)) {
+        return {
+          ok: false,
+          error: `Sub-agent exceeded max tool rounds (${guardCfg.maxToolRounds})`,
+        }
+      }
+
       messages.push({
         role: 'assistant',
         content: res.content,
@@ -196,12 +221,53 @@ export const runSubAgentTask = async (
         return { ok: false, error: 'Sub-agent interrupted' }
       }
       const toolResults = await Promise.all(
-        res.toolCalls.map(async (tc) => ({ tc, run: await executeAgentTool(ctx, tc) })),
+        res.toolCalls.map(async (tc) => {
+          const repeatBlock = checkRepeatBeforeExecute(
+            loopGuard,
+            guardCfg,
+            tc.name,
+            tc.arguments as Record<string, unknown>,
+          )
+          if (repeatBlock) {
+            return {
+              tc,
+              run: {
+                kind: 'immediate' as const,
+                content: repeatBlock,
+                log: { name: tc.name, summary: tc.name, ok: false },
+              },
+            }
+          }
+          const run = await executeAgentTool(ctx, tc)
+          if (run.kind === 'immediate' && run.log.ok) {
+            recordRepeatSuccess(
+              loopGuard,
+              tc.name,
+              tc.arguments as Record<string, unknown>,
+              true,
+            )
+          }
+          return { tc, run }
+        }),
       )
       if (options?.abortSignal?.aborted) {
         return { ok: false, error: 'Sub-agent interrupted' }
       }
-      for (const { tc, run } of toolResults) {
+
+      const guardOutcomes: GuardToolOutcome[] = toolResults.map(({ tc, run }) => ({
+        toolName: tc.name,
+        args: tc.arguments as Record<string, unknown>,
+        content:
+          run.kind === 'immediate'
+            ? run.content
+            : 'Pending user approval for this change.',
+        ok: run.log.ok,
+      }))
+      const storm = applyStormBreaker(loopGuard, guardCfg, res.toolCalls, guardOutcomes)
+
+      for (let i = 0; i < toolResults.length; i++) {
+        const { tc, run } = toolResults[i]!
+        const guardedContent = storm.contents[i]
         if (run.kind === 'pending') {
           pendingById.set(run.pending.id, run.pending)
           messages.push({
@@ -231,7 +297,7 @@ export const runSubAgentTask = async (
             role: 'tool',
             toolCallId: tc.id,
             name: tc.name,
-            content: run.content,
+            content: guardedContent ?? run.content,
           })
         }
       }

@@ -17,8 +17,15 @@ export type SlashContext = {
   setModelsFile: (m: ModelsFile) => void
   setActiveModel: (id: string) => Promise<{ ok: boolean; data?: ModelsFile }>
   openModelsSettings: () => void
+  openPermissionsSettings: () => void
   /** sessionId of most recent Agent run in chat */
   getAgentSessionId?: () => string | undefined
+  /** 切换到已保存的 chat session */
+  selectSession?: (id: string) => Promise<boolean>
+  /** 切换聊天模式（左下角模式选择器） */
+  setChatMode?: (id: import('../types/axecoder').ChatModeId) => void
+  getChatEffort?: () => import('../../shared/reasoning-effort').ReasoningEffortLevel
+  setChatEffort?: (level: import('../../shared/reasoning-effort').ReasoningEffortLevel) => void
 }
 
 export type SlashRunResult =

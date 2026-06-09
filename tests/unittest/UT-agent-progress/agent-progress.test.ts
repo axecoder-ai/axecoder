@@ -93,6 +93,40 @@ describe('applyProgressPayload', () => {
     expect(steps[0].toolName).toBe('Glob')
     expect(steps[0].summary).toBe('Glob *')
   })
+
+  it('stores detail on model and tool done', () => {
+    let steps: AgentProgressStep[] = []
+    steps = applyProgressPayload(steps, {
+      ...base('s1'),
+      kind: 'model',
+      status: 'start',
+    })
+    steps = applyProgressPayload(steps, {
+      ...base('s1'),
+      kind: 'model',
+      status: 'done',
+      detail: '── content ──\nhello',
+    })
+    expect(steps[0].detail).toContain('hello')
+
+    steps = applyProgressPayload(steps, {
+      ...base('s1'),
+      kind: 'tool',
+      status: 'start',
+      toolName: 'Bash',
+      summary: 'ls',
+    })
+    steps = applyProgressPayload(steps, {
+      ...base('s1'),
+      kind: 'tool',
+      status: 'done',
+      toolName: 'Bash',
+      summary: 'ls',
+      ok: true,
+      detail: 'file.txt',
+    })
+    expect(steps[1].detail).toBe('file.txt')
+  })
 })
 
 describe('progress display helpers', () => {

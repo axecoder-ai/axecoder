@@ -6,6 +6,7 @@ import {
   trackCheckpointFileCtx,
 } from '../../../electron/main/agent/agent-checkpoint'
 import type { StoredAgentSession } from '../../../electron/main/agent/agent-session-store'
+import { createLoopGuardState } from '../../../electron/main/agent/agent-loop-guard'
 import { listBackgroundRuns, putBackgroundRun } from '../../../electron/main/agent/agent-subagent-tasks'
 import { registerBuiltinSlashCommands } from '../../../src/slash-commands/builtin'
 
@@ -39,6 +40,7 @@ const baseSession = (): StoredAgentSession => ({
   proactiveTick: 0,
   scratchpadDir: '/tmp/scratch',
   compactedOnce: false,
+  loopGuard: createLoopGuardState(),
 })
 
 describe('agent-checkpoint', () => {

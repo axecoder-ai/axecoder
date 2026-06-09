@@ -17,19 +17,32 @@ let term: Terminal | null = null
 let fitAddon: FitAddon | null = null
 let offData: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
-let started = false
+let sessionReady = false
 
 const fitAndResize = () => {
-  if (!fitAddon || !term) return
+  if (!fitAddon || !term || !props.active) return
   fitAddon.fit()
   const dims = fitAddon.proposeDimensions()
-  if (dims && started) {
+  if (dims && sessionReady) {
     void window.axecoder.terminalResize(dims.cols, dims.rows)
   }
 }
 
+const attachResizeObserver = () => {
+  if (!container.value || resizeObserver) return
+  resizeObserver = new ResizeObserver(() => {
+    fitAndResize()
+  })
+  resizeObserver.observe(container.value)
+}
+
+const detachResizeObserver = () => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+}
+
 const startTerminal = async () => {
-  if (!container.value || !term || started) return
+  if (!container.value || !term) return
   fitAddon?.fit()
   const dims = fitAddon?.proposeDimensions()
   const cols = dims?.cols ?? 80
@@ -39,7 +52,7 @@ const startTerminal = async () => {
     term.writeln(`\r\n[Terminal failed to start: ${result.error}]\r\n`)
     return
   }
-  started = true
+  sessionReady = true
   term.focus()
 }
 
@@ -65,31 +78,26 @@ const initXterm = () => {
   offData = window.axecoder.onTerminalData((data) => {
     term?.write(data)
   })
-
-  resizeObserver = new ResizeObserver(() => {
-    fitAndResize()
-  })
-  resizeObserver.observe(container.value)
 }
 
 const boot = async () => {
   await nextTick()
   if (!props.active || !container.value) return
   initXterm()
+  attachResizeObserver()
   await startTerminal()
   fitAndResize()
 }
 
 const stopTerminal = () => {
-  started = false
+  sessionReady = false
   void window.axecoder.terminalStop()
 }
 
 const disposeXterm = () => {
+  detachResizeObserver()
   offData?.()
   offData = null
-  resizeObserver?.disconnect()
-  resizeObserver = null
   term?.dispose()
   term = null
   fitAddon = null
@@ -102,11 +110,13 @@ onMounted(() => {
 watch(
   () => props.active,
   async (active) => {
-    if (active) {
-      await boot()
-    } else if (started) {
-      stopTerminal()
+    if (!active) {
+      detachResizeObserver()
+      return
     }
+    await boot()
+    fitAndResize()
+    term?.focus()
   },
 )
 
@@ -117,6 +127,7 @@ watch(
     term.clear()
     stopTerminal()
     await startTerminal()
+    fitAndResize()
   },
 )
 
@@ -129,7 +140,6 @@ watch(
 )
 
 onUnmounted(() => {
-  stopTerminal()
   disposeXterm()
 })
 </script>

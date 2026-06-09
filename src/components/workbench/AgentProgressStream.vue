@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   activeProgressHeadline,
   sliceProgressStepsForDisplay,
@@ -18,9 +18,36 @@ const props = defineProps<{
   subagentTasks: SubagentTaskView[]
   agentMode: boolean
   fallbackHeadline?: string
+  thinkingText?: string
+  thinkingType?: string
+  loopGuardNotice?: string
 }>()
 
+const safeThinkingText = computed(() => {
+  const raw = props.thinkingText
+  return typeof raw === 'string' ? raw : ''
+})
+
+const safeThinkingType = computed(() => {
+  const raw = props.thinkingType
+  return typeof raw === 'string' ? raw : ''
+})
+
 const expanded = ref(false)
+/** 用户手动展开的已完成 step */
+const stepDetailExpanded = ref<Set<string>>(new Set())
+
+watch(
+  () => props.steps,
+  (steps) => {
+    const open = stepDetailExpanded.value
+    const ids = new Set(steps.map((s) => s.id))
+    for (const id of open) {
+      if (!ids.has(id)) open.delete(id)
+    }
+  },
+  { deep: true },
+)
 
 const displayHeadline = computed(() => {
   if (props.agentMode && props.steps.length) return activeProgressHeadline(props.steps)
@@ -42,14 +69,39 @@ const glyphForStep = (step: AgentProgressStep) => {
 
 const primaryForStep = (step: AgentProgressStep) => {
   if (step.phase === 'tool' && step.toolName) return step.toolName
-  if (step.phase === 'model' && step.status === 'active') return 'Thinking'
-  if (step.phase === 'model') return 'Thought'
+  if (step.phase === 'model' && step.status === 'active') return 'Model Call'
+  if (step.phase === 'model') return 'Model Result'
   return step.label
+}
+
+const thinkingTypeLabel = (raw?: string) => {
+  if (raw === 'tool_call') return '工具调用'
+  if (raw === 'tool_result') return '返回结果'
+  if (raw === 'reasoning') return 'Thinking'
+  return raw?.trim() || 'Thinking'
+}
+
+const isStepDetailOpen = (step: AgentProgressStep) => {
+  if (!step.detail?.trim()) return false
+  if (step.status === 'active') return true
+  return stepDetailExpanded.value.has(step.id)
+}
+
+const toggleStepDetail = (step: AgentProgressStep) => {
+  if (!step.detail?.trim() || step.status === 'active') return
+  const next = new Set(stepDetailExpanded.value)
+  if (next.has(step.id)) next.delete(step.id)
+  else next.add(step.id)
+  stepDetailExpanded.value = next
 }
 
 const secondaryForStep = (step: AgentProgressStep) => {
   if (step.phase === 'tool' && step.summary) return step.summary
   if (step.phase === 'model' && step.status === 'done') return `turn ${step.turn}`
+  if (step.detail?.trim() && !isStepDetailOpen(step)) {
+    const oneLine = step.detail.replace(/\s+/g, ' ').trim()
+    return oneLine.length > 72 ? `${oneLine.slice(0, 72)}…` : oneLine
+  }
   return ''
 }
 
@@ -62,6 +114,10 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
 
 <template>
   <div class="agent-progress-stream">
+    <div v-if="loopGuardNotice?.trim()" class="loop-guard-notice" role="status">
+      ⚠ {{ loopGuardNotice }}
+    </div>
+
     <div class="stream-headline" :class="{ shimmer: agentMode && steps.some((s) => s.status === 'active') }">
       <span class="headline-glyph" aria-hidden="true">›</span>
       <span class="headline-text">{{ displayHeadline }}</span>
@@ -77,12 +133,22 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
       <div
         v-for="step in visibleSteps"
         :key="step.id"
-        class="stream-row"
+        class="stream-step"
         :class="[step.phase, step.status]"
       >
-        <span class="row-glyph" :class="step.status">{{ glyphForStep(step) }}</span>
-        <span class="row-primary">{{ primaryForStep(step) }}</span>
-        <span v-if="secondaryForStep(step)" class="row-secondary">{{ secondaryForStep(step) }}</span>
+        <div
+          class="stream-row"
+          :class="{ clickable: step.detail?.trim() && step.status !== 'active' }"
+          @click="toggleStepDetail(step)"
+        >
+          <span class="row-glyph" :class="step.status">{{ glyphForStep(step) }}</span>
+          <span v-if="step.detail?.trim() && step.status !== 'active'" class="row-chevron" aria-hidden="true">
+            {{ isStepDetailOpen(step) ? '▾' : '▸' }}
+          </span>
+          <span class="row-primary">{{ primaryForStep(step) }}</span>
+          <span v-if="secondaryForStep(step)" class="row-secondary">{{ secondaryForStep(step) }}</span>
+        </div>
+        <pre v-if="isStepDetailOpen(step)" class="step-detail">{{ step.detail }}</pre>
       </div>
     </div>
 
@@ -102,6 +168,13 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
     <div v-if="streamText.trim()" class="reasoning-block">
       <pre class="reasoning-text">{{ streamText }}</pre>
     </div>
+
+    <div v-if="safeThinkingText.trim()" class="thinking-block">
+      <div class="thinking-header">
+        <span class="thinking-label">{{ thinkingTypeLabel(safeThinkingType) }}</span>
+      </div>
+      <pre class="thinking-text">{{ safeThinkingText }}</pre>
+    </div>
   </div>
 </template>
 
@@ -117,6 +190,16 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
   box-shadow: inset 0 0 0 1px var(--wc-border);
   padding: 10px 12px;
   max-width: 100%;
+}
+
+.loop-guard-notice {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: var(--wc-text);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .stream-headline {
@@ -168,7 +251,14 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
 .stream-rows {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
+}
+
+.stream-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .stream-row {
@@ -176,6 +266,37 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
   align-items: baseline;
   gap: 6px;
   min-width: 0;
+}
+
+.stream-row.clickable {
+  cursor: pointer;
+}
+
+.stream-row.clickable:hover .row-primary {
+  color: var(--wc-accent, #7aa2f7);
+}
+
+.row-chevron {
+  flex-shrink: 0;
+  width: 10px;
+  color: var(--wc-text-dim);
+  font-size: 10px;
+}
+
+.step-detail {
+  margin: 0 0 0 18px;
+  padding: 6px 8px;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--wc-text);
+  background: color-mix(in srgb, var(--wc-input-bg) 70%, transparent);
+  border-left: 2px solid var(--wc-border-light, var(--wc-border));
+  border-radius: 0 4px 4px 0;
 }
 
 .stream-row.active .row-glyph {
@@ -247,5 +368,40 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
   font-size: 11px;
   line-height: 1.5;
   color: var(--wc-text-dim);
+}
+
+.thinking-block {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--wc-accent, #7aa2f7) 8%, var(--wc-input-bg));
+  border: 1px solid color-mix(in srgb, var(--wc-accent, #7aa2f7) 20%, var(--wc-border));
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.thinking-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wc-accent, #7aa2f7);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.thinking-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--wc-text);
+  max-height: 180px;
+  overflow: auto;
 }
 </style>

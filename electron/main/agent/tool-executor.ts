@@ -61,6 +61,8 @@ export type AgentContext = {
   checkpointFiles?: Record<string, string>
   /** Workshop 角色回合：Write/Bash 自动 apply，与 Chat 开 Auto Run 等价 */
   workshopAutoApply?: boolean
+  /** 本轮主 Agent 启动的后台 Task id（assistant 落盘前汇总） */
+  backgroundTaskIds?: string[]
 }
 
 export type PendingAskUserInternal = PendingAskUserPublic & {
@@ -505,6 +507,8 @@ export const executeAgentTool = async (
         outputFile: subagentOutputPath(ctx.projectRoot, taskId),
       }
       putBackgroundRun(run)
+      if (!ctx.backgroundTaskIds) ctx.backgroundTaskIds = []
+      ctx.backgroundTaskIds.push(taskId)
       registerBackgroundAbort(taskId, controller)
       void runSubAgentTask(ctx.projectRoot, subModelId, taskPrompt, {
         ...runOpts,

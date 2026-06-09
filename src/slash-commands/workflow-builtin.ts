@@ -12,7 +12,7 @@ const WORKFLOW_COMMANDS: { name: string; description: string }[] = [
   { name: 'code-review', description: 'Review code changes for quality and risk' },
   { name: 'design_doc_template', description: 'Draft a design document using the standard template' },
   { name: 'rppit', description: 'Full pipeline: proposals → selection → plan → implement → review → deliver' },
-  { name: 'summary', description: 'rppit step 7: merge artifacts into [slug]-交付总结.md' },
+  { name: 'summary', description: 'rppit step 8: merge artifacts into [slug]-交付总结.md' },
 ]
 
 export const registerWorkflowBuiltinCommands = (): SlashCommandDef[] =>

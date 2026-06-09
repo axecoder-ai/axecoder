@@ -77,6 +77,7 @@
   --wc-diff-del-bg: rgba(248, 81, 73, 0.22);
   --wc-diff-hunk-fg: #3794ff;
   --wc-diff-hunk-bg: rgba(55, 148, 255, 0.12);
+  --wc-metrics-tool-call: #dcdcaa;
   --wc-user-bubble-bg: var(--wc-accent);
   --wc-user-bubble-fg: #ffffff;
 }
@@ -149,6 +150,7 @@
   --wc-diff-del-bg: #ffebe9;
   --wc-diff-hunk-fg: #0550ae;
   --wc-diff-hunk-bg: rgba(37, 99, 235, 0.14);
+  --wc-metrics-tool-call: #9a6700;
   --wc-user-bubble-bg: rgb(169, 234, 122);
   --wc-user-bubble-fg: #000000;
 }
@@ -221,6 +223,7 @@
   --wc-diff-del-bg: rgba(248, 81, 73, 0.22);
   --wc-diff-hunk-fg: #3b82f6;
   --wc-diff-hunk-bg: rgba(59, 130, 246, 0.12);
+  --wc-metrics-tool-call: #dcdcaa;
   --wc-user-bubble-bg: var(--wc-accent);
   --wc-user-bubble-fg: #ffffff;
 }

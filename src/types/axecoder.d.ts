@@ -41,6 +41,14 @@ export type AppSettings = {
   fontSize: number
   theme: AppTheme
   agentAutoApplyWrites: boolean
+  agentPermissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions'
+  agentPermissionAllowRules?: string[]
+  agentPermissionAskRules?: string[]
+  agentPermissionDenyRules?: string[]
+  /** @deprecated */
+  agentAllowedTools?: string[]
+  /** @deprecated */
+  agentDisallowedTools?: string[]
   /** Agent Bash OS 沙箱（macOS Seatbelt + execpolicy） */
   agentOsSandboxEnabled?: boolean
   agentOutputStyle: AgentOutputStyleId
@@ -55,8 +63,16 @@ export type AppSettings = {
   gitForgeApiBase?: string
   gitForgeWebBase?: string
   gitForgeAccessToken?: string
-  /** AI 请求遇 524 时的最大重试次数（不含首次请求） */
+  /** AI 请求遇 524 / 429 限流时的最大重试次数（不含首次请求） */
   aiRequestMaxRetries?: number
+  /** 429 限流重试前等待秒数（默认 60，范围 5–300） */
+  aiRateLimitRetryDelaySec?: number
+  agentAutoPlan?: 'off' | 'on'
+  agentAutoPlanClassifierModelId?: string
+  agentLoopGuardEnabled?: boolean
+  agentLoopGuardStormThreshold?: number
+  agentLoopGuardRepeatSuccessThreshold?: number
+  agentMaxToolRounds?: number
 }
 
 export type PickProfileAvatarResult =
@@ -73,8 +89,26 @@ export type CompletionSoundDataUrlResult =
   | { ok: true; dataUrl: string | null }
   | { ok: false; error: string }
 
+export type PermissionDecision = 'allow' | 'ask' | 'deny'
+
+export type PermissionsPolicy = {
+  mode: PermissionDecision
+  allow: string[]
+  ask: string[]
+  deny: string[]
+}
+
+export type PermissionsView = {
+  global: PermissionsPolicy
+  globalPath: string
+  project: PermissionsPolicy
+  projectPath: string
+  agentPermissionMode: 'default' | 'acceptEdits' | 'bypassPermissions'
+}
+
 export type ChatModeId =
   | 'agent'
+  | 'auto-plan'
   | 'reflection'
   | 'rppit'
   | 'planning'
@@ -313,10 +347,26 @@ export type AgentProgressPayload =
       toolName?: string
       summary?: string
       ok?: boolean
+      detail?: string
+    }
+  | {
+      sessionId: string
+      kind: 'loop_guard'
+      text: string
     }
   | {
       sessionId: string
       kind: 'delta'
+      delta: string
+    }
+  | {
+      sessionId: string
+      kind: 'content_delta'
+      delta: string
+    }
+  | {
+      sessionId: string
+      kind: 'thinking_delta'
       delta: string
     }
   | {
@@ -336,6 +386,7 @@ export type AgentSendResult =
       assistantContent?: string
       reasoningContent?: string
       speakerUserId?: string
+      backgroundTaskIds?: string[]
     }
   | {
       ok: true
@@ -349,6 +400,7 @@ export type AgentSendResult =
       assistantContent?: string
       reasoningContent?: string
       speakerUserId?: string
+      backgroundTaskIds?: string[]
     }
   | { ok: false; error: string }
 
@@ -448,6 +500,16 @@ export type ChatMessage = {
   roleMentionUserId?: string
   /** @角色 触发的内置工作流命令 slug */
   roleMentionCommand?: string
+  /** 本条 assistant 启动的后台 Task id */
+  backgroundTaskIds?: string[]
+}
+
+export type BackgroundTaskSnapshot = {
+  id: string
+  description: string
+  status: 'running' | 'completed' | 'failed' | 'stopped'
+  outputFile?: string
+  error?: string
 }
 
 export type SessionKind = 'agent' | 'workshop'
@@ -609,6 +671,18 @@ export type AiMetricsBlock = {
   models: AiMetricsModelSummary[]
 }
 
+export type AiMetricsActivityKind = 'model_call' | 'tool_call' | 'tool_result' | 'first_token'
+
+export type AiMetricsActivityLine = {
+  id: string
+  ts: number
+  kind: AiMetricsActivityKind
+  ok?: boolean
+  text: string
+  modelId?: string
+  source?: AiMetricsSource
+}
+
 export type AiMetricsSnapshot = {
   updatedAt: number
   concurrent: number
@@ -620,6 +694,7 @@ export type AiMetricsSnapshot = {
   realtime: AiMetricsBlock
   cumulative: AiMetricsBlock
   series: AiMetricsSeriesPoint[]
+  activityLog: AiMetricsActivityLine[]
 }
 
 export type CodeGraphPublicStatus = {
@@ -646,6 +721,7 @@ export type AxeCoderFs = {
   onMetricsWindowDetached: (callback: (detached: boolean) => void) => () => void
   getAiMetricsSnapshot: (filter?: string | AiMetricsFilter) => Promise<AiMetricsSnapshot>
   onAiMetricsUpdate: (callback: (snapshot: AiMetricsSnapshot) => void) => () => void
+  onAiMetricsActivity: (callback: (lines: AiMetricsActivityLine[]) => void) => () => void
   isTraceWindowDetached: () => Promise<boolean>
   openTraceWindow: () => Promise<boolean>
   closeTraceWindow: () => Promise<boolean>
@@ -663,6 +739,7 @@ export type AxeCoderFs = {
   codeGraphIndex: (projectRoot: string) => Promise<{ ok: true } | { ok: false; error: string }>
   openFile: () => Promise<{ path: string; content: string; binary?: true } | null>
   onOpenProject: (callback: () => void) => () => void
+  onOpenProjectAt: (callback: (projectPath: string) => void) => () => void
   onMenuAction: (callback: (channel: MenuChannel) => void) => () => void
   onBeforeQuit: (callback: () => void) => () => void
   onFileChanged: (callback: (payload: { kind: string; path: string }) => void) => () => void
@@ -712,6 +789,24 @@ export type AxeCoderFs = {
   watchStop: () => Promise<{ ok: true }>
   getSettings: () => Promise<AppSettings>
   setSettings: (partial: Partial<AppSettings>) => Promise<AppSettings>
+  permissionsGet: (projectRoot: string) => Promise<
+    { ok: true; data: PermissionsView } | { ok: false; error: string }
+  >
+  permissionsSetGlobal: (input: {
+    agentPermissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions'
+    allow?: string[]
+    ask?: string[]
+    deny?: string[]
+  }) => Promise<{ ok: true } | { ok: false; error: string }>
+  permissionsSetProject: (
+    projectRoot: string,
+    input: Partial<PermissionsPolicy>,
+  ) => Promise<{ ok: true; data: PermissionsPolicy } | { ok: false; error: string }>
+  permissionsWriteProjectJson: (
+    projectRoot: string,
+    jsonText: string,
+  ) => Promise<{ ok: true; data: PermissionsPolicy } | { ok: false; error: string }>
+  permissionsWriteGlobalJson: (jsonText: string) => Promise<{ ok: true } | { ok: false; error: string }>
   onThemeChange: (callback: (theme: AppTheme) => void) => () => void
   pickCompletionSound: () => Promise<PickCompletionSoundResult>
   getCompletionSoundDataUrl: () => Promise<CompletionSoundDataUrlResult>
@@ -747,6 +842,18 @@ export type AxeCoderFs = {
     text: string,
     filePaths: string[],
   ) => Promise<string>
+  expandChatAtRefs: (
+    projectRoot: string,
+    text: string,
+    skipTokens?: string[],
+  ) => Promise<{ ok: true; text: string; errors: string[] } | { ok: false; error: string }>
+  listAtRefDir: (
+    projectRoot: string,
+    relDir: string,
+  ) => Promise<
+    | { ok: true; entries: { name: string; isDir: boolean }[] }
+    | { ok: false; error: string }
+  >
   saveChatPastedImage: (
     sessionId: string,
     base64: string,
@@ -764,7 +871,12 @@ export type AxeCoderFs = {
   getChatImagePreview: (
     ref: ChatImageRef,
   ) => Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }>
-  aiChat: (modelId: string, messages: AiChatMessage[], streamId?: string) => Promise<AiChatResult>
+  aiChat: (
+    modelId: string,
+    messages: AiChatMessage[],
+    streamId?: string,
+    reasoningEffort?: string,
+  ) => Promise<AiChatResult>
   onAiStream: (callback: (payload: AiStreamPayload) => void) => () => void
   agentSend: (
     projectRoot: string,
@@ -773,6 +885,7 @@ export type AxeCoderFs = {
     chatMode?: ChatModeId,
     assigneeUserId?: string,
     roleWorkflowInvoke?: boolean,
+    reasoningEffort?: string,
   ) => Promise<AgentSendResult>
   agentStop: (sessionId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   agentRunUserShell: (
@@ -783,7 +896,8 @@ export type AxeCoderFs = {
     messages: AiChatMessage[],
   ) => Promise<{ ok: true; messages: AiChatMessage[]; summary: string } | { ok: false; error: string }>
   agentHooksHelp: () => Promise<{ ok: true; text: string } | { ok: false; error: string }>
-  agentListMcp: () => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  agentListMcp: (projectRoot?: string) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  agentProjectMemory: (projectRoot: string) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
   agentListSkills: (
     projectRoot: string,
   ) => Promise<
@@ -897,6 +1011,13 @@ export type AxeCoderFs = {
       startedAt: number
     }[]
   }>
+  agentResolveBackgroundTasks: (
+    projectRoot: string,
+    taskIds: string[],
+  ) => Promise<
+    | { ok: true; tasks: BackgroundTaskSnapshot[] }
+    | { ok: false; error: string }
+  >
   agentReadMemory: () => Promise<
     { ok: true; path: string; text: string } | { ok: false; error: string }
   >
@@ -961,6 +1082,26 @@ export type AxeCoderFs = {
     projectRoot: string,
     sessionId: string,
   ) => Promise<{ ok: true } | { ok: false; error: string }>
+  chatBranchTree: (
+    projectRoot: string,
+    currentId?: string,
+  ) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  chatForkBranch: (
+    projectRoot: string,
+    sourceSessionId: string,
+    args?: string,
+  ) => Promise<
+    | { ok: true; session: ChatSession }
+    | { ok: false; error: string }
+  >
+  chatSwitchBranch: (
+    projectRoot: string,
+    ref: string,
+    currentId?: string,
+  ) => Promise<
+    | { ok: true; session: ChatSession; tree: string }
+    | { ok: false; error: string }
+  >
   getWorkshopSessions: (projectRoot: string) => Promise<{ sessions: WorkshopSessionMeta[] }>
   getWorkshopSession: (
     projectRoot: string,

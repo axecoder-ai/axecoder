@@ -16,6 +16,14 @@ import {
 } from './session/session-registry'
 import type { SessionRegistryEntry } from './session/session-types'
 import { t } from './i18n'
+import {
+  forkChatBranch,
+  formatBranchTree,
+  listChatBranches,
+  messageIndexAtUserTurn,
+  parseBranchArgs,
+  resolveBranchRef,
+} from './chat-branch'
 
 export type ChatMessage = {
   role: 'user' | 'assistant'
@@ -129,4 +137,51 @@ export const registerChatIpc = () => {
   ipcMain.handle('chat:deleteSession', async (_, projectRoot: string, sessionId: string) =>
     deleteChatSession(typeof projectRoot === 'string' ? projectRoot : '', sessionId),
   )
+
+  ipcMain.handle('chat:listBranches', async (_, projectRoot: string) =>
+    listChatBranches(typeof projectRoot === 'string' ? projectRoot : ''),
+  )
+
+  ipcMain.handle(
+    'chat:forkBranch',
+    async (_, projectRoot: string, sourceSessionId: string, args: string) => {
+      const root = typeof projectRoot === 'string' ? projectRoot : ''
+      const parsed = parseBranchArgs(typeof args === 'string' ? args : '')
+      const { session: source } = await getChatSession(root, sourceSessionId)
+      if (!source) return { ok: false as const, error: 'Session not found' }
+      let forkMessageIndex: number | undefined
+      if (parsed.fromTurn) {
+        forkMessageIndex = messageIndexAtUserTurn(source.messages, parsed.turn)
+      }
+      return forkChatBranch(root, sourceSessionId, {
+        forkMessageIndex,
+        name: parsed.name || undefined,
+      })
+    },
+  )
+
+  ipcMain.handle(
+    'chat:switchBranch',
+    async (_, projectRoot: string, ref: string, currentId?: string) => {
+      const root = typeof projectRoot === 'string' ? projectRoot : ''
+      const listed = await listChatBranches(root)
+      if (!listed.ok) return listed
+      const match = resolveBranchRef(listed.branches, ref)
+      if (!match) return { ok: false as const, error: `Branch not found: ${ref}` }
+      const { session } = await getChatSession(root, match.id)
+      if (!session) return { ok: false as const, error: 'Branch session missing on disk' }
+      return {
+        ok: true as const,
+        session,
+        tree: formatBranchTree(listed.branches, currentId === match.id ? match.id : match.id),
+      }
+    },
+  )
+
+  ipcMain.handle('chat:branchTree', async (_, projectRoot: string, currentId?: string) => {
+    const root = typeof projectRoot === 'string' ? projectRoot : ''
+    const listed = await listChatBranches(root)
+    if (!listed.ok) return listed
+    return { ok: true as const, text: formatBranchTree(listed.branches, currentId) }
+  })
 }

@@ -17,10 +17,12 @@ import type {
 import ModelPickerDropdown from './ModelPickerDropdown.vue'
 import ChatModePickerDropdown from './ChatModePickerDropdown.vue'
 import SlashCommandPicker from './SlashCommandPicker.vue'
-import RoleMentionPicker from './RoleMentionPicker.vue'
+import AtRefPicker from './AtRefPicker.vue'
+import EffortSwitcher from './EffortSwitcher.vue'
 import ChatDiffCard from './ChatDiffCard.vue'
 import ChatAskUserCard from './ChatAskUserCard.vue'
 import ChatBashCard from './ChatBashCard.vue'
+import BackgroundTaskCard from './BackgroundTaskCard.vue'
 import AgentProgressStream from './AgentProgressStream.vue'
 import { isUnderProject, relativeToProject, type ChatFileRef } from '../../utils/chat-file-context'
 import {
@@ -28,6 +30,9 @@ import {
   CHAT_IDLE_HINTS,
   type AgentProgressStep,
 } from '../../utils/agent-progress'
+import { useAgentStore } from '../../stores/agentStore'
+import { useStickToBottomScroll } from '../../composables/useStickToBottomScroll'
+import { detectThinkingType } from '../../utils/thinking-parser'
 import { runSlashCommand } from '../../slash-commands/run'
 import { refreshSlashCommandRegistry, findCommand } from '../../slash-commands/registry'
 import type { SlashContext } from '../../slash-commands/types'
@@ -61,8 +66,15 @@ import {
 import { workshopIdForAgentChat } from '../../utils/workshop-agent-link'
 import { formatAiChatRequestError, visionUnsupportedMessage } from '../../utils/ai-chat-error'
 import { visionBlockedForPendingImages } from '../../utils/chat-vision'
+import { expandUserMessageForApi } from '../../utils/expand-user-message'
+import {
+  loadStoredChatEffort,
+  saveStoredChatEffort,
+  type ReasoningEffortLevel,
+} from '../../utils/chat-effort'
 
 const md = new MarkdownIt()
+const agentStore = useAgentStore()
 
 const workshopSectionRef = ref<InstanceType<typeof WorkshopChatSection> | null>(null)
 
@@ -85,6 +97,7 @@ const emit = defineEmits<{
   close: []
   showAgentsSidebar: []
   openModelsSettings: []
+  openPermissionsSettings: []
   activeChange: [id: string]
   kindChange: [kind: SessionKind]
   sessionsChanged: []
@@ -338,10 +351,13 @@ const input = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const inputBoxEl = ref<HTMLElement | null>(null)
 const slashPickerRef = ref<InstanceType<typeof SlashCommandPicker> | null>(null)
-const rolePickerRef = ref<InstanceType<typeof RoleMentionPicker> | null>(null)
+const atRefPickerRef = ref<InstanceType<typeof AtRefPicker> | null>(null)
+const inputCursor = ref(0)
+const chatEffort = ref<ReasoningEffortLevel>(loadStoredChatEffort())
 const mentionUsers = ref<UserEntry[]>([])
 const roleAvatarUrls = ref<Record<string, string>>({})
-const messagesEl = ref<HTMLElement | null>(null)
+const { scrollEl: messagesEl, onScrollContainer, scrollToBottom: scrollMessages } =
+  useStickToBottomScroll()
 const loading = ref(false)
 const modelsFile = ref<ModelsFile>({ schemaVersion: 1, activeModelId: '', models: [] })
 const attachedFiles = ref<ChatFileRef[]>([])
@@ -360,6 +376,7 @@ const includeContextFile = ref(false)
 const dropActive = ref(false)
 const pendingBusy = ref(false)
 const progressSteps = ref<AgentProgressStep[]>([])
+const loopGuardNotice = ref('')
 const pendingAssigneeUserId = ref('')
 type SubagentTaskView = {
   id: string
@@ -416,6 +433,7 @@ const sendAgent = (
     chatModeId.value,
     assigneeUserId,
     roleWorkflowInvoke,
+    chatEffort.value,
   )
 
 const messages = computed(() => activeSession.value?.messages ?? [])
@@ -575,11 +593,22 @@ const clearInputAtMention = () => {
   })
 }
 
-const onRolePick = (user: UserEntry) => {
-  input.value = formatRoleMentionInput(user.displayName)
+const onAtRolePick = (user: UserEntry, replaceStart: number) => {
+  const el = inputEl.value
+  const cursor = el?.selectionStart ?? input.value.length
+  const before = input.value.slice(0, replaceStart)
+  const after = input.value.slice(cursor)
+  if (before.trim() === '' && !parseCommittedRoleMention(input.value, mentionUsers.value)) {
+    input.value = formatRoleMentionInput(user.displayName)
+  } else {
+    input.value = `${before}@${user.displayName} ${after}`
+  }
   void nextTick(() => {
     resizeInput()
-    inputEl.value?.focus()
+    const pos = input.value.length - after.length
+    el?.setSelectionRange(pos, pos)
+    inputCursor.value = pos
+    el?.focus()
   })
 }
 
@@ -629,13 +658,6 @@ const clearInputSlash = () => {
   })
 }
 
-const scrollMessages = async () => {
-  await nextTick()
-  if (messagesEl.value) {
-    messagesEl.value.scrollTop = messagesEl.value.scrollHeight
-  }
-}
-
 const renderMarkdown = (text: string) => md.render(text)
 
 const selectSession = async (id: string): Promise<boolean> => {
@@ -653,17 +675,18 @@ const selectSession = async (id: string): Promise<boolean> => {
   }
   cacheSession(session)
   await hydrateMessageImagePreviews(session.messages)
+  if (!sessionMetas.value.some((m) => m.id === id)) {
+    sessionMetas.value = [
+      { id: session.id, title: session.title, updatedAt: session.updatedAt },
+      ...sessionMetas.value,
+    ]
+  }
   addUnifiedTab(id, 'agent')
   activeSession.value = session
   activeId.value = id
   setActiveTab(id, 'agent')
   input.value = ''
-  await nextTick()
-  if (messagesEl.value) {
-    messagesEl.value.scrollTop = session.messages.length
-      ? messagesEl.value.scrollHeight
-      : 0
-  }
+  await scrollMessages(session.messages.length > 0)
   return true
 }
 
@@ -911,12 +934,24 @@ const bindAgentProgress = (initialSessionId?: string, assigneeUserId?: string) =
   if (assigneeUserId) setPendingAssignee(assigneeUserId)
   progressSteps.value = []
   streamText.value = ''
+  loopGuardNotice.value = ''
   runningAgentSessionId.value = initialSessionId ?? ''
   agentProgressActive.value = true
   progressUnsub = window.axecoder.onAgentProgress((payload) => {
     if (!agentProgressActive.value) return
+    // 过滤 sessionId：只处理属于当前 session 的进度消息
+    if (payload.sessionId && runningAgentSessionId.value && payload.sessionId !== runningAgentSessionId.value) {
+      return
+    }
     if (payload.sessionId) runningAgentSessionId.value = payload.sessionId
     if (payload.kind === 'delta') {
+      streamText.value += payload.delta
+    } else if (payload.kind === 'thinking_delta') {
+      // 处理思考流增量
+      agentStore.appendThinking(payload.delta)
+      agentStore.setThinkingType(detectThinkingType(agentStore.currentThinking))
+    } else if (payload.kind === 'content_delta') {
+      // 处理内容流增量
       streamText.value += payload.delta
     } else if (payload.kind === 'subagent') {
       const next = new Map(subagentTasks.value)
@@ -926,6 +961,8 @@ const bindAgentProgress = (initialSessionId?: string, assigneeUserId?: string) =
         status: payload.status,
       })
       subagentTasks.value = next
+    } else if (payload.kind === 'loop_guard') {
+      loopGuardNotice.value = payload.text
     } else {
       progressSteps.value = applyProgressPayload(progressSteps.value, payload)
     }
@@ -947,6 +984,7 @@ const clearProgressUi = () => {
   subagentTasks.value = new Map()
   runningAgentSessionId.value = ''
   pendingAssigneeUserId.value = ''
+  agentStore.clearThinking()
 }
 
 const setPendingAssignee = (userId?: string) => {
@@ -982,6 +1020,15 @@ const maybePlayAgentDoneSound = (res: { ok: boolean; status: string; assistantTe
   })
 }
 
+const mergeBackgroundTaskIds = (msg: ChatMessage, ids?: string[]) => {
+  if (!ids?.length) return
+  const set = new Set(msg.backgroundTaskIds ?? [])
+  for (const id of ids) {
+    if (id.trim()) set.add(id.trim())
+  }
+  msg.backgroundTaskIds = [...set]
+}
+
 const pushAssistantFromAgent = (
   res: AgentSendResult | AgentContinueResult,
   model?: ModelEntry,
@@ -1004,6 +1051,7 @@ const pushAssistantFromAgent = (
       ...(speakerUserId ? { speakerUserId } : {}),
       ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
       ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
+      ...(res.backgroundTaskIds?.length ? { backgroundTaskIds: [...res.backgroundTaskIds] } : {}),
     })
     maybePlayAgentDoneSound(res)
     emit('filesChanged')
@@ -1020,6 +1068,7 @@ const pushAssistantFromAgent = (
     ...(speakerUserId ? { speakerUserId } : {}),
     ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
     ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
+    ...(res.backgroundTaskIds?.length ? { backgroundTaskIds: [...res.backgroundTaskIds] } : {}),
   })
 }
 
@@ -1038,6 +1087,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     msg.pendingAsks = res.pendingAsks
     msg.agentSessionId = res.sessionId
     if (res.speakerUserId) msg.speakerUserId = res.speakerUserId
+    mergeBackgroundTaskIds(msg, res.backgroundTaskIds)
     if (res.assistantText.trim()) msg.text = res.assistantText + suffix
     else msg.text += suffix
   } else {
@@ -1045,6 +1095,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     msg.pendingBashes = undefined
     msg.pendingAsks = undefined
     msg.text = (res.assistantText + suffix).trim() || msg.text
+    mergeBackgroundTaskIds(msg, res.backgroundTaskIds)
     maybePlayAgentDoneSound(res)
     emit('filesChanged')
   }
@@ -1252,7 +1303,12 @@ const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiC
       void scrollMessages()
     })
   }
-  const res = await window.axecoder.aiChat(modelId, apiMessages, useSse ? streamId : undefined)
+  const res = await window.axecoder.aiChat(
+    modelId,
+    apiMessages,
+    useSse ? streamId : undefined,
+    chatEffort.value,
+  )
   if (res.ok) {
     const replyText = res.text.trim() || '(Model returned no content; check model ID or API settings)'
     activeSession.value!.messages.push({
@@ -1286,6 +1342,7 @@ const buildSlashContext = (): SlashContext => ({
     return { ok: res.ok, data: res.ok ? res.data : undefined }
   },
   openModelsSettings: () => emit('openModelsSettings'),
+  openPermissionsSettings: () => emit('openPermissionsSettings'),
   getAgentSessionId: () => {
     const s = activeSession.value
     if (!s) return undefined
@@ -1294,6 +1351,13 @@ const buildSlashContext = (): SlashContext => ({
       if (m.agentSessionId) return m.agentSessionId
     }
     return undefined
+  },
+  selectSession,
+  setChatMode: (id) => onChatModePick(id),
+  getChatEffort: () => chatEffort.value,
+  setChatEffort: (level) => {
+    chatEffort.value = level
+    saveStoredChatEffort(level)
   },
 })
 
@@ -1573,6 +1637,7 @@ const send = async () => {
       ...(roleMentionCommand ? { slashOnly: true } : {}),
     }
     activeSession.value!.messages.push(userMsg)
+    void scrollMessages(true)
     attachedFiles.value = []
     clearAttachedImages()
     includeContextFile.value = false
@@ -1585,15 +1650,14 @@ const send = async () => {
     }
     activeSession.value!.updatedAt = Date.now()
 
-    if (filePaths?.length) {
-      userMsg.apiContent = await window.axecoder.expandChatUserWithFiles(
-        props.projectRoot,
-        apiText || displayText,
-        filePaths,
-      )
-    } else if (roleMentionCommand || (apiText && apiText !== displayText)) {
-      userMsg.apiContent = apiText
-    }
+    const baseApiText =
+      roleMentionCommand || (apiText && apiText !== displayText) ? apiText : apiText || displayText
+    userMsg.apiContent = await expandUserMessageForApi(
+      props.projectRoot,
+      baseApiText,
+      filePaths,
+      mentionUsers.value,
+    )
     await persist()
     const apiMessages = await buildApiMessages(activeSession.value!.messages)
     if (agentMode.value) {
@@ -1767,17 +1831,17 @@ const onInputKeydown = (e: KeyboardEvent) => {
     }
     return
   }
-  const rolePicker = rolePickerRef.value
-  if (rolePicker?.isOpen) {
+  const atPicker = atRefPickerRef.value
+  if (atPicker?.isOpen) {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      rolePicker.moveActive(1)
+      atPicker.moveActive(1)
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      rolePicker.moveActive(-1)
+      atPicker.moveActive(-1)
     } else if (e.key === 'Tab') {
       e.preventDefault()
-      rolePicker.pickActive()
+      atPicker.pickActive()
     } else if (e.key === 'Escape') {
       e.preventDefault()
       input.value = ''
@@ -1785,10 +1849,34 @@ const onInputKeydown = (e: KeyboardEvent) => {
   }
 }
 
+const onAtRefPick = (insertPath: string, replaceStart: number) => {
+  const el = inputEl.value
+  const cursor = el?.selectionStart ?? input.value.length
+  const before = input.value.slice(0, replaceStart)
+  const after = input.value.slice(cursor)
+  input.value = `${before}${insertPath} ${after}`
+  void nextTick(() => {
+    resizeInput()
+    const pos = before.length + insertPath.length + 1
+    el?.setSelectionRange(pos, pos)
+    inputCursor.value = pos
+    el?.focus()
+  })
+}
+
+const syncInputCursor = () => {
+  inputCursor.value = inputEl.value?.selectionStart ?? input.value.length
+}
+
+const onChatEffortPick = (level: ReasoningEffortLevel) => {
+  chatEffort.value = level
+  saveStoredChatEffort(level)
+}
+
 const onInputEnter = () => {
-  const rolePicker = rolePickerRef.value
-  if (rolePicker?.isOpen) {
-    rolePicker.pickActive()
+  const atPicker = atRefPickerRef.value
+  if (atPicker?.isOpen) {
+    atPicker.pickActive()
     return
   }
   const slashPicker = slashPickerRef.value
@@ -1865,6 +1953,9 @@ const isEmptyChat = computed(
     hasProject.value &&
     !!activeSession.value &&
     messages.value.length === 0 &&
+    !streamText.value.trim() &&
+    !agentStore.currentThinking.trim() &&
+    !progressSteps.value.length &&
     !loading.value &&
     !pendingBusy.value,
 )
@@ -1990,6 +2081,7 @@ defineExpose({
       :key="activeId"
       class="chat-messages"
       :class="{ 'chat-messages--landing': showNoSessionLanding }"
+      @scroll="onScrollContainer"
     >
       <div v-if="showNoSessionLanding" class="chat-landing">
         <img class="chat-landing-logo" src="/donkey-loading.png" width="80" height="80" alt="" />
@@ -2158,6 +2250,11 @@ defineExpose({
             @confirm="onConfirmPending(msg, pw.id)"
             @reject="onRejectPending(msg, pw.id)"
           />
+          <BackgroundTaskCard
+            v-if="msg.backgroundTaskIds?.length && hasProject"
+            :project-root="props.projectRoot ?? ''"
+            :task-ids="msg.backgroundTaskIds"
+          />
         </template>
       </div>
       <div v-if="showProgressBubble" class="message assistant">
@@ -2182,6 +2279,9 @@ defineExpose({
             :subagent-tasks="subagentTaskList"
             :agent-mode="agentMode"
             :fallback-headline="progressHeadline"
+            :thinking-text="agentStore.currentThinking"
+            :thinking-type="agentStore.thinkingType"
+            :loop-guard-notice="loopGuardNotice"
           />
         </div>
       </div>
@@ -2266,13 +2366,15 @@ defineExpose({
         :anchor-el="inputBoxEl"
         @select="onSlashPick"
       />
-      <RoleMentionPicker
-        v-if="mentionUsers.length"
-        ref="rolePickerRef"
+      <AtRefPicker
+        ref="atRefPickerRef"
+        :project-root="projectRoot"
         :input-text="input"
-        :users="mentionUsers"
+        :cursor="inputCursor"
+        :mention-users="mentionUsers"
         :anchor-el="inputBoxEl"
-        @select="onRolePick"
+        @pick-role="onAtRolePick"
+        @pick-file="onAtRefPick"
       />
       <div
         ref="inputBoxEl"
@@ -2352,10 +2454,12 @@ defineExpose({
                 : inputAtMention
                   ? 'Add task details…'
                   : isMultiAgentInAgentChat
-                    ? 'Plan, Build, / for commands, @ for roles'
-                    : 'Plan, Build, / for commands, @ for roles'
+                    ? 'Plan, Build, /commands, @file or @role'
+                    : 'Plan, Build, /commands, @file or @role'
             "
-            @input="onInputField"
+            @input="(e) => { onInputField(e); syncInputCursor() }"
+            @click="syncInputCursor"
+            @keyup="syncInputCursor"
             @keydown="onInputKeydown"
             @keydown.enter.exact.prevent="onInputEnter"
             @paste="onPasteImage"
@@ -2374,6 +2478,12 @@ defineExpose({
               :active-model-id="modelsFile.activeModelId"
               @select="onModelPick"
               @add-models="emit('openModelsSettings')"
+            />
+            <EffortSwitcher
+              v-if="enabledModels.length"
+              :model-value="chatEffort"
+              :disabled="loading"
+              @update:model-value="onChatEffortPick"
             />
             <button
               v-else
@@ -2438,12 +2548,14 @@ defineExpose({
 .chat-pane {
   flex: 1;
   min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   background: var(--wc-panel);
   min-height: 0;
   overflow: hidden;
   position: relative;
+  z-index: 0;
   font-family: var(--wc-font-sans);
   font-size: var(--wc-font-size-ui);
   font-weight: var(--wc-font-weight-ui);
@@ -2558,6 +2670,11 @@ defineExpose({
   margin-left: auto;
   margin-right: auto;
   box-sizing: border-box;
+  pointer-events: none;
+}
+
+.chat-pane.chat-empty .chat-input-area .input-box {
+  pointer-events: auto;
 }
 
 .chat-tabs {

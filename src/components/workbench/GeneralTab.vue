@@ -73,11 +73,48 @@ const onAgentOsSandbox = (v: boolean) => {
   emit('save', { agentOsSandboxEnabled: v })
 }
 
+const onAutoPlanClassifierModel = (e: Event) => {
+  const v = (e.target as HTMLInputElement).value.trim()
+  emit('save', { agentAutoPlanClassifierModelId: v })
+}
+
+const onLoopGuard = (v: boolean) => {
+  emit('save', { agentLoopGuardEnabled: v })
+}
+
+const onLoopGuardStorm = (e: Event) => {
+  const n = Number((e.target as HTMLInputElement).value)
+  if (!Number.isFinite(n) || n < 1 || n > 20) return
+  if (n === (props.settings.agentLoopGuardStormThreshold ?? 3)) return
+  emit('save', { agentLoopGuardStormThreshold: Math.floor(n) })
+}
+
+const onLoopGuardRepeat = (e: Event) => {
+  const n = Number((e.target as HTMLInputElement).value)
+  if (!Number.isFinite(n) || n < 1 || n > 20) return
+  if (n === (props.settings.agentLoopGuardRepeatSuccessThreshold ?? 2)) return
+  emit('save', { agentLoopGuardRepeatSuccessThreshold: Math.floor(n) })
+}
+
+const onMaxToolRounds = (e: Event) => {
+  const n = Number((e.target as HTMLInputElement).value)
+  if (!Number.isFinite(n) || n < 0 || n > 500) return
+  if (n === (props.settings.agentMaxToolRounds ?? 0)) return
+  emit('save', { agentMaxToolRounds: Math.floor(n) })
+}
+
 const onAi524MaxRetries = (e: Event) => {
   const n = Number((e.target as HTMLInputElement).value)
   if (!Number.isFinite(n) || n < 0 || n > 10) return
   if (n === (props.settings.aiRequestMaxRetries ?? 2)) return
   emit('save', { aiRequestMaxRetries: Math.floor(n) })
+}
+
+const onAiRateLimitRetryDelaySec = (e: Event) => {
+  const n = Number((e.target as HTMLInputElement).value)
+  if (!Number.isFinite(n) || n < 5 || n > 300) return
+  if (n === (props.settings.aiRateLimitRetryDelaySec ?? 60)) return
+  emit('save', { aiRateLimitRetryDelaySec: Math.floor(n) })
 }
 
 const onOutputStyle = (e: Event) => {
@@ -194,6 +231,82 @@ const clearCompletionSound = () => {
           />
         </div>
       </div>
+      <div class="pref-item pref-item--stack">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.autoPlanClassifierModel') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.autoPlanClassifierModelHint') }}</p>
+        </div>
+        <input
+          type="text"
+          class="pref-input"
+          :value="settings.agentAutoPlanClassifierModelId ?? ''"
+          placeholder="model entry id (optional)"
+          @change="onAutoPlanClassifierModel"
+        />
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.loopGuard') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.loopGuardHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <SwitchToggle
+            :model-value="settings.agentLoopGuardEnabled !== false"
+            @update:model-value="onLoopGuard"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.loopGuardStormThreshold') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.loopGuardStormThresholdHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <input
+            type="number"
+            class="delay-input"
+            min="1"
+            max="20"
+            step="1"
+            :value="settings.agentLoopGuardStormThreshold ?? 3"
+            @change="onLoopGuardStorm"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.loopGuardRepeatThreshold') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.loopGuardRepeatThresholdHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <input
+            type="number"
+            class="delay-input"
+            min="1"
+            max="20"
+            step="1"
+            :value="settings.agentLoopGuardRepeatSuccessThreshold ?? 2"
+            @change="onLoopGuardRepeat"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.maxToolRounds') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.maxToolRoundsHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <input
+            type="number"
+            class="delay-input"
+            min="0"
+            max="500"
+            step="1"
+            :value="settings.agentMaxToolRounds ?? 0"
+            @change="onMaxToolRounds"
+          />
+        </div>
+      </div>
       <div class="pref-item">
         <div class="pref-info">
           <span class="pref-label">{{ t('settings.agent.ai524MaxRetries') }}</span>
@@ -208,6 +321,23 @@ const clearCompletionSound = () => {
             step="1"
             :value="settings.aiRequestMaxRetries ?? 2"
             @change="onAi524MaxRetries"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.aiRateLimitRetryDelaySec') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.aiRateLimitRetryDelaySecHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <input
+            type="number"
+            class="delay-input"
+            min="5"
+            max="300"
+            step="1"
+            :value="settings.aiRateLimitRetryDelaySec ?? 60"
+            @change="onAiRateLimitRetryDelaySec"
           />
         </div>
       </div>
@@ -535,5 +665,25 @@ h2 {
 
 .sound-clear:hover {
   color: var(--wc-text);
+}
+
+.seg-row {
+  display: flex;
+  gap: 4px;
+}
+
+.seg-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid var(--wc-border);
+  border-radius: 6px;
+  background: var(--wc-input-bg);
+  color: var(--wc-text-muted);
+}
+
+.seg-btn.active {
+  background: var(--wc-accent, #0078d4);
+  border-color: transparent;
+  color: #fff;
 }
 </style>

@@ -5,6 +5,7 @@ import GeneralTab from './GeneralTab.vue'
 import ModelsTab from './ModelsTab.vue'
 import UsersTab from './UsersTab.vue'
 import RulesSkillsTab from './RulesSkillsTab.vue'
+import PermissionsTab from './PermissionsTab.vue'
 import SettingsProfileCard from './SettingsProfileCard.vue'
 
 const props = defineProps<{
@@ -19,12 +20,13 @@ const emit = defineEmits<{
   save: [partial: Partial<AppSettings>]
 }>()
 
-export type SettingsTabId = 'general' | 'models' | 'users' | 'rules'
+export type SettingsTabId = 'general' | 'models' | 'users' | 'rules' | 'permissions'
 
 const activeTab = ref<SettingsTabId>('general')
 const modelsTabRef = ref<InstanceType<typeof ModelsTab> | null>(null)
 const usersTabRef = ref<InstanceType<typeof UsersTab> | null>(null)
 const rulesTabRef = ref<InstanceType<typeof RulesSkillsTab> | null>(null)
+const permissionsTabRef = ref<InstanceType<typeof PermissionsTab> | null>(null)
 
 const openTab = (tab: SettingsTabId) => {
   activeTab.value = tab
@@ -43,6 +45,7 @@ defineExpose({
   reloadModels: () => modelsTabRef.value?.reload(),
   reloadUsers: () => usersTabRef.value?.reload(),
   reloadRules: () => rulesTabRef.value?.reload(),
+  reloadPermissions: () => permissionsTabRef.value?.reload(),
 })
 </script>
 
@@ -82,6 +85,14 @@ defineExpose({
         <button
           type="button"
           class="nav-item"
+          :class="{ active: activeTab === 'permissions' }"
+          @click="activeTab = 'permissions'"
+        >
+          Permissions
+        </button>
+        <button
+          type="button"
+          class="nav-item"
           :class="{ active: activeTab === 'rules' }"
           @click="activeTab = 'rules'"
         >
@@ -97,6 +108,11 @@ defineExpose({
         />
         <ModelsTab v-show="activeTab === 'models'" ref="modelsTabRef" @changed="onChanged" />
         <UsersTab v-show="activeTab === 'users'" ref="usersTabRef" @changed="onChanged" />
+        <PermissionsTab
+          v-show="activeTab === 'permissions'"
+          ref="permissionsTabRef"
+          :project-root="projectRoot"
+        />
         <RulesSkillsTab v-show="activeTab === 'rules'" ref="rulesTabRef" @changed="onChanged" />
       </main>
     </div>

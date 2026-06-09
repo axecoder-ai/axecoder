@@ -1,5 +1,6 @@
 export type ChatModeId =
   | 'agent'
+  | 'auto-plan'
   | 'reflection'
   | 'rppit'
   | 'planning'
@@ -17,6 +18,12 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
     id: 'agent',
     label: 'Agent',
     description: 'Default Agent: read/write code and use tools',
+  },
+  {
+    id: 'auto-plan',
+    label: 'Auto Plan',
+    description:
+      'Like Agent, but complex tasks auto-enter read-only plan mode first (heuristic + cheap model)',
   },
   {
     id: 'reflection',

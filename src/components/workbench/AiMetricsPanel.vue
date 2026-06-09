@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from '../../i18n'
-import type { AiMetricsFilter, AiMetricsSnapshot, AiMetricsSource, AppTheme } from '../../types/axecoder'
+import type {
+  AiMetricsActivityLine,
+  AiMetricsFilter,
+  AiMetricsSnapshot,
+  AiMetricsSource,
+  AppTheme,
+} from '../../types/axecoder'
 import {
   applyMetricsWindowTheme,
   getMetricsWindowThemeMode,
@@ -12,13 +18,11 @@ import {
 const props = defineProps<{
   expanded?: boolean
   detached?: boolean
-  showDetachControls?: boolean
   globalTheme?: AppTheme
 }>()
 
 const emit = defineEmits<{
   detach: []
-  dock: []
   openTrace: [modelId: string]
 }>()
 
@@ -34,21 +38,16 @@ const chartTtft = ref<HTMLCanvasElement | null>(null)
 const chartTps = ref<HTMLCanvasElement | null>(null)
 const chartErr = ref<HTMLCanvasElement | null>(null)
 const chartE2e = ref<HTMLCanvasElement | null>(null)
-const chartTokenSplit = ref<HTMLCanvasElement | null>(null)
-const chartCumulative = ref<HTMLCanvasElement | null>(null)
-const chartSource = ref<HTMLCanvasElement | null>(null)
-const chartOutcome = ref<HTMLCanvasElement | null>(null)
-const chartInputHist = ref<HTMLCanvasElement | null>(null)
-
-const SOURCE_COLORS: Record<AiMetricsSource, string> = {
-  chat: '#2563eb',
-  agent: '#22c55e',
-  workshop: '#a78bfa',
-  other: '#94a3b8',
-}
+const chartTpsGauge = ref<HTMLCanvasElement | null>(null)
+const activityLogEl = ref<HTMLElement | null>(null)
+const activityLog = ref<AiMetricsActivityLine[]>([])
 
 let offMetrics: (() => void) | undefined
+let offActivity: (() => void) | undefined
 let themeObs: MutationObserver | undefined
+let gaugeRaf = 0
+let gaugeNeedleTps = 0
+let gaugeLastFrame = 0
 
 const buildFilter = (): AiMetricsFilter | undefined => {
   const f: AiMetricsFilter = {}
@@ -112,8 +111,10 @@ const mergedModelRows = computed(() => {
 
 const loadSnapshot = async () => {
   snapshot.value = await window.axecoder.getAiMetricsSnapshot(buildFilter())
+  activityLog.value = snapshot.value?.activityLog ?? []
   await nextTick()
   redrawCharts()
+  scrollActivityToBottom()
 }
 
 const seriesHasActivity = (pts: AiMetricsSnapshot['series']) =>
@@ -125,6 +126,7 @@ const seriesHasActivity = (pts: AiMetricsSnapshot['series']) =>
       p.tps > 0 ||
       p.qps > 0 ||
       p.errorRate > 0 ||
+      p.failCount > 0 ||
       p.tokensPerMin > 0 ||
       p.inputTokens > 0 ||
       p.cumulativeTokens > 0 ||
@@ -254,11 +256,10 @@ const drawLineChart = (
   }
 }
 
-const drawStackedBars = (
+const drawErrorRatePie = (
   canvas: HTMLCanvasElement | null,
-  okVals: number[],
-  failVals: number[],
-  hasActivity: boolean,
+  errorRate: number,
+  totalCalls: number,
   large: boolean,
   ui: ReturnType<typeof chartUiColors>,
 ) => {
@@ -276,107 +277,85 @@ const drawStackedBars = (
   if (!ctx) return
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, w, h)
-  const pad = { l: 8, r: 8, t: 10, b: 20 }
-  const n = okVals.length
-  if (!hasActivity || !n) {
-    ctx.fillStyle = ui.muted
-    ctx.font = '11px sans-serif'
-    ctx.fillText(t('metrics.noData'), pad.l, pad.t + 20)
-    return
-  }
-  const maxV = Math.max(...okVals.map((v, i) => v + (failVals[i] ?? 0)), 1)
-  const barW = Math.max(4, (w - pad.l - pad.r) / n - 2)
-  okVals.forEach((ok, i) => {
-    const fail = failVals[i] ?? 0
-    const total = ok + fail
-    const x = pad.l + i * ((w - pad.l - pad.r) / n) + 1
-    const baseY = h - pad.b
-    const okH = (ok / maxV) * (h - pad.t - pad.b)
-    const failH = (fail / maxV) * (h - pad.t - pad.b)
-    if (ok > 0) {
-      ctx.fillStyle = '#22c55e'
-      ctx.fillRect(x, baseY - okH, barW, okH)
-    }
-    if (fail > 0) {
-      ctx.fillStyle = '#ef4444'
-      ctx.fillRect(x, baseY - okH - failH, barW, failH)
-    }
-    if (total === 0 && large) {
-      ctx.fillStyle = ui.grid
-      ctx.fillRect(x, baseY - 2, barW, 2)
-    }
-  })
-  ctx.font = '10px sans-serif'
-  ctx.fillStyle = '#22c55e'
-  ctx.fillRect(w - 60, pad.t, 10, 3)
-  ctx.fillStyle = ui.text
-  ctx.fillText('OK', w - 46, pad.t + 2)
-  ctx.fillStyle = '#ef4444'
-  ctx.fillRect(w - 60, pad.t + 14, 10, 3)
-  ctx.fillStyle = ui.text
-  ctx.fillText('Fail', w - 46, pad.t + 16)
-}
 
-const drawDonut = (
-  canvas: HTMLCanvasElement | null,
-  items: { label: string; value: number; color: string }[],
-  hasActivity: boolean,
-  ui: ReturnType<typeof chartUiColors>,
-) => {
-  if (!canvas) return
-  const parent = canvas.parentElement
-  if (!parent) return
-  const dpr = window.devicePixelRatio || 1
-  const w = parent.clientWidth
-  const h = parent.clientHeight
-  canvas.width = w * dpr
-  canvas.height = h * dpr
-  canvas.style.width = `${w}px`
-  canvas.style.height = `${h}px`
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  ctx.clearRect(0, 0, w, h)
-  const total = items.reduce((s, it) => s + it.value, 0)
-  if (!hasActivity || total <= 0) {
+  if (totalCalls <= 0) {
     ctx.fillStyle = ui.muted
-    ctx.font = '11px sans-serif'
-    ctx.fillText(t('metrics.noData'), 12, h / 2)
+    ctx.font = `${large ? 12 : 11}px sans-serif`
+    ctx.fillText(t('metrics.noData'), 8, 22)
     return
   }
-  const cx = w * 0.38
-  const cy = h / 2
-  const r = Math.min(w, h) * 0.32
-  const ir = r * 0.55
-  let angle = -Math.PI / 2
-  for (const it of items) {
-    if (it.value <= 0) continue
-    const sweep = (it.value / total) * Math.PI * 2
+
+  const errPct = Math.max(0, Math.min(100, errorRate))
+  const okPct = 100 - errPct
+  const cx = w / 2
+  const cy = h - (large ? 14 : 10)
+  const r = Math.min(w / 2 - 16, h - (large ? 38 : 32))
+  const startA = Math.PI
+  const errSweep = (errPct / 100) * Math.PI
+
+  const drawWedge = (from: number, to: number, color: string) => {
+    if (to <= from) return
+    ctx.fillStyle = color
     ctx.beginPath()
-    ctx.arc(cx, cy, r, angle, angle + sweep)
-    ctx.arc(cx, cy, ir, angle + sweep, angle, true)
+    ctx.moveTo(cx, cy)
+    ctx.arc(cx, cy, r, from, to)
     ctx.closePath()
-    ctx.fillStyle = it.color
     ctx.fill()
-    angle += sweep
   }
-  let ly = 12
-  ctx.font = '10px sans-serif'
-  for (const it of items) {
-    if (it.value <= 0) continue
-    ctx.fillStyle = it.color
-    ctx.fillRect(w * 0.62, ly - 8, 10, 3)
+
+  if (errPct >= 100) {
+    drawWedge(startA, 0, '#ef4444')
+  } else if (errPct <= 0) {
+    drawWedge(startA, 0, '#22c55e')
+  } else {
+    drawWedge(startA + errSweep, 0, '#22c55e')
+    drawWedge(startA, startA + errSweep, '#ef4444')
+  }
+
+  ctx.strokeStyle = ui.grid
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.arc(cx, cy, r, startA, 0)
+  ctx.stroke()
+
+  const labelY = cy - r / 2 - (large ? 4 : 2)
+  ctx.fillStyle = ui.text
+  ctx.font = `bold ${large ? 18 : 15}px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(`${errPct.toFixed(1)}%`, cx, labelY)
+  ctx.fillStyle = ui.muted
+  ctx.font = `${large ? 10 : 9}px sans-serif`
+  ctx.fillText(t('metrics.errorRate'), cx, labelY + (large ? 16 : 14))
+
+  const items = [
+    { color: '#ef4444', label: t('metrics.errorRate'), pct: errPct },
+    { color: '#22c55e', label: t('metrics.successRate'), pct: okPct },
+  ]
+  ctx.font = `${large ? 11 : 10}px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  let ly = cy + (large ? 10 : 8)
+  for (const item of items) {
+    const text = `${item.label} ${item.pct.toFixed(1)}%`
+    const tw = ctx.measureText(text).width
+    const boxW = tw + 18
+    const lx = cx - boxW / 2
+    ctx.fillStyle = item.color
+    ctx.fillRect(lx, ly - 5, 10, 10)
     ctx.fillStyle = ui.text
-    const pct = ((it.value / total) * 100).toFixed(0)
-    ctx.fillText(`${it.label} ${pct}%`, w * 0.62 + 14, ly)
-    ly += 14
+    ctx.fillText(text, lx + 14 + tw / 2, ly)
+    ly += large ? 15 : 13
   }
 }
 
-const drawHistogram = (
+const TPS_GAUGE_MAX = 120
+
+const drawTpsGauge = (
   canvas: HTMLCanvasElement | null,
-  bins: { label: string; count: number }[],
-  hasActivity: boolean,
+  needleTps: number,
+  labelTps: number,
+  large: boolean,
   ui: ReturnType<typeof chartUiColors>,
 ) => {
   if (!canvas) return
@@ -393,31 +372,136 @@ const drawHistogram = (
   if (!ctx) return
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, w, h)
-  const pad = { l: 8, r: 8, t: 8, b: 22 }
-  const n = bins.length
-  if (!hasActivity || !n) {
-    ctx.fillStyle = ui.muted
-    ctx.font = '11px sans-serif'
-    ctx.fillText(t('metrics.noData'), pad.l, pad.t + 20)
-    return
+
+  const maxTps = TPS_GAUGE_MAX
+  const cx = w / 2
+  const cy = h - (large ? 14 : 10)
+  const r = Math.min(w / 2 - 16, h - (large ? 30 : 24))
+  const startA = Math.PI
+  const endA = 0
+  const arcW = large ? 12 : 10
+  const needleClamped = Math.max(0, Math.min(needleTps, maxTps))
+  const labelClamped = Math.max(0, Math.min(labelTps, maxTps))
+  // 上半圆：0 在左 (π)，120 在右 (0)，经顶部 (3π/2)
+  const valToAngle = (v: number) => Math.PI + (v / maxTps) * Math.PI
+  const needleA = valToAngle(needleClamped)
+
+  // 彩色轨道：左 0 绿 → 中 60–90 黄 → 右 120 红（填充色带，沿上半圆逆时针）
+  const fillGaugeZone = (fromV: number, toV: number, color: string) => {
+    const a0 = valToAngle(fromV)
+    const a1 = valToAngle(toV)
+    const ro = r + arcW / 2
+    const ri = Math.max(2, r - arcW / 2)
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.arc(cx, cy, ro, a0, a1, true)
+    ctx.arc(cx, cy, ri, a1, a0, false)
+    ctx.closePath()
+    ctx.fill()
   }
-  const maxV = Math.max(...bins.map((b) => b.count), 1)
-  const slot = (w - pad.l - pad.r) / n
-  bins.forEach((bin, i) => {
-    const barH = (bin.count / maxV) * (h - pad.t - pad.b)
-    const x = pad.l + i * slot + slot * 0.15
-    const barW = slot * 0.7
-    ctx.fillStyle = '#2563eb'
-    ctx.fillRect(x, h - pad.b - barH, barW, barH)
-    ctx.fillStyle = ui.muted
-    ctx.font = '9px sans-serif'
-    ctx.fillText(bin.label, x, h - 4)
-    if (bin.count > 0) {
-      ctx.fillStyle = ui.text
-      ctx.font = '9px sans-serif'
-      ctx.fillText(String(bin.count), x, h - pad.b - barH - 4)
+  fillGaugeZone(0, 60, '#22c55e')
+  fillGaugeZone(60, 90, '#eab308')
+  fillGaugeZone(90, 120, '#ef4444')
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.arc(cx, cy, r + arcW / 2, startA, endA, true)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(cx, cy, r - arcW / 2, startA, endA, true)
+  ctx.stroke()
+
+  // 刻度：每 10 一小格，每 20 大格 + 数字
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  for (let v = 0; v <= maxTps; v += 10) {
+    const a = valToAngle(v)
+    const major = v % 20 === 0
+    const tickOut = r + (major ? (large ? 6 : 5) : (large ? 3 : 2))
+    const tickIn = r - (major ? (large ? 16 : 13) : (large ? 10 : 8))
+    ctx.strokeStyle = major ? ui.text : ui.muted
+    ctx.lineWidth = major ? 2 : 1
+    ctx.beginPath()
+    ctx.moveTo(cx + Math.cos(a) * tickIn, cy + Math.sin(a) * tickIn)
+    ctx.lineTo(cx + Math.cos(a) * tickOut, cy + Math.sin(a) * tickOut)
+    ctx.stroke()
+    if (major) {
+      const labelR = r - (large ? 26 : 22)
+      ctx.fillStyle = ui.muted
+      ctx.font = `${large ? 10 : 9}px sans-serif`
+      ctx.fillText(String(v), cx + Math.cos(a) * labelR, cy + Math.sin(a) * labelR)
     }
-  })
+  }
+
+  // 指针
+  const needleLen = r - (large ? 20 : 16)
+  const nx = cx + Math.cos(needleA) * needleLen
+  const ny = cy + Math.sin(needleA) * needleLen
+  const needleColor = labelClamped < 60 ? '#22c55e' : labelClamped < 90 ? '#eab308' : '#ef4444'
+  ctx.strokeStyle = needleColor
+  ctx.lineWidth = large ? 3 : 2.5
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(cx, cy)
+  ctx.lineTo(nx, ny)
+  ctx.stroke()
+
+  ctx.fillStyle = ui.text
+  ctx.beginPath()
+  ctx.arc(cx, cy, large ? 5 : 4, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = needleColor
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+
+  ctx.fillStyle = ui.text
+  ctx.font = `bold ${large ? 20 : 16}px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.fillText(Number.isFinite(labelTps) ? labelClamped.toFixed(1) : '—', cx, cy - (large ? 36 : 30))
+  ctx.fillStyle = ui.muted
+  ctx.font = `${large ? 11 : 10}px sans-serif`
+  ctx.fillText('tok/s', cx, cy - (large ? 16 : 12))
+}
+
+const gaugeTargetTps = () => snapshot.value?.realtime.kpis.tps ?? 0
+
+const tickGauge = (now: number) => {
+  const dt = Math.min(48, now - gaugeLastFrame || now)
+  gaugeLastFrame = now
+  const target = gaugeTargetTps()
+  const rising = target > gaugeNeedleTps
+  const tauMs = rising ? 520 : target === 0 ? 680 : 420
+  const alpha = 1 - Math.exp(-dt / tauMs)
+  gaugeNeedleTps += (target - gaugeNeedleTps) * alpha
+  if (Math.abs(target - gaugeNeedleTps) < 0.08) gaugeNeedleTps = target
+
+  const sec = now / 1000
+  const moving = Math.abs(target - gaugeNeedleTps) > 0.5
+  const active = target > 0 || gaugeNeedleTps > 0.5 || moving
+  const shakeAmp = active
+    ? 0.08 + Math.min(1.0, gaugeNeedleTps * 0.012) + (moving ? 0.2 : 0)
+    : 0.04
+  const jitter =
+    Math.sin(sec * 48) * shakeAmp * 0.55 +
+    Math.sin(sec * 72 + 1.7) * shakeAmp * 0.35 +
+    Math.sin(sec * 96 + 0.4) * shakeAmp * 0.2
+  const needleDraw = Math.max(0, Math.min(TPS_GAUGE_MAX, gaugeNeedleTps + jitter))
+
+  const large = !!props.expanded
+  drawTpsGauge(chartTpsGauge.value, needleDraw, gaugeNeedleTps, large, chartUiColors())
+  gaugeRaf = requestAnimationFrame(tickGauge)
+}
+
+const startGaugeLoop = () => {
+  if (gaugeRaf) return
+  gaugeLastFrame = performance.now()
+  gaugeRaf = requestAnimationFrame(tickGauge)
+}
+
+const stopGaugeLoop = () => {
+  if (gaugeRaf) cancelAnimationFrame(gaugeRaf)
+  gaugeRaf = 0
 }
 
 const redrawCharts = () => {
@@ -429,7 +513,6 @@ const redrawCharts = () => {
     (snapshot.value?.concurrent ?? 0) > 0 ||
     (snapshot.value?.realtime.kpis.totalCalls ?? 0) > 0
   const slo = snapshot.value?.sloThresholdMs ?? 3000
-  const advActivity = (snapshot.value?.cumulative.kpis.totalCalls ?? 0) > 0
 
   drawLineChart(
     chartTtft.value,
@@ -452,13 +535,10 @@ const redrawCharts = () => {
     large,
     ui,
   )
-  drawLineChart(
+  drawErrorRatePie(
     chartErr.value,
-    [
-      { label: t('metrics.errorRate'), color: '#ef4444', values: pts.map((p) => p.errorRate) },
-      { label: 'Token/min', color: '#2563eb', values: pts.map((p) => p.tokensPerMin / 1000) },
-    ],
-    hasActivity,
+    snapshot.value?.cumulative.kpis.errorRate ?? 0,
+    snapshot.value?.cumulative.kpis.totalCalls ?? 0,
     large,
     ui,
   )
@@ -469,55 +549,44 @@ const redrawCharts = () => {
     large,
     ui,
   )
-  drawLineChart(
-    chartTokenSplit.value,
-    [
-      { label: 'In', color: '#2563eb', values: pts.map((p) => p.inputTokens / 1000) },
-      { label: 'Out', color: '#22c55e', values: pts.map((p) => p.outputTokens / 1000) },
-    ],
-    hasActivity,
-    large,
-    ui,
-  )
-  drawLineChart(
-    chartCumulative.value,
-    [{ label: 'Total k', color: '#0ea5e9', values: pts.map((p) => p.cumulativeTokens / 1000) }],
-    hasActivity,
-    large,
-    ui,
-  )
-  const breakdown = snapshot.value?.sourceBreakdown ?? []
-  drawDonut(
-    chartSource.value,
-    breakdown.map((row) => ({
-      label: sourceLabel(row.source),
-      value: row.calls,
-      color: SOURCE_COLORS[row.source],
-    })),
-    advActivity,
-    ui,
-  )
-  drawStackedBars(
-    chartOutcome.value,
-    pts.map((p) => p.okCount),
-    pts.map((p) => p.failCount),
-    hasActivity,
-    large,
-    ui,
-  )
-  drawHistogram(chartInputHist.value, snapshot.value?.inputTokenHistogram ?? [], advActivity, ui)
 }
 
 const fmt = (v: number, digits = 1) => (Number.isFinite(v) ? v.toFixed(digits) : '—')
 
+const activityKindLabel = (kind: AiMetricsActivityLine['kind']) => {
+  if (kind === 'model_call') return t('trace.kindModel')
+  if (kind === 'tool_call') return t('trace.kindToolCall')
+  if (kind === 'tool_result') return t('trace.kindToolResult')
+  return t('metrics.kindFirstToken')
+}
+
+const fmtActivityTime = (ts: number) =>
+  new Date(ts).toLocaleTimeString('zh-CN', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    fractionalSecondDigits: 3,
+  })
+
+const ACTIVITY_MAX_LINES = 50
+
+const filteredActivityLog = computed(() => {
+  let rows = activityLog.value
+  if (filterModelId.value) rows = rows.filter((r) => r.modelId === filterModelId.value)
+  if (filterSource.value) rows = rows.filter((r) => !r.source || r.source === filterSource.value)
+  return rows.slice(-ACTIVITY_MAX_LINES)
+})
+
+const scrollActivityToBottom = () => {
+  const el = activityLogEl.value
+  if (!el) return
+  el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+}
+
 const onDetach = () => {
   emit('detach')
   void window.axecoder.openMetricsWindow()
-}
-
-const onDock = () => {
-  void window.axecoder.closeMetricsWindow()
-  emit('dock')
 }
 
 const onOpenTrace = (modelId: string) => {
@@ -548,6 +617,13 @@ watch([filterModelId, filterSource, filterProvider, filterTimeRange], () => {
   void loadSnapshot()
 })
 
+watch(
+  () => filteredActivityLog.value.length,
+  () => {
+    void nextTick().then(scrollActivityToBottom)
+  },
+)
+
 onMounted(async () => {
   if (props.detached) syncDetachedTheme()
   await loadSnapshot()
@@ -555,24 +631,32 @@ onMounted(async () => {
     if (needsRefetch()) {
       void window.axecoder.getAiMetricsSnapshot(buildFilter()).then((s) => {
         snapshot.value = s
+        activityLog.value = s.activityLog ?? []
         void nextTick().then(redrawCharts)
       })
     } else {
       snapshot.value = snap
+      activityLog.value = snap.activityLog ?? []
       void nextTick().then(redrawCharts)
     }
+  })
+  offActivity = window.axecoder.onAiMetricsActivity((lines) => {
+    activityLog.value = lines
   })
   window.addEventListener('resize', redrawCharts)
   themeObs = new MutationObserver(() => {
     void nextTick().then(redrawCharts)
   })
   themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  startGaugeLoop()
 })
 
 onUnmounted(() => {
   offMetrics?.()
+  offActivity?.()
   themeObs?.disconnect()
   window.removeEventListener('resize', redrawCharts)
+  stopGaugeLoop()
 })
 </script>
 
@@ -613,11 +697,9 @@ onUnmounted(() => {
           <option value="aura-dark">{{ t('settings.theme.auraDark') }}</option>
         </select>
       </label>
-      <div v-if="showDetachControls" class="detach-actions">
-        <button v-if="!detached" type="button" class="tb-btn" @click="onDetach">{{ t('metrics.detach') }}</button>
-        <button v-else type="button" class="tb-btn" @click="onDock">{{ t('metrics.dock') }}</button>
+      <div class="toolbar-right">
+        <span class="live-dot" :title="t('metrics.live')">● {{ t('metrics.live') }}</span>
       </div>
-      <span class="live-dot" :title="t('metrics.live')">● {{ t('metrics.live') }}</span>
     </div>
 
     <div class="kpi-section-label">{{ t('metrics.realtime') }}</div>
@@ -653,7 +735,7 @@ onUnmounted(() => {
     </div>
 
     <div class="kpi-section-label">{{ t('metrics.cumulative') }}</div>
-    <div class="kpi-row kpi-row--7">
+    <div class="kpi-row">
       <div class="kpi" :title="t('metrics.ttftTip')">
         <div class="kpi-label">TTFT P95</div>
         <div class="kpi-val">{{ fmt(snapshot?.cumulative.kpis.ttftP95 ?? 0, 0) }}<span class="unit">ms</span></div>
@@ -731,33 +813,33 @@ onUnmounted(() => {
         <div class="chart-title">{{ t('metrics.chartE2e') }}</div>
         <div class="chart-canvas-wrap"><canvas ref="chartE2e" /></div>
       </div>
+      <div class="chart-card chart-card--gauge">
+        <div class="chart-title">TPS</div>
+        <div class="chart-canvas-wrap"><canvas ref="chartTpsGauge" /></div>
+      </div>
       <div class="chart-card">
         <div class="chart-title">TPS / QPS</div>
         <div class="chart-canvas-wrap"><canvas ref="chartTps" /></div>
       </div>
-      <div class="chart-card">
-        <div class="chart-title">{{ t('metrics.chartTokenSplit') }}</div>
-        <div class="chart-canvas-wrap"><canvas ref="chartTokenSplit" /></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">{{ t('metrics.errorRate') }} / Token</div>
+      <div class="chart-card chart-card--gauge">
+        <div class="chart-title">{{ t('metrics.errorRate') }} / {{ t('metrics.successRate') }}</div>
         <div class="chart-canvas-wrap"><canvas ref="chartErr" /></div>
       </div>
-      <div class="chart-card">
-        <div class="chart-title">{{ t('metrics.chartCumulative') }}</div>
-        <div class="chart-canvas-wrap"><canvas ref="chartCumulative" /></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">{{ t('metrics.chartSource') }}</div>
-        <div class="chart-canvas-wrap"><canvas ref="chartSource" /></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">{{ t('metrics.chartOutcome') }}</div>
-        <div class="chart-canvas-wrap"><canvas ref="chartOutcome" /></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">{{ t('metrics.chartInputHist') }}</div>
-        <div class="chart-canvas-wrap"><canvas ref="chartInputHist" /></div>
+      <div class="chart-card chart-card--terminal">
+        <div class="chart-title">{{ t('metrics.activityFeed') }}</div>
+        <div ref="activityLogEl" class="activity-terminal">
+          <div v-if="!filteredActivityLog.length" class="activity-empty">{{ t('metrics.noData') }}</div>
+          <div
+            v-for="line in filteredActivityLog"
+            :key="line.id"
+            class="activity-line"
+            :class="[line.kind, { fail: line.ok === false }]"
+          >
+            <span class="activity-time">[{{ fmtActivityTime(line.ts) }}]</span>
+            <span class="activity-kind">{{ activityKindLabel(line.kind) }}</span>
+            <span class="activity-text">{{ line.text }}</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -776,8 +858,15 @@ onUnmounted(() => {
 }
 
 .metrics-root.expanded {
-  padding: 12px 16px;
+  padding: 8px 12px;
+  gap: 6px;
   background: var(--wc-panel);
+}
+
+.metrics-toolbar,
+.kpi-section-label,
+.kpi-row {
+  flex-shrink: 0;
 }
 
 .metrics-toolbar {
@@ -804,27 +893,16 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.detach-actions {
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
-}
-
-.tb-btn {
-  padding: 4px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--wc-border);
-  background: var(--wc-input-bg);
-  color: var(--wc-text);
-  font-size: 12px;
-}
-
-.tb-btn:hover {
-  background: var(--wc-hover);
 }
 
 .live-dot {
   color: #16a34a;
   font-size: 11px;
-  margin-left: auto;
 }
 
 .kpi-section-label {
@@ -835,24 +913,31 @@ onUnmounted(() => {
 }
 
 .kpi-row {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  display: flex;
   gap: 6px;
-}
-
-.kpi-row--7 {
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  width: 100%;
 }
 
 .kpi {
+  flex: 1 1 0;
+  min-width: 0;
   background: var(--wc-input-bg);
   border: 1px solid var(--wc-border);
   border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.expanded .kpi-row {
+  gap: 8px;
+}
+
+.expanded .kpi {
   padding: 8px 10px;
+  text-align: center;
 }
 
 .expanded .kpi-val {
-  font-size: 20px;
+  font-size: 17px;
 }
 
 .kpi-label {
@@ -887,12 +972,13 @@ onUnmounted(() => {
 }
 
 .model-table-wrap {
+  flex-shrink: 0;
   overflow: auto;
-  max-height: 120px;
+  max-height: 100px;
 }
 
 .expanded .model-table-wrap {
-  max-height: 180px;
+  max-height: 120px;
 }
 
 .model-table {
@@ -952,25 +1038,114 @@ onUnmounted(() => {
 
 .charts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  grid-auto-rows: minmax(100px, auto);
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(72px, auto));
+  gap: 6px;
   flex: 1;
-  min-height: 120px;
+  min-height: 0;
   overflow: auto;
 }
 
+.chart-card--gauge .chart-canvas-wrap {
+  min-height: 80px;
+}
+
+.chart-card--terminal {
+  min-height: 0;
+}
+
+.activity-terminal {
+  flex: 1;
+  min-height: 56px;
+  overflow: auto;
+  scroll-behavior: smooth;
+  background: var(--wc-bg-dark);
+  border: 1px solid var(--wc-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: var(--wc-font-mono, ui-monospace, 'Cascadia Code', Menlo, monospace);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.charts--expanded .activity-terminal {
+  min-height: 0;
+}
+
+.activity-empty {
+  color: var(--wc-text-muted);
+}
+
+.activity-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 1px 0;
+  color: var(--wc-text);
+  animation: activity-rise 0.28s ease-out;
+}
+
+.activity-line.fail .activity-kind,
+.activity-line.fail .activity-text {
+  color: var(--wc-diff-del-fg);
+}
+
+.activity-line.model_call .activity-kind {
+  color: var(--wc-accent);
+}
+
+.activity-line.tool_call .activity-kind {
+  color: var(--wc-metrics-tool-call, #dcdcaa);
+}
+
+.activity-line.tool_result .activity-kind {
+  color: var(--wc-diff-add-fg);
+}
+
+.activity-line.first_token .activity-kind {
+  color: var(--wc-diff-hunk-fg);
+}
+
+.activity-time {
+  color: var(--wc-text-dim);
+  flex-shrink: 0;
+}
+
+.activity-kind {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.activity-text {
+  color: var(--wc-text-muted);
+  min-width: 0;
+  word-break: break-all;
+}
+
+@keyframes activity-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .charts--expanded {
-  min-height: 360px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
 }
 
 .chart-card {
   border: 1px solid var(--wc-border);
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
   background: var(--wc-input-bg);
 }
 
@@ -982,12 +1157,12 @@ onUnmounted(() => {
 
 .chart-canvas-wrap {
   flex: 1;
-  min-height: 64px;
+  min-height: 56px;
   position: relative;
 }
 
 .charts--expanded .chart-canvas-wrap {
-  min-height: 160px;
+  min-height: 0;
 }
 
 canvas {

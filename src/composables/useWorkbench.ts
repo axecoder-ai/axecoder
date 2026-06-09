@@ -36,6 +36,7 @@ export const useWorkbench = () => {
     fontSize: 14,
     theme: 'vscode',
     agentAutoApplyWrites: false,
+    agentAutoPlan: 'off',
     agentOutputStyle: 'default',
     agentCompletionSoundEnabled: false,
     agentCompletionSoundPath: '',

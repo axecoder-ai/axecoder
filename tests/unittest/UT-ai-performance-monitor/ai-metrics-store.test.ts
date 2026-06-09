@@ -1,4 +1,8 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest'
+
+vi.mock('../../../electron/main/renderer-broadcast', () => ({
+  broadcastToRenderers: () => {},
+}))
 import {
   beginAiMetricsCall,
   endAiMetricsCall,
@@ -152,6 +156,23 @@ describe('ai-metrics-store', () => {
     const snap = getAiMetricsSnapshot()
     expect(snap.sourceBreakdown.length).toBeGreaterThanOrEqual(2)
     expect(snap.inputTokenHistogram.some((b) => b.count > 0)).toBe(true)
+  })
+
+  it('realtime TPS is zero when no active calls', () => {
+    const id = beginAiMetricsCall(meta)
+    vi.advanceTimersByTime(200)
+    markAiMetricsFirstToken(id)
+    vi.advanceTimersByTime(800)
+    endAiMetricsCall(
+      id,
+      { ok: true, outputChars: 400, inputTokens: 120, outputTokens: 100, tokensEstimated: false },
+      meta,
+    )
+
+    const snap = getAiMetricsSnapshot()
+    expect(snap.concurrent).toBe(0)
+    expect(snap.realtime.kpis.tps).toBe(0)
+    expect(snap.cumulative.kpis.tps).toBeGreaterThan(0)
   })
 
   it('exposes providers and sources meta lists', () => {

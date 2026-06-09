@@ -24,12 +24,18 @@ const props = defineProps<{
   liveProgress?: {
     steps: AgentProgressStep[]
     streamText: string
+    thinkingText?: string
+    thinkingType?: string
   }
 }>()
 
 const isReasoningLegacy = computed(() => props.messageKind === 'reasoning')
 const showLiveProgress = computed(
-  () => !!props.liveProgress && (props.liveProgress.steps.length > 0 || props.liveProgress.streamText),
+  () =>
+    !!props.liveProgress &&
+    (props.liveProgress.steps.length > 0 ||
+      props.liveProgress.streamText.trim() ||
+      props.liveProgress.thinkingText?.trim()),
 )
 const showBody = computed(() => {
   if (isReasoningLegacy.value) return false
@@ -105,10 +111,12 @@ const useMarkdown = computed(
       <div v-if="showLiveProgress" class="ws-live-progress">
         <AgentProgressStream
           :steps="liveProgress!.steps"
-          stream-text=""
+          :stream-text="liveProgress!.streamText"
           :subagent-tasks="[]"
           :agent-mode="true"
           fallback-headline="Running…"
+          :thinking-text="liveProgress!.thinkingText ?? ''"
+          :thinking-type="liveProgress!.thinkingType ?? ''"
         />
       </div>
       <div v-if="relatedFiles?.length && showBody" class="ws-files">

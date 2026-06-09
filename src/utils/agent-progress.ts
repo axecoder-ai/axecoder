@@ -8,6 +8,8 @@ export type AgentProgressStep = {
   status: 'active' | 'done' | 'error'
   toolName?: string
   summary?: string
+  /** Model reply or tool stdout/stderr snapshot when step completes */
+  detail?: string
 }
 
 export const PROGRESS_COLLAPSE_KEEP = 5
@@ -21,6 +23,7 @@ export type AgentProgressPayload =
       toolName?: string
       summary?: string
       ok?: boolean
+      detail?: string
     }
   | {
       sessionId: string
@@ -29,10 +32,25 @@ export type AgentProgressPayload =
     }
   | {
       sessionId: string
+      kind: 'content_delta'
+      delta: string
+    }
+  | {
+      sessionId: string
+      kind: 'thinking_delta'
+      delta: string
+    }
+  | {
+      sessionId: string
       kind: 'subagent'
       taskId: string
       status: 'running' | 'completed' | 'failed' | 'stopped'
       description: string
+    }
+  | {
+      sessionId: string
+      kind: 'loop_guard'
+      text: string
     }
 
 export const labelForModelTurn = (turn: number) => `Turn ${turn}: calling model…`
@@ -85,13 +103,14 @@ export const applyProgressPayload = (
       if (s.phase === 'model' && s.status === 'active' && s.turn === payload.turn) {
         s.status = 'done'
         s.label = labelForModelDone(payload.turn)
+        if (payload.detail?.trim()) s.detail = payload.detail
         return next
       }
     }
     return next
   }
 
-  if (payload.kind === 'delta') {
+  if (payload.kind === 'delta' || payload.kind === 'content_delta' || payload.kind === 'thinking_delta') {
     return next
   }
 
@@ -122,6 +141,7 @@ export const applyProgressPayload = (
         s.label = labelForToolDone(name, summary, ok)
         s.toolName = name
         s.summary = summary
+        if (payload.detail?.trim()) s.detail = payload.detail
         return next
       }
     }
@@ -133,6 +153,7 @@ export const applyProgressPayload = (
       status: ok ? 'done' : 'error',
       toolName: name,
       summary,
+      ...(payload.detail?.trim() ? { detail: payload.detail } : {}),
     })
     return next
   }

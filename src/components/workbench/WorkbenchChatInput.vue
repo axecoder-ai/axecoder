@@ -2,7 +2,7 @@
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import type { ModelEntry, UserEntry } from '../../types/axecoder'
 import ModelPickerDropdown from './ModelPickerDropdown.vue'
-import RoleMentionPicker from './RoleMentionPicker.vue'
+import AtRefPicker from './AtRefPicker.vue'
 import { isUnderProject, relativeToProject, type ChatFileRef } from '../../utils/chat-file-context'
 import type { AttachedImageView } from '../../composables/useChatAttachedImages'
 import {
@@ -40,7 +40,8 @@ const emit = defineEmits<{
 
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 const inputWrapEl = ref<HTMLElement | null>(null)
-const rolePickerRef = ref<InstanceType<typeof RoleMentionPicker> | null>(null)
+const atRefPickerRef = ref<InstanceType<typeof AtRefPicker> | null>(null)
+const inputCursor = ref(0)
 const dropActive = ref(false)
 
 const mentionUsers = computed(() => props.mentionUsers ?? [])
@@ -109,11 +110,64 @@ const clearInputAtMention = () => {
   })
 }
 
-const onRolePick = (user: UserEntry) => {
-  setInput(formatRoleMentionInput(user.displayName))
+const pickerInputText = computed(() =>
+  inputAtMention.value ? inputFieldValue.value : props.modelValue,
+)
+
+const syncInputCursor = () => {
+  inputCursor.value = inputEl.value?.selectionStart ?? pickerInputText.value.length
+}
+
+const onAtRolePick = (user: UserEntry, replaceStart: number) => {
+  const el = inputEl.value
+  const text = pickerInputText.value
+  const cursor = el?.selectionStart ?? text.length
+  const before = text.slice(0, replaceStart)
+  const after = text.slice(cursor)
+  if (inputAtMention.value) {
+    setInput(
+      formatRoleMentionInput(
+        inputAtMention.value.displayName,
+        sanitizeRoleMentionArgs(before + `@${user.displayName} ` + after),
+      ),
+    )
+    return
+  }
+  if (before.trim() === '') {
+    setInput(formatRoleMentionInput(user.displayName))
+  } else {
+    setInput(`${props.modelValue.slice(0, replaceStart)}@${user.displayName} ${after}`)
+  }
   void nextTick(() => {
     resizeInput()
-    inputEl.value?.focus()
+    el?.focus()
+    syncInputCursor()
+  })
+}
+
+const onAtFilePick = (insertPath: string, replaceStart: number) => {
+  const el = inputEl.value
+  const text = pickerInputText.value
+  const cursor = el?.selectionStart ?? text.length
+  const before = text.slice(0, replaceStart)
+  const after = text.slice(cursor)
+  if (inputAtMention.value) {
+    setInput(
+      formatRoleMentionInput(
+        inputAtMention.value.displayName,
+        sanitizeRoleMentionArgs(`${before}${insertPath} ${after}`),
+      ),
+    )
+  } else {
+    const fullBefore = props.modelValue.slice(0, replaceStart)
+    setInput(`${fullBefore}${insertPath} ${after}`)
+  }
+  void nextTick(() => {
+    resizeInput()
+    const pos = (inputAtMention.value ? inputFieldValue.value : props.modelValue).length - after.length
+    el?.setSelectionRange(pos, pos)
+    syncInputCursor()
+    el?.focus()
   })
 }
 
@@ -126,7 +180,7 @@ const onInputKeydown = (e: KeyboardEvent) => {
       return
     }
   }
-  const picker = rolePickerRef.value
+  const picker = atRefPickerRef.value
   if (!picker?.isOpen) return
   if (e.key === 'ArrowDown') {
     e.preventDefault()
@@ -144,7 +198,7 @@ const onInputKeydown = (e: KeyboardEvent) => {
 }
 
 const onInputEnter = () => {
-  const picker = rolePickerRef.value
+  const picker = atRefPickerRef.value
   if (picker?.isOpen) {
     picker.pickActive()
     return
@@ -211,13 +265,15 @@ defineExpose({
 
 <template>
   <div class="chat-input-area">
-    <RoleMentionPicker
-      v-if="mentionUsers.length"
-      ref="rolePickerRef"
-      :input-text="modelValue"
-      :users="mentionUsers"
+    <AtRefPicker
+      ref="atRefPickerRef"
+      :project-root="projectRoot"
+      :input-text="pickerInputText"
+      :cursor="inputCursor"
+      :mention-users="inputAtMention ? [] : mentionUsers"
       :anchor-el="inputWrapEl"
-      @select="onRolePick"
+      @pick-role="onAtRolePick"
+      @pick-file="onAtFilePick"
     />
     <div
       class="input-box"
@@ -272,7 +328,9 @@ defineExpose({
               : (placeholder ?? 'Plan, Build, / for commands, @ for roles')
           "
           :disabled="loading"
-          @input="onInputField"
+          @input="(e) => { onInputField(e); syncInputCursor() }"
+          @click="syncInputCursor"
+          @keyup="syncInputCursor"
           @keydown="onInputKeydown"
           @keydown.enter.exact.prevent="onInputEnter"
           @paste="emit('paste', $event)"

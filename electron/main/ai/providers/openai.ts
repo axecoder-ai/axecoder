@@ -24,6 +24,7 @@ export const chatOpenAi = async (
   apiKey: string,
   messages: AiChatMessage[],
   onDelta?: (delta: OpenAiStreamDelta) => void,
+  reasoningEffort?: string,
 ): Promise<
   | { ok: true; text: string; content: string; reasoningContent?: string; usage?: AiTokenUsage }
   | { ok: false; error: string }
@@ -40,6 +41,7 @@ export const chatOpenAi = async (
         model: modelId,
         messages: aiChatToOpenAiWire(messages),
         stream: useStream,
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
       }),
       signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
     })

@@ -13,6 +13,7 @@ import type {
   PendingBashInternal,
   PendingWriteInternal,
 } from './tool-executor'
+import { createLoopGuardState, type LoopGuardState } from './agent-loop-guard'
 
 export type StoredAgentSession = {
   projectRoot: string
@@ -37,6 +38,10 @@ export type StoredAgentSession = {
   linkedPrUrl?: string
   /** 用户请求Stop Agent 循环 */
   abortRequested?: boolean
+  /** Loop guard：防呆状态（storm / repeat / tool rounds） */
+  loopGuard: LoopGuardState
+  /** 推理力度（OpenAI reasoning_effort） */
+  reasoningEffort?: import('../../../shared/reasoning-effort').ReasoningEffortLevel
 }
 
 const sessions = new Map<string, StoredAgentSession>()

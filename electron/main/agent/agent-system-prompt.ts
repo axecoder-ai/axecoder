@@ -8,6 +8,7 @@ import {
   getOutputStyleSection,
   resolveAgentOutputStyle,
 } from './agent-output-styles'
+import { composeMemoryPrompt } from './agent-memory'
 import { getMcpInstructionsSection } from './agent-mcp-instructions'
 import { getCodeGraphInstructionsSection } from './agent-codegraph-prompt'
 import { getMainLocale } from '../i18n'
@@ -189,8 +190,6 @@ IMPORTANT: Use this session scratchpad for temporary notes and explore summaries
 Use it for intermediate exploration notes and sub-agent explore reports (e.g. explore-summary.md). The directory is session-specific and isolated from the user's project.`
 }
 
-const MEMORY_FILES = ['AGENTS.md', 'CLAUDE.md'] as const
-
 const shellInfoLine = (): string => {
   const shell = process.env.SHELL || 'unknown'
   const shellName = shell.includes('zsh')
@@ -254,22 +253,9 @@ You have been invoked in the following environment:
 ${items.map((item) => ` - ${item}`).join('\n')}`
 }
 
-/** Claude Code `loadMemoryPrompt` — §11；读Project根 AGENTS.md / CLAUDE.md */
-export const loadProjectMemoryPrompt = async (projectRoot: string): Promise<string | null> => {
-  const root = path.resolve(projectRoot.trim())
-  const blocks: string[] = []
-  for (const name of MEMORY_FILES) {
-    const filePath = path.join(root, name)
-    try {
-      const text = (await fs.readFile(filePath, 'utf-8')).trim()
-      if (text) blocks.push(`## ${name}\n${text}`)
-    } catch {
-      /* missing */
-    }
-  }
-  if (blocks.length === 0) return null
-  return `# Project memory\n\n${blocks.join('\n\n')}`
-}
+/** 分层文档 + auto-memory 索引 */
+export const loadProjectMemoryPrompt = async (projectRoot: string): Promise<string | null> =>
+  composeMemoryPrompt(projectRoot)
 
 /** Claude Code `getSessionSpecificGuidanceSection` — §8；按工具开关拼接；无项时返回 null */
 export const getSessionSpecificGuidanceSection = (
@@ -387,7 +373,7 @@ export const buildAgentSystemPrompt = async (
     getOutputEfficiencySection(),
   ].filter((part): part is string => part !== null && part !== '')
 
-  const mcpInstructions = await getMcpInstructionsSection()
+  const mcpInstructions = await getMcpInstructionsSection(root)
   const codeGraphInstructions =
     cfg.agentFeatureCodeGraph !== false
       ? await getCodeGraphInstructionsSection(root)

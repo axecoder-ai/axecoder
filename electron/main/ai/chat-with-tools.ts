@@ -26,6 +26,7 @@ import {
   openAiStreamAccumToMessage,
 } from './openai-sse'
 import type { OpenAiStreamDelta } from './providers/openai'
+import { reasoningEffortForApi, type ReasoningEffortLevel } from '../../../shared/reasoning-effort'
 
 export type ChatWithToolsResult =
   | {
@@ -88,7 +89,9 @@ export const chatOpenAiWithTools = async (
   tools: readonly AgentToolDef[] = AGENT_TOOLS,
   abortSignal?: AbortSignal,
   apiModelId?: string,
+  reasoningEffort?: ReasoningEffortLevel,
 ): Promise<ChatWithToolsResult> => {
+  const effortApi = reasoningEffortForApi(reasoningEffort ?? 'auto')
   const url = buildOpenAiChatUrl(model.baseUrl)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
@@ -103,6 +106,7 @@ export const chatOpenAiWithTools = async (
         tools: openAiTools(tools),
         tool_choice: 'auto',
         stream: useStream,
+        ...(effortApi ? { reasoning_effort: effortApi } : {}),
       }),
       signal: mergeAbortSignal(abortSignal),
     })
@@ -290,6 +294,7 @@ export const chatWithToolsForModel = async (
   apiModelId?: string,
   metricsSource: AiMetricsSource = 'agent',
   traceContext?: AiTraceContext,
+  reasoningEffort?: ReasoningEffortLevel,
 ): Promise<ChatWithToolsResult> => {
   const prepared = prepareAgentMessagesForVisionModel(model, messages)
   if (!prepared.ok) return prepared
@@ -321,6 +326,7 @@ export const chatWithToolsForModel = async (
         tools,
         abortSignal,
         apiModelId,
+        reasoningEffort,
       )
     }
   } else {

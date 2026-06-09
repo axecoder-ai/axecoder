@@ -5,6 +5,7 @@ import type { StoredAgentSession } from './agent-session-store'
 
 export type ChatModeId =
   | 'agent'
+  | 'auto-plan'
   | 'reflection'
   | 'rppit'
   | 'planning'
@@ -15,6 +16,7 @@ export const DEFAULT_CHAT_MODE: ChatModeId = 'agent'
 
 const VALID = new Set<string>([
   'agent',
+  'auto-plan',
   'reflection',
   'rppit',
   'planning',
@@ -26,6 +28,9 @@ export const normalizeChatMode = (v: unknown): ChatModeId =>
   typeof v === 'string' && VALID.has(v) ? (v as ChatModeId) : DEFAULT_CHAT_MODE
 
 export const chatModeSystemAddon = (mode: ChatModeId): string => {
+  if (mode === 'auto-plan') {
+    return '\n\n<chat-mode>Auto Plan: same tools as Agent. Complex multi-step requests may auto-enter read-only plan mode before writes (ExitPlanMode to implement).</chat-mode>'
+  }
   if (mode === 'reflection') {
     return '\n\n<chat-mode>Reflection: think step-by-step before acting. State assumptions, options, and trade-offs. Prefer analysis unless the user clearly wants implementation.</chat-mode>'
   }
@@ -58,5 +63,6 @@ export const applyChatModeToNewSession = (session: StoredAgentSession, mode: Cha
     session.revealedToolNames.add('Task')
     session.revealedToolNames.add('Agent')
     session.activeTools = getSessionActiveTools(allTools, session.revealedToolNames)
+    return
   }
 }

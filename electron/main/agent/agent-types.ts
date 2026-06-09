@@ -40,6 +40,8 @@ export type AgentToolName =
   | 'Brief'
   | 'Config'
   | 'Workflow'
+  | 'Remember'
+  | 'Forget'
 
 export type SubagentType =
   | 'generalPurpose'
@@ -114,6 +116,8 @@ type AgentReplyMeta = {
   assistantContent?: string
   reasoningContent?: string
   speakerUserId?: string
+  /** 本轮启动的后台 Task id */
+  backgroundTaskIds?: string[]
 }
 
 export type AgentSendResult =
@@ -198,6 +202,8 @@ export const EXTENDED_AGENT_TOOL_NAMES: AgentToolName[] = [
   'Brief',
   'Config',
   'Workflow',
+  'Remember',
+  'Forget',
 ]
 
 export const ALL_AGENT_TOOL_NAMES: AgentToolName[] = [

@@ -5,6 +5,7 @@ import { chatWithToolsForModel } from '../ai/chat-with-tools'
 import { checkVisionBeforeChat } from '../ai/ai-vision-guard'
 import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
 import { t } from '../i18n'
+import { normalizeReasoningEffort } from '../../../shared/reasoning-effort'
 import { AGENT_TOOLS, buildAgentSystemPrompt, buildFullAgentTools } from './agent-tool-defs'
 import { getSessionActiveTools } from './agent-ext-executor'
 import type { AgentToolCall, AgentToolDef } from './agent-types'
@@ -35,9 +36,12 @@ import {
 } from './agent-session-store'
 import { executeAgentTool, type AgentContext, type ToolRunResult } from './tool-executor'
 import { emitAgentProgress } from './agent-progress-emit'
+import { formatModelCallDetail, formatToolResultDetail } from './agent-progress-detail'
 import { traceToolCall, traceToolResult } from '../ai-trace-store'
+import { formatAutoPlanNotice, resolveShouldAutoPlan } from './agent-auto-plan'
 import { getConfig } from '../config-store'
-import { resolveToolPermission } from './agent-permissions'
+import { buildMergedPermissionsPolicy, resolveToolPermission } from './agent-permissions'
+import { extractToolSubject } from './agent-permission-rules'
 import { isReadOnlyBashCommand } from './agent-bash-readonly'
 import { extractPullRequestFromOutput } from '../git-forge/git-operation-tracking'
 import { buildGitForgeContext } from '../git-forge/detect-forge'
@@ -48,6 +52,15 @@ import { getTokenBudgetSection } from './agent-token-budget'
 import { maybeInjectProactiveReminder } from './agent-proactive'
 import { ensureScratchpadDir } from './agent-scratchpad'
 import { buildAgentContextInjections } from './agent-context-inject'
+import {
+  applyStormBreaker,
+  checkRepeatBeforeExecute,
+  createLoopGuardState,
+  exceededToolRoundLimit,
+  recordRepeatSuccess,
+  resolveLoopGuardConfig,
+  type GuardToolOutcome,
+} from './agent-loop-guard'
 import {
   abortAgentRun,
   bindAgentRunAbort,
@@ -99,9 +112,21 @@ const runModelStep = async (session: StoredAgentSession, sessionId: string) => {
   const onDelta =
     model.provider === 'openai'
       ? (delta: { content?: string; reasoning?: string }) => {
-          const text = workshopStream ? (delta.content ?? '') : (delta.content ?? '') + (delta.reasoning ?? '')
-          if (text) {
-            emitAgentProgress({ sessionId, kind: 'delta', delta: text })
+          if (workshopStream) {
+            if (delta.content) {
+              emitAgentProgress({ sessionId, kind: 'content_delta', delta: delta.content })
+            }
+            if (delta.reasoning) {
+              emitAgentProgress({ sessionId, kind: 'thinking_delta', delta: delta.reasoning })
+            }
+          } else {
+            // Agent 模式：分离 content 和 reasoning（thinking）
+            if (delta.content) {
+              emitAgentProgress({ sessionId, kind: 'content_delta', delta: delta.content })
+            }
+            if (delta.reasoning) {
+              emitAgentProgress({ sessionId, kind: 'thinking_delta', delta: delta.reasoning })
+            }
           }
         }
       : undefined
@@ -115,6 +140,7 @@ const runModelStep = async (session: StoredAgentSession, sessionId: string) => {
     apiModelId,
     sessionId.startsWith('workshop-') ? 'workshop' : 'agent',
     { sessionId, turn: session.turn },
+    session.reasoningEffort,
   )
 }
 
@@ -122,11 +148,25 @@ const refreshSessionActiveTools = (session: StoredAgentSession) => {
   session.activeTools = getSessionActiveTools(buildFullAgentTools(), session.revealedToolNames)
 }
 
-const replyMeta = (content?: string, reasoningContent?: string, speakerUserId?: string) => ({
-  ...(content !== undefined ? { assistantContent: content } : {}),
-  ...(reasoningContent ? { reasoningContent } : {}),
-  ...(speakerUserId ? { speakerUserId } : {}),
-})
+const backgroundTaskIdsFromSession = (session: StoredAgentSession) => {
+  const ids = session.ctx.backgroundTaskIds ?? []
+  return ids.length ? [...ids] : undefined
+}
+
+const replyMeta = (
+  session: StoredAgentSession,
+  content?: string,
+  reasoningContent?: string,
+) => {
+  const speakerUserId = session.assigneeUserId
+  const backgroundTaskIds = backgroundTaskIdsFromSession(session)
+  return {
+    ...(content !== undefined ? { assistantContent: content } : {}),
+    ...(reasoningContent ? { reasoningContent } : {}),
+    ...(speakerUserId ? { speakerUserId } : {}),
+    ...(backgroundTaskIds ? { backgroundTaskIds } : {}),
+  }
+}
 
 const finishDone = (
   session: StoredAgentSession,
@@ -136,14 +176,13 @@ const finishDone = (
   reasoningContent?: string,
 ): AgentSendResult | AgentContinueResult => {
   const toolLog = [...session.toolLog]
-  const speakerUserId = session.assigneeUserId
   if (sessionId) deleteSession(sessionId)
   return {
     ok: true,
     status: 'done',
     assistantText,
     toolLog,
-    ...replyMeta(content, reasoningContent, speakerUserId),
+    ...replyMeta(session, content, reasoningContent),
   }
 }
 
@@ -199,7 +238,7 @@ const finishPending = (
   ...(pendingAsks.length ? { pendingAsks } : {}),
   assistantText,
   toolLog: [...session.toolLog],
-  ...replyMeta(content, reasoningContent, session.assigneeUserId),
+  ...replyMeta(session, content, reasoningContent),
 })
 
 const collectPendingPublic = (session: StoredAgentSession) => ({
@@ -275,8 +314,15 @@ const finishAbortedAgent = (
   session: StoredAgentSession,
 ): AgentSendResult | AgentContinueResult => {
   const toolLog = [...session.toolLog]
+  const backgroundTaskIds = backgroundTaskIdsFromSession(session)
   deleteSession(sessionId)
-  return { ok: true, status: 'done', assistantText: t('common.stopped'), toolLog }
+  return {
+    ok: true,
+    status: 'done',
+    assistantText: t('common.stopped'),
+    toolLog,
+    ...(backgroundTaskIds ? { backgroundTaskIds } : {}),
+  }
 }
 
 export const stopAgentTurn = (sessionId: string): { ok: true } | { ok: false; error: string } => {
@@ -318,10 +364,32 @@ export const runAgentLoopUntilDoneOrPending = async (
       turn: session.turn,
       kind: 'model',
       status: 'done',
+      detail: formatModelCallDetail(res),
     })
 
     const assistantText = res.text.trim()
     if (res.toolCalls.length) {
+      if (!session.loopGuard) session.loopGuard = createLoopGuardState()
+      const cfg = await getConfig()
+      const guardCfg = resolveLoopGuardConfig(cfg)
+      session.loopGuard.toolRounds += 1
+      if (exceededToolRoundLimit(session.loopGuard, guardCfg)) {
+        session.messages.push({
+          role: 'assistant',
+          content: res.content ?? '',
+          reasoningContent: res.reasoningContent,
+          toolCalls: res.toolCalls,
+        })
+        return {
+          ok: true,
+          status: 'done',
+          assistantText: t('agent.loopGuardMaxRounds', {
+            n: String(guardCfg.maxToolRounds),
+          }),
+          toolLog: [...session.toolLog],
+        }
+      }
+
       session.messages.push({
         role: 'assistant',
         content: res.content ?? '',
@@ -335,7 +403,7 @@ export const runAgentLoopUntilDoneOrPending = async (
 
       session.ctx.planMode = session.planMode
 
-      const cfg = await getConfig()
+      const mergedPermPolicy = await buildMergedPermissionsPolicy(cfg, session.projectRoot)
 
       const runOneTool = async (tc: AgentToolCall) => {
         const toolSummary =
@@ -343,6 +411,23 @@ export const runAgentLoopUntilDoneOrPending = async (
           strArg(tc.arguments, 'pattern') ||
           strArg(tc.arguments, 'command') ||
           tc.name
+        const emitToolDoneProgress = (
+          toolName: string,
+          summary: string,
+          ok: boolean,
+          content: string,
+        ) => {
+          emitAgentProgress({
+            sessionId,
+            turn: session.turn,
+            kind: 'tool',
+            status: 'done',
+            toolName,
+            summary,
+            ok,
+            detail: formatToolResultDetail(content),
+          })
+        }
         emitAgentProgress({
           sessionId,
           turn: session.turn,
@@ -361,7 +446,11 @@ export const runAgentLoopUntilDoneOrPending = async (
         const bashCommand = tc.name === 'Bash' ? strArg(tc.arguments as Record<string, unknown>, 'command') : ''
         const bashReadOnly = bashCommand ? isReadOnlyBashCommand(bashCommand) : false
 
-        const perm = resolveToolPermission(cfg, tc.name as AgentToolName)
+        const subject = extractToolSubject(tc.arguments as Record<string, unknown>)
+        const perm = resolveToolPermission(cfg, tc.name as AgentToolName, {
+          subject,
+          mergedPolicy: mergedPermPolicy,
+        })
         const effectivePerm = bashReadOnly && perm === 'ask' ? 'allow' : perm
         if (perm === 'deny') {
           const denied: ToolRunResult = {
@@ -369,15 +458,7 @@ export const runAgentLoopUntilDoneOrPending = async (
             content: 'Error: Tool blocked by agent permission settings (disallowedTools or mode).',
             log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
           }
-          emitAgentProgress({
-            sessionId,
-            turn: session.turn,
-            kind: 'tool',
-            status: 'done',
-            toolName: tc.name,
-            summary: toolSummary,
-            ok: false,
-          })
+          emitToolDoneProgress(tc.name, toolSummary, false, denied.content)
           traceToolResult({
             sessionId,
             turn: session.turn,
@@ -398,15 +479,7 @@ export const runAgentLoopUntilDoneOrPending = async (
               content: `<user-prompt-submit-hook>Hook blocked tool: ${pre.message}</user-prompt-submit-hook>`,
               log: { name: tc.name as AgentToolName, summary: 'hook blocked', ok: false },
             }
-            emitAgentProgress({
-              sessionId,
-              turn: session.turn,
-              kind: 'tool',
-              status: 'done',
-              toolName: tc.name,
-              summary: 'hook blocked',
-              ok: false,
-            })
+            emitToolDoneProgress(tc.name, 'hook blocked', false, blocked.content)
             traceToolResult({
               sessionId,
               turn: session.turn,
@@ -418,21 +491,41 @@ export const runAgentLoopUntilDoneOrPending = async (
           }
         }
 
+        const repeatBlock = checkRepeatBeforeExecute(
+          session.loopGuard,
+          guardCfg,
+          tc.name,
+          tc.arguments as Record<string, unknown>,
+        )
+        if (repeatBlock) {
+          emitAgentProgress({
+            sessionId,
+            kind: 'loop_guard',
+            text: `loop guard: blocked repeated ${tc.name}`,
+          })
+          const blocked: ToolRunResult = {
+            kind: 'immediate',
+            content: repeatBlock,
+            log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
+          }
+          emitToolDoneProgress(tc.name, toolSummary, false, repeatBlock)
+          traceToolResult({
+            sessionId,
+            turn: session.turn,
+            toolName: tc.name,
+            ok: false,
+            content: repeatBlock,
+          })
+          return { tc, run: blocked }
+        }
+
         if (session.abortRequested) {
           const aborted: ToolRunResult = {
             kind: 'immediate',
             content: 'Error: Agent run stopped by user.',
             log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
           }
-          emitAgentProgress({
-            sessionId,
-            turn: session.turn,
-            kind: 'tool',
-            status: 'done',
-            toolName: tc.name,
-            summary: toolSummary,
-            ok: false,
-          })
+          emitToolDoneProgress(tc.name, toolSummary, false, aborted.content)
           traceToolResult({
             sessionId,
             turn: session.turn,
@@ -487,15 +580,13 @@ export const runAgentLoopUntilDoneOrPending = async (
           }
         }
 
-        emitAgentProgress({
-          sessionId,
-          turn: session.turn,
-          kind: 'tool',
-          status: 'done',
-          toolName: run.log.name,
-          summary: run.log.summary,
-          ok: run.log.ok,
-        })
+        const toolResultContent =
+          run.kind === 'immediate'
+            ? run.content
+            : run.kind === 'pending' || run.kind === 'bash_pending'
+              ? 'Pending user approval for this change.'
+              : 'Pending user answers to structured questions.'
+        emitToolDoneProgress(run.log.name, run.log.summary, run.log.ok, toolResultContent)
 
         if (
           tc.name === 'Bash' &&
@@ -510,6 +601,15 @@ export const runAgentLoopUntilDoneOrPending = async (
             forgeCtx.kind === 'gitee' ? 'gitee' : 'github',
           )
           if (pr?.url) session.linkedPrUrl = pr.url
+        }
+
+        if (run.kind === 'immediate' && run.log.ok) {
+          recordRepeatSuccess(
+            session.loopGuard,
+            tc.name,
+            tc.arguments as Record<string, unknown>,
+            true,
+          )
         }
 
         traceToolResult({
@@ -528,7 +628,30 @@ export const runAgentLoopUntilDoneOrPending = async (
 
       if (session.abortRequested) return finishAbortedAgent(sessionId, session)
 
-      for (const { tc, run } of toolOutcomes) {
+      const guardOutcomes: GuardToolOutcome[] = toolOutcomes.map(({ tc, run }) => ({
+        toolName: tc.name,
+        args: tc.arguments as Record<string, unknown>,
+        content:
+          run.kind === 'immediate'
+            ? run.content
+            : run.kind === 'pending' || run.kind === 'bash_pending'
+              ? 'Pending user approval for this change.'
+              : 'Pending user answers to structured questions.',
+        ok: run.log.ok,
+      }))
+      const storm = applyStormBreaker(
+        session.loopGuard,
+        guardCfg,
+        res.toolCalls,
+        guardOutcomes,
+      )
+      if (storm.notice) {
+        emitAgentProgress({ sessionId, kind: 'loop_guard', text: storm.notice })
+      }
+
+      for (let i = 0; i < toolOutcomes.length; i++) {
+        const { tc, run } = toolOutcomes[i]!
+        const guardedContent = storm.contents[i]
         session.toolLog.push(run.log)
 
         if (run.kind === 'pending') {
@@ -563,7 +686,7 @@ export const runAgentLoopUntilDoneOrPending = async (
             role: 'tool',
             toolCallId: tc.id,
             name: tc.name,
-            content: run.content,
+            content: guardedContent ?? run.content,
           })
         }
       }
@@ -622,6 +745,7 @@ export const startAgentTurn = async (
   chatModeRaw?: ChatModeId | string,
   assigneeUserId?: string,
   roleWorkflowInvoke?: boolean,
+  reasoningEffortRaw?: string,
 ): Promise<AgentSendResult> => {
   const chatMode = normalizeChatMode(chatModeRaw)
   if (!projectRoot.trim()) return { ok: false, error: t('errors.noProject') }
@@ -723,9 +847,30 @@ export const startAgentTurn = async (
     proactiveTick: 0,
     scratchpadDir,
     compactedOnce: false,
+    loopGuard: createLoopGuardState(),
+    reasoningEffort: normalizeReasoningEffort(reasoningEffortRaw),
     ...(resolvedAssignee ? { assigneeUserId: resolvedAssignee } : {}),
   }
   applyChatModeToNewSession(session, chatMode)
+
+  const bypass = cfg.agentPermissionMode === 'bypassPermissions'
+  if (chatMode === 'auto-plan' && !session.planMode && !bypass && lastUser.trim()) {
+    const autoPlan = await resolveShouldAutoPlan(lastUser, {
+      chatModelId: modelId,
+      classifierModelId: cfg.agentAutoPlanClassifierModelId,
+      classifierEnabled: true,
+    })
+    if (autoPlan.shouldPlan) {
+      session.planMode = true
+      session.ctx.planMode = true
+      emitAgentProgress({
+        sessionId,
+        kind: 'loop_guard',
+        text: formatAutoPlanNotice(autoPlan),
+      })
+    }
+  }
+
   putSession(sessionId, session)
   return runAgentLoopUntilDoneOrPending(sessionId, session)
 }
@@ -1059,6 +1204,7 @@ export const runWorkshopRoleAgentTurn = async (
     proactiveTick: 0,
     scratchpadDir,
     compactedOnce: false,
+    loopGuard: createLoopGuardState(),
   }
   applyChatModeToNewSession(session, 'agent')
 

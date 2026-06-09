@@ -83,6 +83,24 @@ const readRecentProjects = async (): Promise<string[]> => {
   }
 }
 
+export const getRecentProjects = async (): Promise<string[]> => {
+  let list = await readRecentProjects()
+  if (list.length === 0) {
+    try {
+      const raw = await fs.readFile(lastProjectFile(), 'utf-8')
+      const rootPath = JSON.parse(raw).rootPath as string
+      if (rootPath) list = [rootPath]
+    } catch {
+      // 无历史Project
+    }
+  }
+  const valid: string[] = []
+  for (const p of list) {
+    if (await pathExists(p)) valid.push(p)
+  }
+  return valid
+}
+
 const pushRecentProject = async (rootPath: string) => {
   let list = await readRecentProjects()
   list = [rootPath, ...list.filter((p) => p !== rootPath)].slice(0, 10)

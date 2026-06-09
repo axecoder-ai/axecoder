@@ -14,6 +14,7 @@ import WorkbenchChatInput from './WorkbenchChatInput.vue'
 import { applyProgressPayload, type AgentProgressStep } from '../../utils/agent-progress'
 import { parseWorkshopStreamRole } from '../../utils/workshop-stream'
 import type { ChatFileRef } from '../../utils/chat-file-context'
+import { expandUserMessageForApi } from '../../utils/expand-user-message'
 import { findUserById, findUserForWorkshopRole, inferWorkshopRoleId } from '../../utils/workshop-user-bind'
 import { useChatAttachedImages } from '../../composables/useChatAttachedImages'
 import {
@@ -22,6 +23,8 @@ import {
   markWorkshopAgentStreamKey,
   markWorkshopLiveRole,
 } from '../../utils/workshop-live-turn'
+import { detectThinkingType } from '../../utils/thinking-parser'
+import { useStickToBottomScroll } from '../../composables/useStickToBottomScroll'
 
 const props = defineProps<{
   projectRoot: string
@@ -55,10 +58,12 @@ const activeModel = computed(() =>
 const loading = ref(false)
 const thinkingRole = ref<WorkshopProgressPayload['roleId'] | null>(null)
 const streamText = ref('')
+const thinkingText = ref('')
+const thinkingTypeLabel = ref('')
 const streamRoleId = ref<WorkshopRoleId | null>(null)
 const modelId = ref('')
 const enabledModels = ref<ModelEntry[]>([])
-const listEl = ref<HTMLElement | null>(null)
+const { scrollEl: listEl, onScrollContainer, scrollToBottom } = useStickToBottomScroll()
 const roleAvatarUrls = ref<Partial<Record<WorkshopRoleId, string>>>({})
 const roleIdentity = ref<Partial<Record<WorkshopRoleId, { nickname: string; roleTitle: string }>>>(
   {},
@@ -77,11 +82,15 @@ type PinnedLiveTurn = {
   roleId: WorkshopRoleId
   steps: AgentProgressStep[]
   streamText: string
+  thinkingText: string
+  thinkingType: string
 }
 const pinnedLiveTurns = ref<PinnedLiveTurn[]>([])
 
 const clearStreamUi = () => {
   streamText.value = ''
+  thinkingText.value = ''
+  thinkingTypeLabel.value = ''
   streamRoleId.value = null
   progressSteps.value = []
   pinnedLiveTurns.value = []
@@ -89,7 +98,12 @@ const clearStreamUi = () => {
 }
 
 const pinCurrentLiveTurn = () => {
-  if (!progressSteps.value.length && !streamText.value.trim()) return
+  if (
+    !progressSteps.value.length &&
+    !streamText.value.trim() &&
+    !thinkingText.value.trim()
+  )
+    return
   const role = streamRoleId.value ?? thinkingRole.value
   if (!role || role === 'system' || role === 'user') return
   pinnedLiveTurns.value.push({
@@ -97,6 +111,8 @@ const pinCurrentLiveTurn = () => {
     roleId: role,
     steps: [...progressSteps.value],
     streamText: streamText.value,
+    thinkingText: thinkingText.value,
+    thinkingType: thinkingTypeLabel.value,
   })
 }
 
@@ -114,6 +130,8 @@ const resetLiveProgressSteps = () => {
   pinCurrentLiveTurn()
   progressSteps.value = []
   streamText.value = ''
+  thinkingText.value = ''
+  thinkingTypeLabel.value = ''
 }
 
 const workshopAgentPrefix = () =>
@@ -130,11 +148,17 @@ const bindWorkshopAgentProgress = () => {
   pinnedLiveTurns.value = []
   progressSteps.value = []
   streamText.value = ''
+  thinkingText.value = ''
+  thinkingTypeLabel.value = ''
+  const currentWorkshopId = active.value?.id
   agentProgressActive.value = true
   offAgentProgress = window.axecoder.onAgentProgress((payload) => {
     if (!agentProgressActive.value) return
+    // 严格过滤：只处理属于当前 workshop session 的进度消息
     const prefix = workshopAgentPrefix()
     if (!prefix || !payload.sessionId.startsWith(prefix)) return
+    // 二次检查：确保当前 active.value.id 没有变化
+    if (!active.value || active.value.id !== currentWorkshopId) return
     const roleKey = active.value
       ? parseWorkshopStreamRole(payload.sessionId, active.value.id)
       : null
@@ -153,10 +177,15 @@ const bindWorkshopAgentProgress = () => {
     }
     if (payload.kind === 'delta') {
       streamText.value += payload.delta
+    } else if (payload.kind === 'thinking_delta') {
+      thinkingText.value += payload.delta
+      thinkingTypeLabel.value = detectThinkingType(thinkingText.value)
+    } else if (payload.kind === 'content_delta') {
+      streamText.value += payload.delta
     } else {
       progressSteps.value = applyProgressPayload(progressSteps.value, payload)
     }
-    void scrollBottom()
+    void scrollToBottom()
   })
 }
 
@@ -185,10 +214,13 @@ const stepItemClass = (step: WorkshopStep, index: number) => {
   return 'ws-step--pending'
 }
 
-const expandWithFiles = async (text: string, filePaths: string[]) => {
-  if (!filePaths.length) return text
-  return window.axecoder.expandChatUserWithFiles(props.projectRoot, text, filePaths)
-}
+const expandWithFiles = async (text: string, filePaths: string[]) =>
+  expandUserMessageForApi(
+    props.projectRoot,
+    text,
+    filePaths.length ? filePaths : undefined,
+    usersList.value,
+  )
 
 const newLocalWorkshopId = () =>
   `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -344,12 +376,6 @@ const persist = async () => {
   notifySessionsChanged()
 }
 
-const scrollBottom = async () => {
-  await nextTick()
-  const el = listEl.value
-  if (el) el.scrollTop = el.scrollHeight
-}
-
 const syncWorkshopSession = async () => {
   const id = active.value?.id
   if (!id || !props.projectRoot?.trim()) return
@@ -358,14 +384,14 @@ const syncWorkshopSession = async () => {
   active.value = res.session
   activePersisted = true
   prunePinnedLiveTurns(res.session)
-  await scrollBottom()
+  await scrollToBottom()
 }
 
 const selectSession = async (id: string) => {
   const res = await window.axecoder.getWorkshopSession(props.projectRoot, id)
   active.value = res.session
   activePersisted = !!res.session
-  await scrollBottom()
+  await scrollToBottom(true)
 }
 
 const newSession = () => {
@@ -397,7 +423,7 @@ const startRun = async () => {
   attachedFiles.value = []
   clearAttachedImages()
   const workshopId = pushOptimisticUser(text || '(image)')
-  await scrollBottom()
+  await scrollToBottom(true)
   loading.value = true
   thinkingRole.value = 'manager'
   clearStreamUi()
@@ -419,7 +445,7 @@ const startRun = async () => {
     }
     active.value = res.session
     activePersisted = true
-    await scrollBottom()
+    await scrollToBottom(true)
     notifySessionsChanged()
   } finally {
     loading.value = false
@@ -443,7 +469,7 @@ const sendAnswer = async () => {
   attachedFiles.value = []
   clearAttachedImages()
   pushOptimisticUser(text || '(image)')
-  await scrollBottom()
+  await scrollToBottom(true)
   loading.value = true
   thinkingRole.value = 'manager'
   clearStreamUi()
@@ -464,7 +490,7 @@ const sendAnswer = async () => {
       return
     }
     active.value = res.session
-    await scrollBottom()
+    await scrollToBottom(true)
     await persist()
   } finally {
     loading.value = false
@@ -514,7 +540,7 @@ onMounted(async () => {
       } else {
         thinkingRole.value = null
       }
-      void scrollBottom()
+      void scrollToBottom()
     } else if (p.status === 'done') {
       thinkingRole.value = null
       if (!agentProgressActive.value) clearStreamUi()
@@ -564,7 +590,7 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
         </button>
       </div>
       <div v-if="!hasProject" class="workshop-empty">Open a project first</div>
-      <div v-else ref="listEl" class="message-list">
+      <div v-else ref="listEl" class="message-list" @scroll="onScrollContainer">
         <WorkshopMessageItem
           v-for="msg in messages"
           :key="msg.id"
@@ -582,7 +608,12 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
           :role-id="pin.roleId"
           text=""
           streaming
-          :live-progress="{ steps: pin.steps, streamText: pin.streamText }"
+          :live-progress="{
+            steps: pin.steps,
+            streamText: pin.streamText,
+            thinkingText: pin.thinkingText,
+            thinkingType: pin.thinkingType,
+          }"
           v-bind="roleProps(pin.roleId)"
         />
         <WorkshopMessageItem
@@ -596,7 +627,12 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
           :role-id="streamRoleId"
           text=""
           streaming
-          :live-progress="{ steps: progressSteps, streamText: '' }"
+          :live-progress="{
+            steps: progressSteps,
+            streamText: streamText,
+            thinkingText: thinkingText,
+            thinkingType: thinkingTypeLabel,
+          }"
           v-bind="roleProps(streamRoleId)"
         />
         <WorkshopMessageItem

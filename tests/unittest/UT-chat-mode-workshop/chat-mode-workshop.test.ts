@@ -16,6 +16,7 @@ const emptySession = (): StoredAgentSession =>
 describe('chat-mode multi-agent (in-session)', () => {
   it('system addon encourages Task tool delegation', () => {
     expect(chatModeSystemAddon('multi-agent')).toContain('Task tool')
+    expect(chatModeSystemAddon('auto-plan')).toContain('Auto Plan')
   })
 
   it('reveals Task tool for multi-agent', () => {

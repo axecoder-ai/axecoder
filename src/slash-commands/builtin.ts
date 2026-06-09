@@ -1,5 +1,9 @@
 import type { SlashCommandDef } from './types'
 import { registerWorkflowBuiltinCommands } from './workflow-builtin'
+import {
+  REASONING_EFFORT_LEVELS,
+  normalizeReasoningEffort,
+} from '../../shared/reasoning-effort'
 
 export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
   {
@@ -51,6 +55,14 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
     },
   },
   {
+    name: 'permissions',
+    description: 'Open Agent permissions settings (global + project JSON)',
+    run: async (ctx) => {
+      ctx.openPermissionsSettings()
+      return { ok: true, message: 'Opened Permissions settings.' }
+    },
+  },
+  {
     name: 'hooks',
     description: 'Show Agent hooks configuration help',
     run: async () => {
@@ -62,10 +74,51 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
   {
     name: 'mcp',
     description: 'List MCP servers (from mcp.json)',
-    run: async () => {
-      const res = await window.axecoder.agentListMcp()
+    run: async (ctx) => {
+      const res = await window.axecoder.agentListMcp(ctx.projectRoot)
       if (!res.ok) return { ok: false, message: res.error ?? 'Could not read MCP' }
       return { ok: true, message: res.text }
+    },
+  },
+  {
+    name: 'auto-plan',
+    description: 'Switch chat mode to Auto Plan (or agent to leave)',
+    run: async (ctx, args) => {
+      const mode = args.trim().toLowerCase()
+      if (mode === 'off' || mode === 'agent') {
+        ctx.setChatMode?.('agent')
+        return { ok: true, message: 'Switched chat mode to Agent.' }
+      }
+      ctx.setChatMode?.('auto-plan')
+      return {
+        ok: true,
+        message:
+          'Switched chat mode to Auto Plan. Complex tasks may auto-enter read-only plan mode first.',
+      }
+    },
+  },
+  {
+    name: 'effort',
+    description: 'Set reasoning effort (auto | low | medium | high | max)',
+    run: async (ctx, args) => {
+      const raw = args.trim().toLowerCase()
+      if (!raw) {
+        const cur = ctx.getChatEffort?.() ?? 'auto'
+        return {
+          ok: true,
+          message: `Current effort: ${cur}. Levels: ${REASONING_EFFORT_LEVELS.join(', ')}`,
+        }
+      }
+      const level = normalizeReasoningEffort(raw)
+      if (!REASONING_EFFORT_LEVELS.includes(level) || (raw !== 'auto' && level === 'auto')) {
+        return {
+          ok: false,
+          message: `Unknown effort: ${args.trim()}. Use: ${REASONING_EFFORT_LEVELS.join(', ')}`,
+        }
+      }
+      ctx.setChatEffort?.(level)
+      const label = level === 'auto' ? 'auto (model default)' : level
+      return { ok: true, message: `Reasoning effort set to ${label}.` }
     },
   },
   {
@@ -200,26 +253,76 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
   },
   {
     name: 'memory',
-    description: 'View or write ~/.axecoder/memory.md',
-    run: async (_ctx, args) => {
-      const text = args.trim()
-      if (!text) {
-        const res = await window.axecoder.agentReadMemory()
-        if (!res.ok) return { ok: false, message: res.error ?? 'Read failed' }
-        const body = res.text.trim() || '(empty)'
-        return { ok: true, message: `Memory (${res.path}):\n\n${body}` }
-      }
-      if (text.startsWith('set ')) {
-        const content = text.slice(4)
-        const w = await window.axecoder.agentWriteMemory(content)
-        if (!w.ok) return { ok: false, message: w.error ?? 'Write failed' }
-        return { ok: true, message: `Wrote ${w.path}` }
+    description: 'View project memory (AGENTS.md + .axecoder/memory)',
+    run: async (ctx) => {
+      const res = await window.axecoder.agentProjectMemory(ctx.projectRoot)
+      if (!res.ok) return { ok: false, message: res.error ?? 'Read failed' }
+      return { ok: true, message: res.text }
+    },
+  },
+  {
+    name: 'remember',
+    description: 'Quick-save a note to project auto-memory',
+    run: async (ctx, args) => {
+      const note = args.trim()
+      if (!note) {
+        return { ok: true, message: 'Usage: /remember <note text>' }
       }
       return {
         ok: true,
-        message:
-          'Usage: /memory to view; /memory set <text> to overwrite ~/.axecoder/memory.md',
+        message: 'Saving memory…',
+        sendPrompt: `Use the Remember tool to save this durable fact to project memory:\n\n${note}`,
       }
+    },
+  },
+  {
+    name: 'tree',
+    description: 'Show conversation branches for this project',
+    run: async (ctx) => {
+      const sid = ctx.getSession?.()?.id
+      const res = await window.axecoder.chatBranchTree(ctx.projectRoot, sid)
+      if (!res.ok) return { ok: false, message: res.error ?? 'Failed' }
+      return { ok: true, message: res.text }
+    },
+  },
+  {
+    name: 'branch',
+    description: 'Fork chat: /branch [turn] [name]',
+    run: async (ctx, args) => {
+      const s = ctx.getSession()
+      if (!s) return { ok: false, message: 'No active chat session' }
+      const res = await window.axecoder.chatForkBranch(ctx.projectRoot, s.id, args)
+      if (!res.ok) return { ok: false, message: res.error ?? 'Branch failed' }
+      if (ctx.selectSession) {
+        await ctx.selectSession(res.session.id)
+      } else {
+        ctx.setSession(res.session)
+        await ctx.persist()
+      }
+      const tree = await window.axecoder.chatBranchTree(ctx.projectRoot, res.session.id)
+      const treeText = tree.ok ? `\n\n${tree.text}` : ''
+      return {
+        ok: true,
+        message: `Branched to ${res.session.id} (${res.session.title}).${treeText}`,
+      }
+    },
+  },
+  {
+    name: 'switch',
+    description: 'Switch to another conversation branch by id or name',
+    run: async (ctx, args) => {
+      const ref = args.trim()
+      if (!ref) return { ok: false, message: 'Usage: /switch <branch id|name>' }
+      const sid = ctx.getSession?.()?.id
+      const res = await window.axecoder.chatSwitchBranch(ctx.projectRoot, ref, sid)
+      if (!res.ok) return { ok: false, message: res.error ?? 'Switch failed' }
+      if (ctx.selectSession) {
+        await ctx.selectSession(res.session.id)
+      } else {
+        ctx.setSession(res.session)
+        await ctx.persist()
+      }
+      return { ok: true, message: `Switched to ${res.session.id} (${res.session.title}).\n\n${res.tree}` }
     },
   },
   {

@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { putSession, getSession } from '../../../electron/main/agent/agent-session-store'
 import { stopAgentTurn } from '../../../electron/main/agent/agent-loop'
 import type { StoredAgentSession } from '../../../electron/main/agent/agent-session-store'
+import { createLoopGuardState } from '../../../electron/main/agent/agent-loop-guard'
 
 const makeSession = (): StoredAgentSession => ({
   projectRoot: '/tmp/p',
@@ -20,6 +21,7 @@ const makeSession = (): StoredAgentSession => ({
   proactiveTick: 0,
   scratchpadDir: '/tmp/scratch',
   compactedOnce: false,
+  loopGuard: createLoopGuardState(),
 })
 
 describe('stopAgentTurn', () => {

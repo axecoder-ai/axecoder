@@ -92,6 +92,18 @@ export type AiMetricsBlock = {
   models: AiMetricsModelSummary[]
 }
 
+export type AiMetricsActivityKind = 'model_call' | 'tool_call' | 'tool_result' | 'first_token'
+
+export type AiMetricsActivityLine = {
+  id: string
+  ts: number
+  kind: AiMetricsActivityKind
+  ok?: boolean
+  text: string
+  modelId?: string
+  source?: AiMetricsSource
+}
+
 export type AiMetricsSnapshot = {
   updatedAt: number
   concurrent: number
@@ -103,16 +115,25 @@ export type AiMetricsSnapshot = {
   realtime: AiMetricsBlock
   cumulative: AiMetricsBlock
   series: AiMetricsSeriesPoint[]
+  activityLog: AiMetricsActivityLine[]
 }
 
+import { broadcastToRenderers } from './renderer-broadcast'
+
 const MAX_RECORDS = 400
+const MAX_ACTIVITY = 50
 const SERIES_BUCKETS = 24
 const BUCKET_MS = 2500
 const HOUR_MS = 3600_000
 
 let seq = 0
-const active = new Map<string, { startedAt: number; firstTokenAt: number | null }>()
+let activitySeq = 0
+const active = new Map<
+  string,
+  { startedAt: number; firstTokenAt: number | null; modelName: string; modelId: string; source: AiMetricsSource }
+>()
 const records: AiMetricsCallRecord[] = []
+const activityLines: AiMetricsActivityLine[] = []
 
 const percentile = (values: number[], p: number): number => {
   if (!values.length) return 0
@@ -157,6 +178,15 @@ const applyFilter = (list: AiMetricsCallRecord[], filter?: AiMetricsFilter | str
   return out
 }
 
+export const pushAiMetricsActivity = (line: Omit<AiMetricsActivityLine, 'id' | 'ts'>) => {
+  const row: AiMetricsActivityLine = { id: `act-${Date.now()}-${++activitySeq}`, ts: Date.now(), ...line }
+  activityLines.push(row)
+  if (activityLines.length > MAX_ACTIVITY) activityLines.splice(0, activityLines.length - MAX_ACTIVITY)
+  broadcastToRenderers('aiMetrics:activity', getAiMetricsActivityLog())
+}
+
+export const getAiMetricsActivityLog = (): AiMetricsActivityLine[] => [...activityLines]
+
 export const beginAiMetricsCall = (input: {
   modelId: string
   modelName: string
@@ -164,7 +194,13 @@ export const beginAiMetricsCall = (input: {
   source: AiMetricsSource
 }): string => {
   const id = genId()
-  active.set(id, { startedAt: Date.now(), firstTokenAt: null })
+  active.set(id, {
+    startedAt: Date.now(),
+    firstTokenAt: null,
+    modelName: input.modelName,
+    modelId: input.modelId,
+    source: input.source,
+  })
   return id
 }
 
@@ -172,6 +208,12 @@ export const markAiMetricsFirstToken = (callId: string) => {
   const row = active.get(callId)
   if (!row || row.firstTokenAt !== null) return
   row.firstTokenAt = Date.now()
+  pushAiMetricsActivity({
+    kind: 'first_token',
+    text: `${row.modelName} · TTFT ${row.firstTokenAt - row.startedAt}ms`,
+    modelId: row.modelId,
+    source: row.source,
+  })
 }
 
 export const endAiMetricsCall = (
@@ -223,6 +265,7 @@ export const endAiMetricsCall = (
 export const resetAiMetricsStore = () => {
   active.clear()
   records.length = 0
+  activityLines.length = 0
 }
 
 const buildKpis = (
@@ -428,6 +471,10 @@ export const getAiMetricsSnapshot = (filter?: AiMetricsFilter | string): AiMetri
   const modelsCumulative = buildModelSummaries(cumulativeList)
   const meta = collectMetaLists(records)
 
+  const realtimeKpis = buildKpis(realtimeList, 'realtime', windowSec)
+  // 无进行中的调用时，实时 TPS 归零（时速表语义）
+  if (active.size === 0) realtimeKpis.tps = 0
+
   return {
     updatedAt: now,
     concurrent: active.size,
@@ -437,7 +484,7 @@ export const getAiMetricsSnapshot = (filter?: AiMetricsFilter | string): AiMetri
     sourceBreakdown: buildSourceBreakdown(cumulativeList),
     inputTokenHistogram: buildInputTokenHistogram(cumulativeList),
     realtime: {
-      kpis: buildKpis(realtimeList, 'realtime', windowSec),
+      kpis: realtimeKpis,
       models: modelsRealtime,
     },
     cumulative: {
@@ -445,5 +492,6 @@ export const getAiMetricsSnapshot = (filter?: AiMetricsFilter | string): AiMetri
       models: modelsCumulative,
     },
     series: buildSeries(realtimeList, now),
+    activityLog: getAiMetricsActivityLog(),
   }
 }

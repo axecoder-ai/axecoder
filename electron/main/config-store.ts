@@ -1,5 +1,8 @@
 import fs from 'node:fs/promises'
+import { normalizeAutoPlan } from './agent/agent-auto-plan'
 import type { AppConfig } from './models-types'
+
+const normalizeAutoPlanConfig = (v: unknown) => normalizeAutoPlan(v)
 import { ensureAxecoderDir, axecoderPath } from './axecoder-dir'
 import { invalidateMainLocaleCache } from './i18n'
 import { normalizeLocale } from '../../shared/i18n'
@@ -15,12 +18,17 @@ const defaults: AppConfig = {
   agentOsSandboxEnabled: true,
   agentOutputStyle: 'default',
   agentPermissionMode: 'default',
+  agentPermissionAllowRules: [],
+  agentPermissionAskRules: [],
+  agentPermissionDenyRules: [],
   agentAllowedTools: [],
   agentDisallowedTools: [],
   agentContextCompactThreshold: 120_000,
   agentFrcKeepToolMessages: 8,
   agentTokenBudget: 0,
   agentProactiveEnabled: false,
+  agentAutoPlan: 'off',
+  agentAutoPlanClassifierModelId: '',
   agentHooksEnabled: true,
   agentModelTierRoutingEnabled: true,
   agentCompletionSoundEnabled: false,
@@ -34,6 +42,11 @@ const defaults: AppConfig = {
   gitForgeWebBase: '',
   gitForgeAccessToken: '',
   aiRequestMaxRetries: 2,
+  aiRateLimitRetryDelaySec: 60,
+  agentLoopGuardEnabled: true,
+  agentLoopGuardStormThreshold: 3,
+  agentLoopGuardRepeatSuccessThreshold: 2,
+  agentMaxToolRounds: 0,
 }
 
 const configPath = () => axecoderPath('config.json')
@@ -69,6 +82,10 @@ export const getConfig = async (): Promise<AppConfig> => {
     agentFeatureBrief: raw.agentFeatureBrief ?? false,
     agentFeatureWorkflow: raw.agentFeatureWorkflow ?? false,
     agentPermissionMode: raw.agentPermissionMode ?? defaults.agentPermissionMode,
+    agentPermissionAllowRules:
+      raw.agentPermissionAllowRules ?? defaults.agentPermissionAllowRules,
+    agentPermissionAskRules: raw.agentPermissionAskRules ?? defaults.agentPermissionAskRules,
+    agentPermissionDenyRules: raw.agentPermissionDenyRules ?? defaults.agentPermissionDenyRules,
     agentAllowedTools: raw.agentAllowedTools ?? defaults.agentAllowedTools,
     agentDisallowedTools: raw.agentDisallowedTools ?? defaults.agentDisallowedTools,
     agentContextCompactThreshold:
@@ -76,6 +93,9 @@ export const getConfig = async (): Promise<AppConfig> => {
     agentFrcKeepToolMessages: raw.agentFrcKeepToolMessages ?? defaults.agentFrcKeepToolMessages,
     agentTokenBudget: raw.agentTokenBudget ?? defaults.agentTokenBudget,
     agentProactiveEnabled: raw.agentProactiveEnabled ?? defaults.agentProactiveEnabled,
+    agentAutoPlan: normalizeAutoPlanConfig(raw.agentAutoPlan ?? defaults.agentAutoPlan),
+    agentAutoPlanClassifierModelId:
+      raw.agentAutoPlanClassifierModelId ?? defaults.agentAutoPlanClassifierModelId,
     agentHooksEnabled: raw.agentHooksEnabled ?? defaults.agentHooksEnabled,
     agentModelTierRoutingEnabled:
       raw.agentModelTierRoutingEnabled ?? defaults.agentModelTierRoutingEnabled,
@@ -94,6 +114,14 @@ export const getConfig = async (): Promise<AppConfig> => {
     gitForgeWebBase: raw.gitForgeWebBase ?? defaults.gitForgeWebBase,
     gitForgeAccessToken: raw.gitForgeAccessToken ?? defaults.gitForgeAccessToken,
     aiRequestMaxRetries: raw.aiRequestMaxRetries ?? defaults.aiRequestMaxRetries,
+    aiRateLimitRetryDelaySec:
+      raw.aiRateLimitRetryDelaySec ?? defaults.aiRateLimitRetryDelaySec,
+    agentLoopGuardEnabled: raw.agentLoopGuardEnabled ?? defaults.agentLoopGuardEnabled,
+    agentLoopGuardStormThreshold:
+      raw.agentLoopGuardStormThreshold ?? defaults.agentLoopGuardStormThreshold,
+    agentLoopGuardRepeatSuccessThreshold:
+      raw.agentLoopGuardRepeatSuccessThreshold ?? defaults.agentLoopGuardRepeatSuccessThreshold,
+    agentMaxToolRounds: raw.agentMaxToolRounds ?? defaults.agentMaxToolRounds,
   }
 }
 
@@ -122,6 +150,10 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
     agentFeatureBrief: partial.agentFeatureBrief ?? cur.agentFeatureBrief,
     agentFeatureWorkflow: partial.agentFeatureWorkflow ?? cur.agentFeatureWorkflow,
     agentPermissionMode: partial.agentPermissionMode ?? cur.agentPermissionMode,
+    agentPermissionAllowRules:
+      partial.agentPermissionAllowRules ?? cur.agentPermissionAllowRules,
+    agentPermissionAskRules: partial.agentPermissionAskRules ?? cur.agentPermissionAskRules,
+    agentPermissionDenyRules: partial.agentPermissionDenyRules ?? cur.agentPermissionDenyRules,
     agentAllowedTools: partial.agentAllowedTools ?? cur.agentAllowedTools,
     agentDisallowedTools: partial.agentDisallowedTools ?? cur.agentDisallowedTools,
     agentContextCompactThreshold:
@@ -129,6 +161,14 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
     agentFrcKeepToolMessages: partial.agentFrcKeepToolMessages ?? cur.agentFrcKeepToolMessages,
     agentTokenBudget: partial.agentTokenBudget ?? cur.agentTokenBudget,
     agentProactiveEnabled: partial.agentProactiveEnabled ?? cur.agentProactiveEnabled,
+    agentAutoPlan:
+      partial.agentAutoPlan !== undefined
+        ? normalizeAutoPlanConfig(partial.agentAutoPlan)
+        : cur.agentAutoPlan,
+    agentAutoPlanClassifierModelId:
+      partial.agentAutoPlanClassifierModelId !== undefined
+        ? partial.agentAutoPlanClassifierModelId
+        : cur.agentAutoPlanClassifierModelId,
     agentHooksEnabled: partial.agentHooksEnabled ?? cur.agentHooksEnabled,
     agentModelTierRoutingEnabled:
       partial.agentModelTierRoutingEnabled ?? cur.agentModelTierRoutingEnabled,
@@ -170,6 +210,26 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
       partial.aiRequestMaxRetries !== undefined
         ? partial.aiRequestMaxRetries
         : cur.aiRequestMaxRetries,
+    aiRateLimitRetryDelaySec:
+      partial.aiRateLimitRetryDelaySec !== undefined
+        ? partial.aiRateLimitRetryDelaySec
+        : cur.aiRateLimitRetryDelaySec,
+    agentLoopGuardEnabled:
+      partial.agentLoopGuardEnabled !== undefined
+        ? partial.agentLoopGuardEnabled
+        : cur.agentLoopGuardEnabled,
+    agentLoopGuardStormThreshold:
+      partial.agentLoopGuardStormThreshold !== undefined
+        ? partial.agentLoopGuardStormThreshold
+        : cur.agentLoopGuardStormThreshold,
+    agentLoopGuardRepeatSuccessThreshold:
+      partial.agentLoopGuardRepeatSuccessThreshold !== undefined
+        ? partial.agentLoopGuardRepeatSuccessThreshold
+        : cur.agentLoopGuardRepeatSuccessThreshold,
+    agentMaxToolRounds:
+      partial.agentMaxToolRounds !== undefined
+        ? partial.agentMaxToolRounds
+        : cur.agentMaxToolRounds,
   }
   await fs.writeFile(configPath(), JSON.stringify(next, null, 2), 'utf-8')
   invalidateMainLocaleCache()

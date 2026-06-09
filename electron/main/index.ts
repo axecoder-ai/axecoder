@@ -1,9 +1,9 @@
 import { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, screen, type MenuItemConstructorOptions } from 'electron'
-import { registerFsIpc } from './fs-ipc'
+import { registerFsIpc, getRecentProjects } from './fs-ipc'
 import { registerCodeGraphIpc } from './codegraph-ipc'
 import { registerMarkdownExportIpc } from './markdown-export-ipc'
 import { registerGitIpc } from './git-ipc'
-import { registerTerminalIpc } from './terminal-ipc'
+import { registerTerminalIpc, killTerminalPty } from './terminal-ipc'
 import { registerChatIpc } from './chat-store'
 import { registerSessionIpc } from './session/session-ipc'
 import { registerWorkshopIpc } from './workshop-ipc'
@@ -12,6 +12,7 @@ import { registerAgentIpc } from './agent-ipc'
 import { registerModelsIpc } from './models-ipc'
 import { registerUsersIpc } from './users-ipc'
 import { registerRulesIpc } from './rules/rules-ipc'
+import { registerPermissionsIpc } from './permissions-ipc'
 import { registerSkillsIpc } from './skills/skills-ipc'
 import { runMigrate } from './migrate-axecoder'
 import { refreshMainLocale } from './i18n'
@@ -156,17 +157,17 @@ const createMetricsWindow = async () => {
   const config = await getConfig()
   const backgroundColor = themeBackgroundColor(config.theme)
   const area = companionWorkArea()
-  const width = Math.min(920, Math.max(640, Math.floor(area.width * 0.55)))
-  const height = Math.max(520, Math.floor(area.height * 0.72))
-  const x = area.x + Math.max(0, Math.floor((area.width - width) / 2))
+  const width = Math.min(800, Math.max(640, Math.floor(area.width * 0.48)))
+  const height = Math.min(700, Math.max(520, Math.floor(area.height * 0.58)))
+  const x = area.x + Math.max(0, area.width - width - 24)
   const y = area.y + Math.max(0, Math.floor((area.height - height) / 2))
 
   metricsWin = new BrowserWindow({
     title: 'AxeCoder — AI Performance',
     width,
     height,
-    minWidth: 520,
-    minHeight: 400,
+    minWidth: 560,
+    minHeight: 480,
     x,
     y,
     backgroundColor,
@@ -243,10 +244,24 @@ const sendMenu = (channel: string) => {
   win?.webContents.send(channel)
 }
 
-const setupAppMenu = (getWin: () => BrowserWindow | null) => {
+const setupAppMenu = async (getWin: () => BrowserWindow | null) => {
   const sendOpenProject = () => {
     getWin()?.webContents.send('project:open')
   }
+  
+  const sendOpenProjectAt = (projectPath: string) => {
+    getWin()?.webContents.send('project:openAt', projectPath)
+  }
+  
+  const recentProjects = await getRecentProjects()
+  const recentProjectsSubmenu: MenuItemConstructorOptions[] = recentProjects.length > 0
+    ? recentProjects.map((projectPath) => ({
+        label: path.basename(projectPath),
+        toolTip: projectPath,
+        click: () => sendOpenProjectAt(projectPath),
+      }))
+    : [{ label: 'No Recent Projects', enabled: false }]
+  
   const template: MenuItemConstructorOptions[] = [
     ...(process.platform === 'darwin'
       ? [{
@@ -271,6 +286,10 @@ const setupAppMenu = (getWin: () => BrowserWindow | null) => {
           label: 'Open Project...',
           accelerator: 'CmdOrCtrl+O',
           click: sendOpenProject,
+        },
+        {
+          label: 'Open Recent',
+          submenu: recentProjectsSubmenu,
         },
         {
           label: 'New Window',
@@ -473,6 +492,7 @@ app.whenReady().then(async () => {
   registerModelsIpc()
   registerUsersIpc(() => win)
   registerRulesIpc()
+  registerPermissionsIpc()
   registerSkillsIpc()
   registerAiIpc()
   registerAgentIpc(() => win)
@@ -528,7 +548,7 @@ app.whenReady().then(async () => {
     closeTraceWindow()
     return true
   })
-  setupAppMenu(() => win)
+  await setupAppMenu(() => win)
   createWindow()
 })
 
@@ -544,6 +564,7 @@ ipcMain.on('app:confirmQuit', async () => {
   closeCompanionWindow()
   closeMetricsWindow()
   closeTraceWindow()
+  killTerminalPty()
   await releaseHeldProjectLock()
   const { shutdownLspServerManager } = await import('./lsp/lsp-manager')
   await shutdownLspServerManager()

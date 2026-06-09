@@ -184,6 +184,8 @@ defineExpose({ load })
   flex-direction: column;
   flex-shrink: 0;
   min-height: 0;
+  position: relative;
+  z-index: 2;
 }
 
 .panel-top {

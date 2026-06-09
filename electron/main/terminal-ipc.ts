@@ -18,11 +18,20 @@ const resolveCwd = (cwd: string) => {
   return process.env.HOME || process.cwd()
 }
 
+export const killTerminalPty = () => {
+  ptyProc?.kill()
+  ptyProc = null
+}
+
 export const registerTerminalIpc = (getWin: () => BrowserWindow | null) => {
   ipcMain.handle('terminal:start', async (_, cwd: string, cols = 80, rows = 24) => {
     if (ptyProc) {
-      ptyProc.kill()
-      ptyProc = null
+      try {
+        ptyProc.resize(Math.max(cols, 2), Math.max(rows, 2))
+      } catch {
+        // ignore resize errors while reusing session
+      }
+      return { ok: true as const, reused: true as const }
     }
     const shell =
       process.platform === 'win32' ? process.env.COMSPEC || 'cmd.exe' : process.env.SHELL || '/bin/zsh'
@@ -72,8 +81,7 @@ export const registerTerminalIpc = (getWin: () => BrowserWindow | null) => {
   })
 
   ipcMain.handle('terminal:stop', async () => {
-    ptyProc?.kill()
-    ptyProc = null
+    killTerminalPty()
     return { ok: true as const }
   })
 }

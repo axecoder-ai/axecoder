@@ -2,100 +2,105 @@
 
 > Desktop IDE for coding — Electron + Vue 3 + Monaco, with a built-in AI Agent coding assistant
 
-AxeCoder is a cross-platform desktop code editor with a Claude Code–style AI Agent. Chat with the AI to read code, write code, run commands, search files, and more. The Agent has a full toolset (read/write files, run terminal commands, web search, task management, etc.) and supports MCP protocol extensions.
+AxeCoder is a cross-platform desktop code editor built around a **Claude Code–style AI Agent**. Open a project, chat with the model, and let the Agent read/write files, run commands, search the codebase, and coordinate sub-agents — all from a VS Code–like workbench. Built-in **AI Performance** and **AI Request Trace** panels give you real-time visibility into latency, token usage, and every model/tool call.
+
+## 📸 Screenshots
+
+**Workbench & Agent session** — editor, file tree, unified session list, streaming tool cards, and bottom Trace tab in one layout. Supports Agent and Workshop (multi-role) sessions side by side.
+
+![AxeCoder workbench with AI Agent session](./docs/assets/workbench-agent-session.png)
+
+**AI Request Trace** — record and replay the full Agent timeline: prompts, model replies, tool calls, and results. Dock in the bottom panel or pop out to a dedicated window; export logs as JSONL.
+
+![AI Request Trace panel](./docs/assets/ai-request-trace.png)
+
+**AI Performance** — live dashboards for TTFT, E2E latency, TPS, QPS, error rate, and token throughput. Filter by model/provider/source; jump from a model row to its Trace entries.
+
+![AI Performance dashboard](./docs/assets/ai-performance-dashboard.png)
 
 ## ✨ Key Features
 
-- **AI Agent coding assistant** — Multi-turn conversations; the Agent automatically uses tools to complete tasks, including read/write files, run Shell commands, search code, manage Todos, and more
-- **Claude Code compatible** — Agent tools aligned with Claude Code: Read / Edit / Write / Bash / Grep / Glob / Agent, plus WebSearch / WebFetch / Task and other extensions
-- **Multi-model support** — OpenAI, Anthropic, Ollama, and other providers; freely configure API endpoints and keys
-- **Parallel sub-agents** — Launch sub-agents to explore or execute tasks in parallel (generalPurpose / explore / plan modes)
-- **Plan Mode** — Plan first, execute later; the Agent analyzes the codebase in read-only mode and proposes a plan before implementation
-- **MCP protocol** — Model Context Protocol support for external tools and data sources
-- **Skills & Hooks** — Custom Skills and hooks (PreToolUse / PostToolUse / UserPromptSubmit)
-- **Slash Commands** — Built-in slash commands for quick actions
-- **Agent Checkpoints** — Roll back Agent actions for safe recovery
-- **Full-featured editor** — Monaco Editor with syntax highlighting, Markdown editing and preview
-- **File explorer** — Sidebar file tree with create/rename/delete
-- **Integrated terminal** — Built-in terminal for running commands in the project directory
-- **Global search** — ripgrep-based full-text search across the project
-- **Command palette** — `Cmd+Shift+P` to access all features
-- **Git integration** — View Git status and diffs
-- **Session management** — Persistent chat sessions; switch and restore conversation context anytime
-- **Cross-platform** — macOS and Windows
+### AI Agent
+
+- **42 built-in tools** — Claude Code–aligned core set (Read / Edit / Write / Bash / Grep / Glob / Agent / Task …) plus extensions: WebSearch, WebFetch, LSP, MCP, Skills, Plan Mode, worktree helpers, and more
+- **Multi-turn agent loop** — automatic tool use with permission prompts, checkpoints/rollback, context compaction, and loop-guard against runaway calls
+- **Parallel sub-agents** — spawn `generalPurpose` / `explore` / `plan` sub-agents to research or execute in parallel
+- **Workshop (multi-agent)** — role-based collaborative sessions with step progress and streaming output inside the chat panel
+- **Plan Mode** — read-only analysis first, then implement after you approve the plan
+- **Output styles** — Default, Explanatory, or Learning reply modes
+
+### Code Intelligence
+
+- **Native CodeGraph** — tree-sitter + SQLite code knowledge graph embedded in the main process; Agent tools `CodeGraphExplore` / `CodeGraphSearch` / `CodeGraphNode` for structural navigation without endless Grep+Read
+- **LSP tool** — query language servers for definitions, references, diagnostics, and more
+- **Monaco Editor** — syntax highlighting, Markdown edit/preview, diff view, document preview (Word/PDF)
+
+### AI Observability
+
+- **AI Performance monitor** — TitleBar chart icon opens the metrics tab; detachable window for a dedicated dashboard
+- **AI Request Trace recorder** — TitleBar record button captures every chat/Agent request; inspect, filter, save, or clear traces
+- **Metrics ↔ Trace linkage** — click a model in the performance table to jump to matching trace entries
+
+### IDE & Workflow
+
+- **Flexible layout** — resizable sidebar/editor/chat; **dual-window mode** pops the chat/session panel to a companion window (great on a second monitor)
+- **Unified session list** — Agent and Workshop sessions in one sidebar; persistent history per project
+- **File explorer & global search** — ripgrep-powered project search with replace
+- **Integrated terminal** — xterm.js terminal in the bottom panel
+- **Git integration** — SCM panel, status, and diffs; optional Git host settings
+- **Command palette & Quick Open** — `Cmd+Shift+P` and `Cmd+P` style navigation
+- **Slash commands** — built-in and project-level custom commands
+- **i18n & themes** — English/Chinese UI; VS Code, Aura Light, and Aura Dark themes
+
+### Extensibility
+
+- **Multi-model** — OpenAI, Anthropic, Ollama, and custom endpoints; per-user model profiles
+- **MCP protocol** — connect external tools and data sources via Model Context Protocol
+- **Skills & Hooks** — custom Skills plus PreToolUse / PostToolUse / UserPromptSubmit hooks
+- **Rules & permissions** — project/user rules, tool allow/deny lists, OS sandbox option, auto-apply writes toggle
 
 ## 🏗️ Tech Stack
 
-
-| Layer    | Technology                    |
-| -------- | ----------------------------- |
-| Desktop  | Electron 29                   |
-| Frontend | Vue 3 + TypeScript            |
-| Build    | Vite 5 + vite-plugin-electron |
-| Editor   | Monaco Editor                 |
-| AI       | OpenAI / Anthropic API        |
-| MCP      | @modelcontextprotocol/sdk     |
-| Search   | @vscode/ripgrep               |
-| Terminal | node-pty                      |
-| Storage  | electron-store                |
-
+| Layer       | Technology                              |
+| ----------- | --------------------------------------- |
+| Desktop     | Electron 29                             |
+| Frontend    | Vue 3 + TypeScript                      |
+| Build       | Vite 5 + vite-plugin-electron           |
+| Editor      | Monaco Editor                           |
+| Terminal    | xterm.js + node-pty                     |
+| AI          | OpenAI / Anthropic / Ollama APIs        |
+| CodeGraph   | tree-sitter + better-sqlite3 (in-process) |
+| MCP         | @modelcontextprotocol/sdk               |
+| Search      | @vscode/ripgrep                         |
+| Storage     | electron-store                          |
 
 ## 📁 Project Structure
 
 ```
 AxeCoder/
-├── src/                          # Renderer (Vue 3 frontend)
-│   ├── App.vue                   # Main layout (workbench)
-│   ├── main.ts                   # Entry point
-│   ├── components/
-│   │   └── workbench/            # Workbench components
-│   │       ├── ChatPane.vue      # AI chat panel
-│   │       ├── AgentsPanel.vue   # Agent session list
-│   │       ├── EditorPane.vue    # Editor area
-│   │       ├── FileExplorer.vue  # File explorer
-│   │       ├── SearchPanel.vue   # Search panel
-│   │       ├── BottomPanel.vue   # Bottom panel (terminal, etc.)
-│   │       ├── TitleBar.vue      # Title bar
-│   │       ├── StatusBar.vue     # Status bar
-│   │       ├── SettingsModal.vue # Settings modal
-│   │       ├── SettingsPanel.vue # Settings panel
-│   │       ├── CommandPalette.vue# Command palette
-│   │       ├── WelcomePage.vue   # Welcome page
-│   │       └── ...
-│   ├── composables/              # Composables
-│   ├── utils/                    # Utilities
-│   ├── slash-commands/           # Slash command system
-│   └── types/                    # Type definitions
-├── electron/                     # Main process
-│   ├── main/
-│   │   ├── index.ts              # Electron main entry
-│   │   ├── agent/                # Agent core engine
-│   │   │   ├── agent-loop.ts     # Agent loop logic
-│   │   │   ├── agent-types.ts    # Agent types (36 tools)
-│   │   │   ├── agent-system-prompt.ts  # System prompt
-│   │   │   ├── tool-executor.ts  # Tool executor
-│   │   │   ├── agent-tool-defs.ts# Tool definitions
-│   │   │   ├── agent-permissions.ts    # Permissions
-│   │   │   ├── agent-context-compact.ts# Context compaction
-│   │   │   ├── agent-checkpoint.ts     # Checkpoints / rollback
-│   │   │   ├── agent-mcp.ts      # MCP support
-│   │   │   ├── agent-hooks.ts    # Hooks system
-│   │   │   ├── agent-skills.ts   # Skills system
-│   │   │   ├── agent-subagent.ts # Sub-agents
-│   │   │   ├── agent-ext-executor.ts    # Extended execution
-│   │   │   └── ...
-│   │   ├── ai/                   # AI communication layer
-│   │   │   ├── providers/        # openai / anthropic / ollama
-│   │   │   ├── chat-with-tools.ts
-│   │   │   └── ...
-│   │   ├── fs-ipc.ts             # Filesystem IPC
-│   │   ├── git-ipc.ts            # Git IPC
-│   │   ├── terminal-ipc.ts       # Terminal IPC
-│   │   ├── agent-ipc.ts          # Agent IPC
-│   │   ├── models-ipc.ts         # Model management IPC
-│   │   ├── config-store.ts       # Config storage
-│   │   └── secrets-store.ts      # Secrets storage
-│   └── preload/                  # Preload scripts
+├── src/                              # Renderer (Vue 3 frontend)
+│   ├── App.vue                       # Workbench shell & window roles
+│   ├── components/workbench/
+│   │   ├── ChatPane.vue              # Agent / Workshop chat
+│   │   ├── AgentsPanel.vue           # Unified session sidebar
+│   │   ├── WorkshopChatSection.vue   # Multi-agent workshop UI
+│   │   ├── EditorPane.vue            # Monaco editor area
+│   │   ├── AiMetricsPanel.vue        # AI Performance dashboard
+│   │   ├── AiTracePanel.vue          # AI Request Trace recorder
+│   │   ├── BottomPanel.vue           # Terminal, output, metrics, trace
+│   │   ├── SettingsPanel.vue         # Settings (models, users, rules…)
+│   │   └── ...
+│   ├── composables/                  # useWorkbench, etc.
+│   ├── slash-commands/               # Slash command system
+│   └── i18n/                         # Localization
+├── electron/main/
+│   ├── agent/                        # Agent loop, tools, MCP, skills, hooks
+│   ├── codegraph/                    # Vendored CodeGraph engine
+│   ├── ai/                           # Providers & chat-with-tools
+│   ├── ai-metrics-store.ts           # Performance metrics ring buffer
+│   ├── ai-trace-store.ts             # Request trace recorder
+│   └── …                             # fs/git/terminal/agent IPC
+├── docs/assets/                      # README screenshots
 └── package.json
 ```
 
@@ -109,96 +114,94 @@ AxeCoder/
 ### Install & Run
 
 ```bash
-# Clone the repo
 git clone https://github.com/axecoder-ai/axecoder.git
 cd AxeCoder
-
-# Install dependencies
 pnpm install
-
-# Start dev mode
 pnpm dev
 ```
 
 ### Build
 
 ```bash
-# Type check + build + package
 pnpm build
 ```
 
-Build output goes to the `release/` directory.
+Build output goes to `release/`.
 
 ## 🎯 Usage
 
 ### Configure AI Models
 
-1. After launching the app, click the model settings button in the title bar
-2. Add a model configuration:
-  - **OpenAI**: API Endpoint + API Key + model name (e.g. `gpt-4o`)
-  - **Anthropic**: API Key + model name (e.g. `claude-sonnet-4-20250514`)
-  - **Ollama**: Local Ollama URL + model name
-3. Save, then select the model in the chat panel
+1. Open **Settings → Models** (or the model button in the title bar)
+2. Add a provider:
+   - **OpenAI** — API endpoint + key + model (e.g. `gpt-4o`)
+   - **Anthropic** — API key + model (e.g. `claude-sonnet-4-20250514`)
+   - **Ollama** — local URL + model name
+3. Pick the model in the chat composer; switch effort/mode as needed
 
 ### Use the AI Agent
 
 1. Open a project folder (`Cmd+O`)
-2. Enter your request in the chat panel on the right, for example:
-  - "Refactor this file for me"
-  - "Find all unused imports in the project"
-  - "Write unit tests for this function"
-3. The Agent will call tools automatically to complete the task
-4. File writes and command execution require your confirmation (or enable auto-apply in settings)
+2. Type a task in the chat panel — e.g. refactor a file, find dead code, write tests
+3. Approve file writes and shell commands (or enable **auto-apply** in Settings → General)
+4. Use `/` for slash commands; `@` to reference files; spawn sub-agents for parallel work
+
+### Workshop (Multi-Agent)
+
+1. Create a **Workshop** session from the session list
+2. Assign roles and run collaborative multi-step tasks with visible step progress
+3. Workshop runs share the same chat column; switch between Agent and Workshop sessions anytime
+
+### Monitor AI Calls
+
+| Action | How |
+| ------ | --- |
+| Open **AI Performance** | TitleBar chart icon → bottom **Metrics** tab (or detach to its own window) |
+| Open **AI Request Trace** | TitleBar record dot → bottom **Trace** tab; click **Start recording** before chatting |
+| Save trace log | Stop recording → **Save log** (stored under app data `ai-traces/`) |
+| Dual-window chat | TitleBar dual-window button → companion window for sessions only |
 
 ### Keyboard Shortcuts
 
+| Shortcut               | Action              |
+| ---------------------- | ------------------- |
+| `Cmd/Ctrl + O`         | Open project        |
+| `Cmd/Ctrl + Shift + O` | Open file           |
+| `Cmd/Ctrl + N`         | New file            |
+| `Cmd/Ctrl + S`         | Save file           |
+| `Cmd/Ctrl + W`         | Close tab           |
+| `Cmd/Ctrl + F`         | Find                |
+| `Cmd/Ctrl + Shift + F` | Find in project     |
+| `Cmd/Ctrl + Shift + P` | Command palette     |
+| `Cmd/Ctrl + Shift + C` | Toggle AI panel     |
+| `Cmd/Ctrl + \``         | Toggle terminal     |
+| `Cmd/Ctrl + ,`         | Settings            |
 
-| Shortcut               | Action          |
-| ---------------------- | --------------- |
-| `Cmd/Ctrl + O`         | Open project    |
-| `Cmd/Ctrl + Shift + O` | Open file       |
-| `Cmd/Ctrl + N`         | New file        |
-| `Cmd/Ctrl + S`         | Save file       |
-| `Cmd/Ctrl + W`         | Close tab       |
-| `Cmd/Ctrl + F`         | Find            |
-| `Cmd/Ctrl + Shift + F` | Find in project |
-| `Cmd/Ctrl + Shift + P` | Command palette |
-| `Cmd/Ctrl + Shift + C` | Toggle AI panel |
-| `Cmd/Ctrl + `          | Toggle terminal |
+### Agent Tools (highlights)
 
+| Category | Tools |
+| -------- | ----- |
+| Files | `Read`, `Edit`, `Write`, `Glob`, `Grep`, `Delete`, `Move` |
+| Shell & tasks | `Bash`, `TodoWrite`, `Task`*, `TaskCreate` / `Get` / `Update` / `List` |
+| Agents | `Agent`, `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode` |
+| Web | `WebSearch`, `WebFetch` |
+| Code intelligence | `LSP`, `CodeGraphExplore`, `CodeGraphSearch`, `CodeGraphNode` |
+| Extensions | `Skill`, `DiscoverSkills`, `CallMcpTool`, `McpAuth`, `ListMcpResources`, `ReadMcpResource`, `NotebookEdit`, `EnterWorktree`, `ExitWorktree`, … |
 
-### Agent Tools
-
-Core tools:
-
-
-| Tool              | Description              |
-| ----------------- | ------------------------ |
-| `Read`            | Read file contents       |
-| `Edit`            | Precise file edits       |
-| `Write`           | Create/overwrite files   |
-| `Glob`            | Search files by pattern  |
-| `Grep`            | Search file contents     |
-| `Delete`          | Delete files/directories |
-| `Move`            | Move/rename files        |
-| `Bash`            | Run terminal commands    |
-| `Agent`           | Launch sub-agent         |
-| `AskUserQuestion` | Ask the user a question  |
-
-
-Extended tools: `TodoWrite`, `Task`*, `WebFetch`, `WebSearch`, `Skill`, `MCP`, and more — 36 tools in total.
+\*42 tools total — see `electron/main/agent/agent-types.ts` for the full list.
 
 ## ⚙️ Configuration
 
-Use the settings panel (`Cmd+,`) to configure:
+Open **Settings** (`Cmd+,`):
 
-- **Editor**: Font size, theme
-- **Auto-save**: On/off and delay
-- **Agent permissions**: Allow/deny specific tools, auto-apply writes
-- **Agent behavior**: Proactive reminders, context compaction threshold, Plan Mode
-- **Output style**: Custom Agent reply style
-- **Hooks**: Enable/disable the hooks system
+| Tab | What you can configure |
+| --- | ---------------------- |
+| **General** | Theme, locale, editor font/auto-save, agent auto-apply, OS sandbox, loop guard, max tool rounds, output style, Git host |
+| **Models** | Provider endpoints, API keys, model tiers |
+| **Users** | Multi-user profiles with per-user model access |
+| **Permissions** | Tool allow/deny rules per project |
+| **Rules, Skills, Subagents** | Project rules, custom skills, subagent definitions |
 
 ## 📄 License
 
-MIT License — see [LICENSE](./LICENSE)
+MIT License — see [LICENSE](./LICENSE).

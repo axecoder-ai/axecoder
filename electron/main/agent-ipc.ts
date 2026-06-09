@@ -8,7 +8,7 @@ import {
   readMemoryFile,
   writeMemoryFile,
 } from './agent/agent-checkpoint'
-import { listBackgroundRuns } from './agent/agent-subagent-tasks'
+import { listBackgroundRuns, resolveBackgroundTasks } from './agent/agent-subagent-tasks'
 import {
   answerAgentQuestions,
   confirmAgentAllWrites,
@@ -61,6 +61,7 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
       chatMode?: string,
       assigneeUserId?: string,
       roleWorkflowInvoke?: boolean,
+      reasoningEffort?: string,
     ) => {
       const history = (Array.isArray(messages) ? messages : [])
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -82,6 +83,7 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
         chatMode,
         assigneeUserId,
         roleWorkflowInvoke === true,
+        reasoningEffort,
       )
     },
   )
@@ -148,8 +150,8 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
 
   ipcMain.handle('agent:hooksHelp', async () => ({ ok: true as const, text: await formatHooksHelp() }))
 
-  ipcMain.handle('agent:listMcp', async () => {
-    const res = await listMcpResources()
+  ipcMain.handle('agent:listMcp', async (_, projectRoot?: string) => {
+    const res = await listMcpResources(typeof projectRoot === 'string' ? projectRoot : undefined)
     if (!res.ok) return { ok: false as const, error: res.error }
     return { ok: true as const, text: res.text }
   })
@@ -344,11 +346,30 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
     })),
   }))
 
+  ipcMain.handle(
+    'agent:resolveBackgroundTasks',
+    async (_, projectRoot: string, taskIds: string[]) => {
+      if (!projectRoot?.trim()) return { ok: false as const, error: t('errors.noProject') }
+      const ids = Array.isArray(taskIds) ? taskIds : []
+      const tasks = await resolveBackgroundTasks(projectRoot.trim(), ids)
+      return { ok: true as const, tasks }
+    },
+  )
+
   ipcMain.handle('agent:readMemory', async () => {
     const p = axecoderPath('memory.md')
     const res = await readMemoryFile(p)
     if (!res.ok) return res
     return { ok: true as const, path: p, text: res.text }
+  })
+
+  ipcMain.handle('agent:projectMemory', async (_, projectRoot: string) => {
+    if (!projectRoot?.trim()) return { ok: false as const, error: t('errors.noProject') }
+    const { composeMemoryPrompt, loadMemoryIndex } = await import('./agent/agent-memory')
+    const index = await loadMemoryIndex(projectRoot)
+    const full = await composeMemoryPrompt(projectRoot)
+    const text = full?.trim() || (index ? `# Saved memories\n\n${index}` : '(no project memory yet — use Remember tool or create AGENTS.md)')
+    return { ok: true as const, text }
   })
 
   ipcMain.handle('agent:writeMemory', async (_, text: string) => {

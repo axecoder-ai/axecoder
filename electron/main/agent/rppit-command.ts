@@ -6,15 +6,77 @@ import { axeCoderRppitRuntimeAddon } from './rppit-axecoder-addon'
 
 let rppitPathsOverride: string[] | null = null
 let rppitCache: { path: string; mtimeMs: number; text: string } | null = null
+let rppitConfigPathOverride: string | null = null
 
 export const setRppitCommandPathsForTests = (paths: string[] | null) => {
   rppitPathsOverride = paths
   rppitCache = null
 }
 
+export const setRppitConfigPathForTests = (configPath: string | null) => {
+  rppitConfigPathOverride = configPath
+}
+
+export interface RppitConfig {
+  deliverables_root?: string
+  merged_doc_suffix?: string
+}
+
+const defaultRppitConfig: RppitConfig = {
+  deliverables_root: 'docs/deliverables',
+  merged_doc_suffix: '交付总结',
+}
+
 const builtinRppitPath = () => {
   const appRoot = process.env.APP_ROOT ?? path.resolve(import.meta.dirname, '../../..')
   return path.join(appRoot, 'resources', 'builtin-commands', 'rppit.md')
+}
+
+const getRppitConfigPath = (projectRoot: string): string => {
+  if (rppitConfigPathOverride !== null) return rppitConfigPathOverride
+  return path.join(projectRoot, '.cursor', 'rppit.json')
+}
+
+/** 加载 .cursor/rppit.json 配置文件 */
+export const loadRppitConfig = async (
+  projectRoot?: string,
+): Promise<{ ok: true; config: RppitConfig } | { ok: false; error: string }> => {
+  const configPath = getRppitConfigPath(projectRoot ?? process.cwd())
+  try {
+    const content = await fs.readFile(configPath, 'utf-8')
+    const parsed = JSON.parse(content)
+    return {
+      ok: true,
+      config: {
+        deliverables_root: parsed.deliverables_root ?? defaultRppitConfig.deliverables_root,
+        merged_doc_suffix: parsed.merged_doc_suffix ?? defaultRppitConfig.merged_doc_suffix,
+      },
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      // 文件不存在，返回默认配置
+      return { ok: true, config: { ...defaultRppitConfig } }
+    }
+    return {
+      ok: false,
+      error: `Invalid JSON in ${configPath}: ${(err as Error).message}`,
+    }
+  }
+}
+
+/** 解析交付物根目录（优先级：用户指定 > rppit.json > 默认） */
+export const parseDeliverablesRoot = async (
+  userOverride: string | undefined,
+  projectRoot?: string,
+): Promise<string> => {
+  if (userOverride) return userOverride
+
+  const cfg = await loadRppitConfig(projectRoot)
+  if (cfg.ok) {
+    return cfg.config.deliverables_root!
+  }
+
+  return defaultRppitConfig.deliverables_root!
 }
 
 /** 与 /rppit 斜杠命令一致：Cursor 全局 → ~/.axecoder/commands → 内置 */

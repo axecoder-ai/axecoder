@@ -29,6 +29,7 @@ import { ALL_AGENT_TOOL_NAMES } from './agent-types'
 import { buildExtendedAgentTools } from './agent-tool-prompts-ext'
 import { buildCoreAgentTools } from './agent-tool-prompts'
 import { executeCodeGraphAgentTool, isCodeGraphAgentTool } from './agent-codegraph'
+import { forgetMemory, saveMemory } from './agent-memory'
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
@@ -197,13 +198,14 @@ export const executeExtendedAgentTool = async (
       str(args.server),
       str(args.toolName),
       (args.arguments as Record<string, unknown>) ?? {},
+      ctx.projectRoot,
     )
     if (!res.ok) return immediate(name, 'CallMcpTool', `Error: ${res.error}`, false)
     return immediate(name, 'CallMcpTool', res.text, true)
   }
 
   if (name === 'McpAuth') {
-    const { servers, error } = await loadMcpConfig()
+    const { servers, error } = await loadMcpConfig(ctx.projectRoot)
     const server = str(args.server)
     const found = servers.find((s) => s.name === server)
     if (!found) return immediate(name, 'McpAuth', `Error: ${error ?? 'server not found'}`, false)
@@ -216,12 +218,12 @@ export const executeExtendedAgentTool = async (
   }
 
   if (name === 'ListMcpResources') {
-    const res = await listMcpResources()
+    const res = await listMcpResources(ctx.projectRoot)
     return immediate(name, 'ListMcpResources', res.ok ? res.text : `Error: ${res.error}`, res.ok)
   }
 
   if (name === 'ReadMcpResource') {
-    const res = await readMcpResource(str(args.server), str(args.uri))
+    const res = await readMcpResource(str(args.server), str(args.uri), ctx.projectRoot)
     if (!res.ok) return immediate(name, 'ReadMcpResource', `Error: ${res.error}`, false)
     return immediate(name, 'ReadMcpResource', res.text, true)
   }
@@ -351,6 +353,29 @@ export const executeExtendedAgentTool = async (
       `Workflow stub: "${str(args.name)}" is not registered. Add workflow definitions in a future release.`,
       true,
     )
+  }
+
+  if (name === 'Remember') {
+    const res = await saveMemory(ctx.projectRoot, {
+      name: str(args.name),
+      title: str(args.title),
+      description: str(args.description),
+      type: str(args.type) as 'user' | 'feedback' | 'project' | 'reference',
+      body: str(args.body),
+    })
+    if (!res.ok) return immediate(name, 'Remember', `Error: ${res.error}`, false)
+    return immediate(
+      name,
+      'Remember',
+      `Saved memory "${res.name}" to ${res.path} (loads in future sessions).`,
+      true,
+    )
+  }
+
+  if (name === 'Forget') {
+    const res = await forgetMemory(ctx.projectRoot, str(args.name))
+    if (!res.ok) return immediate(name, 'Forget', `Error: ${res.error}`, false)
+    return immediate(name, 'Forget', `Deleted memory "${res.name}".`, true)
   }
 
   return immediate(name, String(name), `Error: unhandled extended tool ${name}`, false)

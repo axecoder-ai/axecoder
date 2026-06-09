@@ -146,4 +146,19 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
   obj('Workflow', 'Run a named workflow stub. Requires agentFeatureWorkflow.', {
     name: { type: 'string' },
   }, ['name']),
+  obj(
+    'Remember',
+    'Save a durable fact to project auto-memory (.axecoder/memory). Loads into future sessions. Reuse name to update; use Forget to delete.',
+    {
+      name: { type: 'string', description: 'kebab-case slug; omit to derive from description' },
+      title: { type: 'string' },
+      description: { type: 'string', description: 'One-line summary for the memory index' },
+      type: { type: 'string', enum: ['user', 'feedback', 'project', 'reference'] },
+      body: { type: 'string', description: 'The fact (Markdown)' },
+    },
+    ['description', 'body'],
+  ),
+  obj('Forget', 'Delete a saved auto-memory entry by name.', {
+    name: { type: 'string' },
+  }, ['name']),
 ]

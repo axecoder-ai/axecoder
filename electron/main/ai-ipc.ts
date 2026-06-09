@@ -7,6 +7,8 @@ import { chatWithProvider } from './ai/chat-with-provider'
 import { resolveApiModelIdForTask } from './ai/api-model-resolve'
 import { resolvePathInProject } from './agent/agent-path'
 import { buildUserMessageWithFiles } from '../../src/utils/chat-file-context'
+import { expandAtRefs, listAtRefDir } from './agent/agent-at-refs'
+import { normalizeReasoningEffort } from '../../shared/reasoning-effort'
 import {
   saveChatPastedImage,
   resolveChatImageRefs,
@@ -59,6 +61,24 @@ export const registerAiIpc = () => {
   })
 
   ipcMain.handle(
+    'chat:expandAtRefs',
+    async (_, projectRoot: string, text: string, skipTokens?: string[]) => {
+      const root = typeof projectRoot === 'string' ? projectRoot.trim() : ''
+      const line = typeof text === 'string' ? text : ''
+      const skip = Array.isArray(skipTokens) ? skipTokens.filter((s) => typeof s === 'string') : []
+      if (!root || !line.includes('@')) return { ok: true as const, text: line, errors: [] as string[] }
+      const res = await expandAtRefs(root, line, skip)
+      return { ok: true as const, text: res.text, errors: res.errors }
+    },
+  )
+
+  ipcMain.handle('chat:listAtRefDir', async (_, projectRoot: string, relDir: string) => {
+    const root = typeof projectRoot === 'string' ? projectRoot.trim() : ''
+    if (!root) return { ok: false as const, error: 'No project root' }
+    return listAtRefDir(root, typeof relDir === 'string' ? relDir : '')
+  })
+
+  ipcMain.handle(
     'chat:expandUserWithFiles',
     async (
       _,
@@ -84,7 +104,13 @@ export const registerAiIpc = () => {
 
   ipcMain.handle(
     'ai:chat',
-    async (event, modelId: string, messages: AiChatMessage[], clientStreamId?: string) => {
+    async (
+      event,
+      modelId: string,
+      messages: AiChatMessage[],
+      clientStreamId?: string,
+      reasoningEffortRaw?: string,
+    ) => {
       if (!modelId?.trim()) return { ok: false as const, error: 'No model selected' }
       const model = await getModelById(modelId)
       if (!model) return { ok: false as const, error: 'Model not found' }
@@ -98,7 +124,8 @@ export const registerAiIpc = () => {
       const lastUser = [...messages].reverse().find((m) => m.role === 'user')
       const userText = typeof lastUser?.content === 'string' ? lastUser.content : ''
       const apiModelId = await resolveApiModelIdForTask(model, 'main', userText)
-      return chatWithProvider(model, apiKey, messages, onDelta, apiModelId, 'chat')
+      const reasoningEffort = normalizeReasoningEffort(reasoningEffortRaw)
+      return chatWithProvider(model, apiKey, messages, onDelta, apiModelId, 'chat', undefined, reasoningEffort)
     },
   )
 }

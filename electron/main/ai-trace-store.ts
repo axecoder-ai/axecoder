@@ -1,3 +1,4 @@
+import { pushAiMetricsActivity } from './ai-metrics-store'
 import { broadcastToRenderers } from './renderer-broadcast'
 
 export type AiTraceSource = 'chat' | 'agent' | 'workshop' | 'other'
@@ -104,6 +105,16 @@ export const traceModelCall = (input: {
   result: { ok: boolean; text?: string; content?: string; reasoningContent?: string; toolCalls?: unknown[]; error?: string }
   durationMs: number
 }) => {
+  const turnTag = input.turn ? ` · T${input.turn}` : ''
+  pushAiMetricsActivity({
+    kind: 'model_call',
+    ok: input.result.ok,
+    modelId: input.modelId,
+    source: input.source,
+    text: input.result.ok
+      ? `${input.modelName} · ${input.durationMs}ms · ${input.source}${turnTag}`
+      : `${input.modelName} · ${input.durationMs}ms · ${input.result.error ?? 'error'}${turnTag}`,
+  })
   pushEvent({
     kind: 'model_call',
     source: input.source,
@@ -134,6 +145,11 @@ export const traceToolCall = (input: {
   toolName: string
   args: unknown
 }) => {
+  pushAiMetricsActivity({
+    kind: 'tool_call',
+    source: 'agent',
+    text: `${input.toolName} · T${input.turn}`,
+  })
   pushEvent({
     kind: 'tool_call',
     source: 'agent',
@@ -152,6 +168,15 @@ export const traceToolResult = (input: {
   content?: string
   error?: string
 }) => {
+  const preview = input.ok
+    ? (input.content ?? '').replace(/\s+/g, ' ').trim().slice(0, 48)
+    : (input.error ?? 'fail')
+  pushAiMetricsActivity({
+    kind: 'tool_result',
+    ok: input.ok,
+    source: 'agent',
+    text: `${input.toolName} · T${input.turn} · ${input.ok ? preview || 'ok' : preview}`,
+  })
   pushEvent({
     kind: 'tool_result',
     source: 'agent',

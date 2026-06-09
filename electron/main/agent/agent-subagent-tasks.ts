@@ -112,6 +112,93 @@ export const waitForBackgroundRun = async (
   return getBackgroundRun(taskId) ?? null
 }
 
+export type BackgroundTaskSnapshot = {
+  id: string
+  description: string
+  status: BackgroundSubAgentRun['status']
+  outputFile?: string
+  error?: string
+}
+
+const STATUS_LINE = /^Status:\s*(running|completed|failed|stopped)\s*$/i
+
+export const parseTaskOutputFile = (content: string): Partial<BackgroundSubAgentRun> | null => {
+  const text = content.trim()
+  if (!text) return null
+  const out: Partial<BackgroundSubAgentRun> = {}
+  for (const line of text.split(/\r?\n/)) {
+    const statusMatch = line.match(STATUS_LINE)
+    if (statusMatch) {
+      out.status = statusMatch[1]!.toLowerCase() as BackgroundSubAgentRun['status']
+      continue
+    }
+    if (line.startsWith('Description: ')) {
+      out.description = line.slice('Description: '.length).trim()
+      continue
+    }
+    if (line.startsWith('Output file: ')) {
+      out.outputFile = line.slice('Output file: '.length).trim()
+      continue
+    }
+    if (line.startsWith('Error: ')) {
+      out.error = line.slice('Error: '.length).trim()
+    }
+  }
+  return Object.keys(out).length ? out : null
+}
+
+const runToSnapshot = (run: BackgroundSubAgentRun): BackgroundTaskSnapshot => ({
+  id: run.id,
+  description: run.description,
+  status: run.status,
+  ...(run.outputFile ? { outputFile: run.outputFile } : {}),
+  ...(run.error ? { error: run.error } : {}),
+})
+
+const readSnapshotFromDisk = async (
+  projectRoot: string,
+  taskId: string,
+): Promise<BackgroundTaskSnapshot | null> => {
+  const outPath = subagentOutputPath(projectRoot, taskId)
+  try {
+    const raw = await fs.readFile(outPath, 'utf8')
+    const parsed = parseTaskOutputFile(raw)
+    if (!parsed?.status) return null
+    return {
+      id: taskId,
+      description: parsed.description?.trim() || taskId,
+      status: parsed.status,
+      outputFile: parsed.outputFile ?? outPath,
+      ...(parsed.error ? { error: parsed.error } : {}),
+    }
+  } catch {
+    return null
+  }
+}
+
+/** 按 taskId 解析状态：内存 Map 优先，否则读 output 落盘文件 */
+export const resolveBackgroundTasks = async (
+  projectRoot: string,
+  taskIds: string[],
+): Promise<BackgroundTaskSnapshot[]> => {
+  const ids = [...new Set(taskIds.map((id) => id.trim()).filter(Boolean))]
+  const out: BackgroundTaskSnapshot[] = []
+  for (const id of ids) {
+    const live = getBackgroundRun(id)
+    if (live) {
+      out.push(runToSnapshot(live))
+      continue
+    }
+    const disk = await readSnapshotFromDisk(projectRoot, id)
+    if (disk) {
+      out.push(disk)
+      continue
+    }
+    out.push({ id, description: id, status: 'running' })
+  }
+  return out
+}
+
 export const formatTaskOutput = (run: BackgroundSubAgentRun) => {
   const lines = [
     `Task id: ${run.id}`,

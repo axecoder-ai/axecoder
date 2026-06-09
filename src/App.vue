@@ -103,10 +103,6 @@ const bottomPanelVisible = computed(
     (metricsPanelVisible.value && !metricsDetached.value) ||
     (tracePanelVisible.value && !traceDetached.value),
 )
-const metricsPanelActive = computed(
-  () => metricsPanelVisible.value || metricsDetached.value,
-)
-const tracePanelActive = computed(() => tracePanelVisible.value || traceDetached.value)
 let offWindowLayout: (() => void) | undefined
 let onWindowResize: (() => void) | undefined
 let offCompanionWindowState: (() => void) | undefined
@@ -138,6 +134,7 @@ const primarySplitDragging = ref(false)
 const bottomSplitDragging = ref(false)
 
 let offOpenProject: (() => void) | null = null
+let offOpenProjectAt: (() => void) | null = null
 
 const trackColumnDrag = (
   e: PointerEvent,
@@ -364,7 +361,7 @@ const onBottomSplitPointerDown = (e: PointerEvent) => {
 
 watch(hasOpenEditorTabs, () => {})
 
-type SettingsTabId = 'general' | 'models' | 'users' | 'rules'
+type SettingsTabId = 'general' | 'models' | 'users' | 'rules' | 'permissions'
 
 const openSettingsPanel = async (tab: SettingsTabId = 'general') => {
   await wb.loadSettings()
@@ -374,10 +371,15 @@ const openSettingsPanel = async (tab: SettingsTabId = 'general') => {
   if (tab === 'models') void settingsPanelRef.value?.reloadModels()
   if (tab === 'users') void settingsPanelRef.value?.reloadUsers()
   if (tab === 'rules') void settingsPanelRef.value?.reloadRules()
+  if (tab === 'permissions') void settingsPanelRef.value?.reloadPermissions()
 }
 
 const openModelsSettings = () => {
   void openSettingsPanel('models')
+}
+
+const openPermissionsSettings = () => {
+  void openSettingsPanel('permissions')
 }
 
 const onSettingsModelsChanged = async () => {
@@ -491,13 +493,10 @@ const toggleTerminal = () => {
   if (terminalVisible.value) bottomPanelTab.value = 'terminal'
 }
 
-const onMetricsDock = () => {
-  void window.axecoder.closeMetricsWindow()
-}
-
 const onMetricsDetach = () => {
   metricsDetached.value = true
   metricsPanelVisible.value = false
+  void window.axecoder.openMetricsWindow()
   if (terminalVisible.value) {
     bottomPanelTab.value = 'terminal'
   } else if (tracePanelVisible.value && !traceDetached.value) {
@@ -512,6 +511,7 @@ const onTraceDock = () => {
 const onTraceDetach = () => {
   traceDetached.value = true
   tracePanelVisible.value = false
+  void window.axecoder.openTraceWindow()
   if (terminalVisible.value) {
     bottomPanelTab.value = 'terminal'
   } else if (metricsPanelVisible.value && !metricsDetached.value) {
@@ -520,9 +520,19 @@ const onTraceDetach = () => {
 }
 
 const collapseBottomPanel = () => {
+  const tab = bottomPanelRef.value?.tab
+  if (tab) bottomPanelTab.value = tab
   terminalVisible.value = false
   metricsPanelVisible.value = false
   tracePanelVisible.value = false
+}
+
+const toggleBottomPanel = () => {
+  if (bottomPanelVisible.value) {
+    collapseBottomPanel()
+    return
+  }
+  terminalVisible.value = true
 }
 
 const toggleTrace = async () => {
@@ -540,23 +550,6 @@ const toggleTrace = async () => {
     bottomPanelTab.value = 'trace'
     terminalVisible.value = false
     metricsPanelVisible.value = false
-  }
-}
-
-const toggleMetrics = async () => {
-  if (isMetricsWindow.value) return
-  if (metricsDetached.value) {
-    const open = await window.axecoder.isMetricsWindowDetached()
-    if (open) {
-      await window.axecoder.openMetricsWindow()
-      return
-    }
-    metricsDetached.value = false
-  }
-  metricsPanelVisible.value = !metricsPanelVisible.value
-  if (metricsPanelVisible.value) {
-    bottomPanelTab.value = 'metrics'
-    terminalVisible.value = false
   }
 }
 
@@ -695,7 +688,7 @@ const onPaletteRun = (id: string) => {
   else if (id === 'findInFiles') onFindInFiles()
   else if (id === 'toggleChat' || id === 'toggleAgents') toggleAiPanel()
   else if (id === 'toggleTerminal') toggleTerminal()
-  else if (id === 'toggleMetrics') void toggleMetrics()
+  else if (id === 'toggleMetrics') toggleBottomPanel()
   else if (id === 'toggleTrace') void toggleTrace()
   else if (id === 'settings') void openSettingsPanel('general')
 }
@@ -840,6 +833,7 @@ onMounted(async () => {
   clampLayoutWidths()
   clampBottomPanelLayout()
   offOpenProject = window.axecoder.onOpenProject(triggerOpenProject)
+  offOpenProjectAt = window.axecoder.onOpenProjectAt(onWelcomeOpenProjectAt)
   wb.bindMenu({
     onNewFile: () => fileExplorerRef.value?.newFile(),
     onFindInFiles,
@@ -864,6 +858,7 @@ onUnmounted(() => {
   offTraceDetached?.()
   offThemeChange?.()
   offOpenProject?.()
+  offOpenProjectAt?.()
   wb.unbindMenu()
 })
 </script>
@@ -879,15 +874,13 @@ onUnmounted(() => {
       :metrics-mode="isMetricsWindow"
       :trace-mode="isTraceWindow"
       :dual-window-active="companionWindowOpen"
-      :metrics-panel-active="metricsPanelActive"
-      :trace-panel-active="tracePanelActive"
+      :bottom-panel-visible="bottomPanelVisible"
       :companion-layout-reversed="companionLayoutReversed"
       @toggle-primary-sidebar="togglePrimarySidebar"
       @toggle-ai-panel="toggleAiPanel"
       @toggle-dual-window="toggleDualWindow"
       @toggle-companion-layout="toggleCompanionLayout"
-      @toggle-metrics="toggleMetrics"
-      @toggle-trace="toggleTrace"
+      @toggle-bottom-panel="toggleBottomPanel"
       @open-project="triggerOpenProject"
       @open-model-settings="openModelsSettings"
     />
@@ -905,9 +898,7 @@ onUnmounted(() => {
           <AiMetricsPanel
             expanded
             detached
-            show-detach-controls
             :global-theme="settings.theme"
-            @dock="onMetricsDock"
           />
         </div>
         <div v-else-if="isTraceWindow" class="trace-window-body">
@@ -1022,6 +1013,7 @@ onUnmounted(() => {
             @close="onChatPaneClose"
             @show-agents-sidebar="agentsSidebarVisible = true"
             @open-models-settings="openModelsSettings"
+            @open-permissions-settings="openPermissionsSettings"
             @active-change="onChatActiveChange"
             @kind-change="onChatKindChange"
             @sessions-changed="onChatSessionsChanged(); onWorkshopSessionsChanged()"
@@ -1147,7 +1139,9 @@ onUnmounted(() => {
 .trace-window-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--wc-bg);
 }
 

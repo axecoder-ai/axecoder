@@ -97,8 +97,38 @@ defineEmits<{
       </button>
       <span class="panel-tabs-spacer" />
       <button
+        v-if="tab === 'metrics' && !metricsDetached"
         type="button"
-        class="collapse-btn"
+        class="panel-action-btn"
+        :title="t('metrics.detach')"
+        @click="$emit('metricsDetach')"
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M3.5 3.5A.5.5 0 0 1 4 3h4.5a.5.5 0 0 1 .5.5V6h1V3.5A1.5 1.5 0 0 0 8.5 2H4a1.5 1.5 0 0 0-1.5 1.5V11a1.5 1.5 0 0 0 1.5 1.5H11a1.5 1.5 0 0 0 1.5-1.5V10h-1v1.5a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V3.5z"
+          />
+          <path fill="currentColor" d="M13 6.5v6h-6V6.5h6m1-1h-8v8h8V5.5" />
+        </svg>
+      </button>
+      <button
+        v-if="tab === 'trace' && !traceDetached"
+        type="button"
+        class="panel-action-btn"
+        :title="t('trace.detach')"
+        @click="$emit('traceDetach')"
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M3.5 3.5A.5.5 0 0 1 4 3h4.5a.5.5 0 0 1 .5.5V6h1V3.5A1.5 1.5 0 0 0 8.5 2H4a1.5 1.5 0 0 0-1.5 1.5V11a1.5 1.5 0 0 0 1.5 1.5H11a1.5 1.5 0 0 0 1.5-1.5V10h-1v1.5a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V3.5z"
+          />
+          <path fill="currentColor" d="M13 6.5v6h-6V6.5h6m1-1h-8v8h8V5.5" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="panel-action-btn"
         :title="t('bottom.collapse')"
         @click="$emit('collapse')"
       >
@@ -125,7 +155,7 @@ defineEmits<{
       </ul>
     </div>
     <div v-show="tab === 'metrics' && !metricsDetached" class="panel-content metrics-content">
-      <AiMetricsPanel show-detach-controls @detach="$emit('metricsDetach')" @open-trace="onOpenTraceFromMetrics" />
+      <AiMetricsPanel @open-trace="onOpenTraceFromMetrics" />
     </div>
     <div v-show="tab === 'trace' && !traceDetached" class="panel-content trace-content">
       <AiTracePanel :filter-model-id="traceFilterModelId" show-detach-controls @detach="$emit('traceDetach')" />
@@ -153,20 +183,28 @@ defineEmits<{
   flex: 1;
 }
 
-.collapse-btn {
+.panel-action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 28px;
   padding: 0;
+  border: none;
+  background: transparent;
   color: var(--wc-text-muted);
   flex-shrink: 0;
+  cursor: pointer;
 }
 
-.collapse-btn:hover {
+.panel-action-btn:hover {
   color: var(--wc-text);
-  background: var(--wc-panel);
+  background: var(--wc-hover);
+}
+
+.panel-action-btn svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .panel-tabs button {

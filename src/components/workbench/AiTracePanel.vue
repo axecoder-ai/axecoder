@@ -156,9 +156,8 @@ onUnmounted(() => {
       </button>
       <span v-if="state.recording" class="rec-dot">● {{ t('trace.recording') }}</span>
       <span v-if="saveMsg" class="save-msg">{{ saveMsg }}</span>
-      <div v-if="showDetachControls" class="detach-actions">
-        <button v-if="!detached" type="button" class="tb-btn" @click="onDetach">{{ t('trace.detach') }}</button>
-        <button v-else type="button" class="tb-btn" @click="onDock">{{ t('trace.dock') }}</button>
+      <div v-if="showDetachControls && detached" class="detach-actions">
+        <button type="button" class="tb-btn" @click="onDock">{{ t('trace.dock') }}</button>
       </div>
     </div>
 

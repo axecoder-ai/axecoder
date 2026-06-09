@@ -60,6 +60,14 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.on('aiMetrics:update', listener)
     return () => ipcRenderer.off('aiMetrics:update', listener)
   },
+  onAiMetricsActivity: (
+    callback: (lines: import('../../src/types/axecoder').AiMetricsActivityLine[]) => void,
+  ) => {
+    const listener = (_: unknown, lines: import('../../src/types/axecoder').AiMetricsActivityLine[]) =>
+      callback(lines)
+    ipcRenderer.on('aiMetrics:activity', listener)
+    return () => ipcRenderer.off('aiMetrics:activity', listener)
+  },
   isTraceWindowDetached: () => ipcRenderer.invoke('window:isTraceDetached') as Promise<boolean>,
   openTraceWindow: () => ipcRenderer.invoke('window:openTrace') as Promise<boolean>,
   closeTraceWindow: () => ipcRenderer.invoke('window:closeTrace') as Promise<boolean>,
@@ -102,6 +110,11 @@ contextBridge.exposeInMainWorld('axecoder', {
     const listener = () => callback()
     ipcRenderer.on('project:open', listener)
     return () => ipcRenderer.off('project:open', listener)
+  },
+  onOpenProjectAt: (callback: (projectPath: string) => void) => {
+    const listener = (_: unknown, projectPath: string) => callback(projectPath)
+    ipcRenderer.on('project:openAt', listener)
+    return () => ipcRenderer.off('project:openAt', listener)
   },
   onMenuAction: (callback: (channel: MenuChannel) => void) => {
     const listeners = menuChannels.map((ch) => {
@@ -178,6 +191,37 @@ contextBridge.exposeInMainWorld('axecoder', {
   getSettings: () => ipcRenderer.invoke('fs:getSettings') as Promise<import('../../src/types/axecoder').AppSettings>,
   setSettings: (partial: Partial<import('../../src/types/axecoder').AppSettings>) =>
     ipcRenderer.invoke('fs:setSettings', partial) as Promise<import('../../src/types/axecoder').AppSettings>,
+  permissionsGet: (projectRoot: string) =>
+    ipcRenderer.invoke('permissions:get', projectRoot) as Promise<
+      | { ok: true; data: import('../../src/types/axecoder').PermissionsView }
+      | { ok: false; error: string }
+    >,
+  permissionsSetGlobal: (input: {
+    agentPermissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions'
+    allow?: string[]
+    ask?: string[]
+    deny?: string[]
+  }) =>
+    ipcRenderer.invoke('permissions:setGlobal', input) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
+  permissionsSetProject: (
+    projectRoot: string,
+    input: Partial<import('../../src/types/axecoder').PermissionsPolicy>,
+  ) =>
+    ipcRenderer.invoke('permissions:setProject', projectRoot, input) as Promise<
+      | { ok: true; data: import('../../src/types/axecoder').PermissionsPolicy }
+      | { ok: false; error: string }
+    >,
+  permissionsWriteProjectJson: (projectRoot: string, jsonText: string) =>
+    ipcRenderer.invoke('permissions:writeProjectJson', projectRoot, jsonText) as Promise<
+      | { ok: true; data: import('../../src/types/axecoder').PermissionsPolicy }
+      | { ok: false; error: string }
+    >,
+  permissionsWriteGlobalJson: (jsonText: string) =>
+    ipcRenderer.invoke('permissions:writeGlobalJson', jsonText) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
   onThemeChange: (callback: (theme: import('../../src/types/axecoder').AppTheme) => void) => {
     const listener = (_: unknown, theme: import('../../src/types/axecoder').AppTheme) => callback(theme)
     ipcRenderer.on('settings:theme', listener)
@@ -286,6 +330,18 @@ contextBridge.exposeInMainWorld('axecoder', {
       cloneForIpc(text),
       cloneForIpc(filePaths),
     ) as Promise<string>,
+  expandChatAtRefs: (projectRoot: string, text: string, skipTokens?: string[]) =>
+    ipcRenderer.invoke(
+      'chat:expandAtRefs',
+      cloneForIpc(projectRoot),
+      cloneForIpc(text),
+      cloneForIpc(skipTokens ?? []),
+    ) as Promise<{ ok: true; text: string; errors: string[] } | { ok: false; error: string }>,
+  listAtRefDir: (projectRoot: string, relDir: string) =>
+    ipcRenderer.invoke('chat:listAtRefDir', cloneForIpc(projectRoot), cloneForIpc(relDir)) as Promise<
+      | { ok: true; entries: { name: string; isDir: boolean }[] }
+      | { ok: false; error: string }
+    >,
   saveChatPastedImage: (sessionId: string, base64: string, mimeType: string) =>
     ipcRenderer.invoke(
       'chat:savePastedImage',
@@ -310,12 +366,14 @@ contextBridge.exposeInMainWorld('axecoder', {
     modelId: string,
     messages: import('../../src/types/axecoder').AiChatMessage[],
     streamId?: string,
+    reasoningEffort?: string,
   ) =>
     ipcRenderer.invoke(
       'ai:chat',
       modelId,
       cloneForIpc(messages),
       streamId,
+      reasoningEffort,
     ) as Promise<import('../../src/types/axecoder').AiChatResult>,
   onAiStream: (callback: (payload: import('../../src/types/axecoder').AiStreamPayload) => void) => {
     const listener = (_: unknown, payload: import('../../src/types/axecoder').AiStreamPayload) =>
@@ -330,6 +388,7 @@ contextBridge.exposeInMainWorld('axecoder', {
     chatMode?: import('../../src/types/axecoder').ChatModeId,
     assigneeUserId?: string,
     roleWorkflowInvoke?: boolean,
+    reasoningEffort?: string,
   ) =>
     ipcRenderer.invoke(
       'agent:send',
@@ -339,6 +398,7 @@ contextBridge.exposeInMainWorld('axecoder', {
       chatMode,
       cloneForIpc(assigneeUserId),
       roleWorkflowInvoke === true,
+      reasoningEffort,
     ) as Promise<import('../../src/types/axecoder').AgentSendResult>,
   agentStop: (sessionId: string) =>
     ipcRenderer.invoke('agent:stop', sessionId) as Promise<
@@ -358,8 +418,8 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('agent:hooksHelp') as Promise<
       { ok: true; text: string } | { ok: false; error: string }
     >,
-  agentListMcp: () =>
-    ipcRenderer.invoke('agent:listMcp') as Promise<
+  agentListMcp: (projectRoot?: string) =>
+    ipcRenderer.invoke('agent:listMcp', projectRoot ? cloneForIpc(projectRoot) : undefined) as Promise<
       { ok: true; text: string } | { ok: false; error: string }
     >,
   agentListSkills: (projectRoot: string) =>
@@ -479,6 +539,15 @@ contextBridge.exposeInMainWorld('axecoder', {
         startedAt: number
       }[]
     }>,
+  agentResolveBackgroundTasks: (projectRoot: string, taskIds: string[]) =>
+    ipcRenderer.invoke(
+      'agent:resolveBackgroundTasks',
+      cloneForIpc(projectRoot),
+      cloneForIpc(taskIds),
+    ) as Promise<
+      | { ok: true; tasks: import('../../src/types/axecoder').BackgroundTaskSnapshot[] }
+      | { ok: false; error: string }
+    >,
   agentReadMemory: () =>
     ipcRenderer.invoke('agent:readMemory') as Promise<
       { ok: true; path: string; text: string } | { ok: false; error: string }
@@ -587,6 +656,33 @@ contextBridge.exposeInMainWorld('axecoder', {
   deleteChatSession: (projectRoot: string, sessionId: string) =>
     ipcRenderer.invoke('chat:deleteSession', projectRoot, sessionId) as Promise<
       { ok: true } | { ok: false; error: string }
+    >,
+  chatBranchTree: (projectRoot: string, currentId?: string) =>
+    ipcRenderer.invoke('chat:branchTree', cloneForIpc(projectRoot), currentId) as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
+  chatForkBranch: (projectRoot: string, sourceSessionId: string, args?: string) =>
+    ipcRenderer.invoke(
+      'chat:forkBranch',
+      cloneForIpc(projectRoot),
+      sourceSessionId,
+      args ?? '',
+    ) as Promise<
+      | { ok: true; session: import('../../src/types/axecoder').ChatSession }
+      | { ok: false; error: string }
+    >,
+  chatSwitchBranch: (projectRoot: string, ref: string, currentId?: string) =>
+    ipcRenderer.invoke('chat:switchBranch', cloneForIpc(projectRoot), ref, currentId) as Promise<
+      | {
+          ok: true
+          session: import('../../src/types/axecoder').ChatSession
+          tree: string
+        }
+      | { ok: false; error: string }
+    >,
+  agentProjectMemory: (projectRoot: string) =>
+    ipcRenderer.invoke('agent:projectMemory', cloneForIpc(projectRoot)) as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
     >,
   getWorkshopSessions: (projectRoot: string) =>
     ipcRenderer.invoke('workshop:getSessions', projectRoot) as Promise<{

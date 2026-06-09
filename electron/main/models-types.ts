@@ -59,7 +59,13 @@ export type AppConfig = {
   agentFeatureWorkflow?: boolean
   /** default | acceptEdits | bypassPermissions */
   agentPermissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions'
+  /** 全局 allow 规则，如 Read、Bash(go test*) */
+  agentPermissionAllowRules?: string[]
+  agentPermissionAskRules?: string[]
+  agentPermissionDenyRules?: string[]
+  /** @deprecated 迁移为 agentPermissionAllowRules */
   agentAllowedTools?: string[]
+  /** @deprecated 迁移为 agentPermissionDenyRules */
   agentDisallowedTools?: string[]
   /** 上下文字符阈值，超过则自动 compact */
   agentContextCompactThreshold?: number
@@ -67,6 +73,10 @@ export type AppConfig = {
   agentFrcKeepToolMessages?: number
   agentTokenBudget?: number
   agentProactiveEnabled?: boolean
+  /** off | on：复杂任务自动进入 plan mode（对齐 Reasonix auto_plan） */
+  agentAutoPlan?: 'off' | 'on'
+  /** 分类用模型条目 id；空则用当前聊天模型的 fast 档 */
+  agentAutoPlanClassifierModelId?: string
   agentHooksEnabled?: boolean
   /** 为 false 时主/子任务均使用 activeModelId */
   agentModelTierRoutingEnabled?: boolean
@@ -90,8 +100,18 @@ export type AppConfig = {
   gitForgeWebBase?: string
   /** GitHub PAT 或 Gitee access token（存本地 config，慎用） */
   gitForgeAccessToken?: string
-  /** AI 请求遇 524 时的最大重试次数（不含首次请求） */
+  /** AI 请求遇 524 / 429 限流时的最大重试次数（不含首次请求） */
   aiRequestMaxRetries?: number
+  /** 429 限流重试前等待秒数（默认 60，范围 5–300；优先使用 Retry-After） */
+  aiRateLimitRetryDelaySec?: number
+  /** Agent loop guard（防呆）：拦截重复失败与重复写操作 */
+  agentLoopGuardEnabled?: boolean
+  /** 同一错误连续失败多少次后注入 [loop guard]（默认 3） */
+  agentLoopGuardStormThreshold?: number
+  /** 写操作同参成功多少次后 block 下一次（默认 2，即第 3 次拦） */
+  agentLoopGuardRepeatSuccessThreshold?: number
+  /** 每轮用户消息内 model↔tool 循环上限；0 = 不限制 */
+  agentMaxToolRounds?: number
 }
 
 export type AiChatMessage = {
