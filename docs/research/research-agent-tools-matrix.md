@@ -1,6 +1,6 @@
 # Agent 工具与特性 — 跨项目对照矩阵
 
-- **日期：** 2026-06-10（ReadLints/FixLints、WebRun、跨平台沙箱、McpAuth/OAuth、Provider 抽象同步）
+- **日期：** 2026-06-10（ShellStdin/Bash.stdin、TaskStop 取消后台 Shell、ReadLints/FixLints、WebRun、跨平台沙箱、McpAuth/OAuth、Provider 抽象同步）
 - **纵轴：** 能力项（工具 +  harness 特性）
 - **横轴：** Cursor · DeepSeek-TUI · Claude Code · OpenCode · Reasonix · **AxeCoder（本系统）**
 - **单元格：** `已实现` · `部分实现` · `未实现` · `—`（非该产品形态 / 不适用）
@@ -57,8 +57,8 @@
 |------|--------|--------------|-------------|----------|----------|----------|
 | 执行 Shell / Bash | 已实现 `Shell` | 已实现 `exec_shell` | 已实现 `Bash` | 已实现 `bash` | 已实现 `bash` | 已实现 `Bash` |
 | 后台 Shell + 等待 | 已实现 `Await` | 已实现 `exec_shell_wait` 等 | 已实现 | 部分 BackgroundJob | 已实现 `wait` / `bash_output` | 部分 `run_in_background`+`TaskOutput` |
-| Shell 交互 stdin | 部分 | 已实现 `exec_shell_interact` | 部分 | 未实现 | 未实现 | 未实现 |
-| 取消 Shell | 部分 | 已实现 shell cancel | 部分 | 未实现 | 已实现 `kill_shell` | 部分 stop |
+| Shell 交互 stdin | 部分 `WRITE_SHELL_STDIN` | 已实现 `exec_shell_interact` | 部分 | 未实现 | 未实现 | 已实现 `ShellStdin`+Bash.stdin |
+| 取消 Shell | 部分 | 已实现 shell cancel | 部分 | 未实现 | 已实现 `kill_shell` | 已实现 `TaskStop`（后台 Bash；前台同步不可取消） |
 | PowerShell 专工具 | 未实现 | 未实现 | 部分 feature | 未实现 | 部分 Windows bash | 未实现 |
 | OS 级文件沙箱 | — | 已实现 Seatbelt/bwrap | 部分 | 未实现 | 已实现 | 已实现 macOS Seatbelt + Linux bwrap（Windows 无 FS 沙箱） |
 | Exec 命令策略 execpolicy | 未实现 | 已实现 | 部分 permissions | 部分 permission rules | 部分 | 已实现 |
@@ -236,7 +236,7 @@
 | **Claude Code** | ~32 | ~14 | ~19 |
 | **OpenCode** | ~22 | ~10 | ~27 |
 | **Reasonix** | ~28 | ~14 | ~22 |
-| **AxeCoder** | ~33 | ~20 | ~13 |
+| **AxeCoder** | ~35 | ~18 | ~12 |
 
 > 计数为人工估算，用于排期优先级；不以「工具个数」精确对齐 protobuf enum。
 
@@ -244,7 +244,7 @@
 
 ## 17. AxeCoder 优先补齐（相对 Cursor playbook）
 
-**近期已闭合：** SwitchMode · MCP 运行时 · `McpAuth`（内置插件 OAuth）· Provider 抽象（Ollama/Anthropic/OpenAI/Codex）· **ReadLints / FixLints** · **WebRun**（Playwright）· **跨平台 OS 沙箱**（macOS+Linux）
+**近期已闭合：** SwitchMode · MCP 运行时 · `McpAuth`（内置插件 OAuth）· Provider 抽象（Ollama/Anthropic/OpenAI/Codex）· **ReadLints / FixLints** · **WebRun**（Playwright）· **跨平台 OS 沙箱**（macOS+Linux）· **ShellStdin** + Bash.stdin · **TaskStop** 取消后台 Shell
 
 1. **create_plan** + Plan Build UI  
 2. **SemanticSearch** 向量语义搜索（CodeGraph 已覆盖结构搜索）  
@@ -253,5 +253,6 @@
 5. **mcp.json 通用 OAuth**（非内置插件）  
 6. **StrReplace / Shell / FetchMcpResource** 别名兼容 Cursor  
 7. **Await** 独立工具名（当前 `TaskOutput`+`run_in_background` 替代）  
+8. **前台同步 Bash 取消**（abort / 进程注册表；后台已由 TaskStop 覆盖）  
 
 详见 [research-cursor-agent-tools.md §10.6](./research-cursor-agent-tools.md)。
