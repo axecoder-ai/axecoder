@@ -26,6 +26,8 @@ export type AgentToolName =
   | 'SwitchMode'
   | 'Skill'
   | 'DiscoverSkills'
+  | 'SlashCommand'
+  | 'DiscoverCommands'
   | 'CallMcpTool'
   | 'McpAuth'
   | 'ListMcpResources'
@@ -56,6 +58,8 @@ export type SubagentType =
   | 'shell'
   | 'cursor-guide'
   | 'ci-investigator'
+  | 'bugbot'
+  | 'security-review'
   | 'best-of-n-runner'
   | 'git-commit'
   | 'docs-researcher'
@@ -194,6 +198,8 @@ export const EXTENDED_AGENT_TOOL_NAMES: AgentToolName[] = [
   'SwitchMode',
   'Skill',
   'DiscoverSkills',
+  'SlashCommand',
+  'DiscoverCommands',
   'CallMcpTool',
   'McpAuth',
   'ListMcpResources',

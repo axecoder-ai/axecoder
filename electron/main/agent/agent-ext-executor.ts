@@ -12,6 +12,7 @@ import {
   type AgentTaskItem,
 } from './agent-todo-store'
 import { discoverSkills, findSkillByName, readSkillContent } from './agent-skills'
+import { discoverSlashCommands, runSlashCommandForAgent } from './agent-slash-commands'
 import { authenticateMcpServer } from './agent-mcp-auth'
 import { callMcpTool, listMcpResources, readMcpResource } from './agent-mcp'
 import { fetchUrl, webSearch } from './agent-web'
@@ -238,6 +239,25 @@ export const executeExtendedAgentTool = async (
   if (name === 'DiscoverSkills') {
     const skills = await discoverSkills(ctx.projectRoot)
     return immediate(name, 'DiscoverSkills', JSON.stringify({ skills }, null, 2), true)
+  }
+
+  if (name === 'DiscoverCommands') {
+    const commands = await discoverSlashCommands(ctx.projectRoot)
+    return immediate(name, 'DiscoverCommands', JSON.stringify({ commands }, null, 2), true)
+  }
+
+  if (name === 'SlashCommand') {
+    const command = str(args.command)
+    if (!command) return immediate(name, 'SlashCommand', 'Error: command is required', false)
+    const res = await runSlashCommandForAgent(ctx.projectRoot, command, str(args.args))
+    if (!res.ok) return immediate(name, 'SlashCommand', `Error: ${res.error}`, false)
+    const header =
+      res.kind === 'ui'
+        ? `UI slash /${res.name}`
+        : res.kind === 'skill'
+          ? `Skill slash /${res.name} (${res.path})`
+          : `Slash /${res.name} (${res.path})`
+    return immediate(name, header, `${header}\n\n---\n\n${res.text}`, true)
   }
 
   if (name === 'CallMcpTool') {
@@ -501,6 +521,7 @@ export const getSessionActiveTools = (
           'SwitchMode',
           'ToolSearch',
           'DiscoverSkills',
+          'DiscoverCommands',
           'CodeGraphExplore',
           'CodeGraphSearch',
           'CodeGraphNode',

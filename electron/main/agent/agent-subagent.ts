@@ -31,6 +31,7 @@ import {
   loadSubagentRecord,
   saveSubagentRecord,
 } from './agent-subagent-store'
+import { buildReviewSubagentUserContent, isReviewSubagentType } from './agent-review-diff'
 import type { AiChatImagePart } from '../models-types'
 
 const DEFAULT_MAX_SUB_TURNS = 6
@@ -158,9 +159,13 @@ export const runSubAgentTask = async (
     options?.fileAttachments?.length ?
       `\n\n<file_attachments>\n${options.fileAttachments.join('\n')}\n</file_attachments>`
     : ''
+  let userPromptBody = prompt
+  if (isReviewSubagentType(subagentType)) {
+    userPromptBody = await buildReviewSubagentUserContent(projectRoot, prompt, subagentType)
+  }
   messages.push({
     role: 'user',
-    content: prompt + attachmentNote,
+    content: userPromptBody + attachmentNote,
     ...(options?.images?.length ? { images: options.images } : {}),
   })
 

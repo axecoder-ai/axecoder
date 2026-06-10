@@ -19,6 +19,7 @@ const READ_ONLY_TOOLS = new Set<AgentToolName>([
   'WebFetch',
   'WebSearch',
   'DiscoverSkills',
+  'DiscoverCommands',
   'TaskGet',
   'TaskList',
   'ListMcpResources',

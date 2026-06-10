@@ -23,7 +23,7 @@ export const resolveModelIdForTask = async (kind: ModelTaskKind): Promise<string
 /** Agent 工具子类型 → 档位 */
 export const modelTaskKindForSubagentType = (subagentType: string): ModelTaskKind => {
   const t = subagentType.trim()
-  if (t === 'explore' || t === 'plan') return 'subagent'
+  if (t === 'explore' || t === 'plan' || t === 'bugbot' || t === 'security-review') return 'subagent'
   return 'main'
 }
 

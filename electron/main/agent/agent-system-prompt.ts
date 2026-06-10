@@ -165,7 +165,8 @@ export const getAgentDelegationSection = (
     ? `For simple, directed codebase searches use ${searchTools} directly. For broader exploration or when you expect more than ${EXPLORE_AGENT_MIN_QUERIES} search/read steps, use the Task tool with subagent_type "explore" instead of many repeated searches yourself.`
     : `For broad codebase exploration, use the Task tool with subagent_type "explore".`
   return `# Sub-agents
-Use the Task tool to delegate isolated subtasks. Avoid duplicating work that sub-agents already did — if you delegate research to an explore sub-agent, do not run the same searches yourself. ${exploreLine}`
+Use the Task tool to delegate isolated subtasks. Avoid duplicating work that sub-agents already did — if you delegate research to an explore sub-agent, do not run the same searches yourself. ${exploreLine}
+For local code or security review of git changes, use Task with subagent_type "bugbot" or "security-review" (readonly: true). Use the Cursor review prompt shape (Full Repository Path, Diff: branch changes|uncommitted changes); the harness precomputes the diff.`
 }
 
 /** Claude Code `getFunctionResultClearingSection`（简化，无 GrowthBook） */

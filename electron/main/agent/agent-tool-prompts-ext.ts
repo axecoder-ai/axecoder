@@ -124,6 +124,21 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
     skill: { type: 'string' },
   }, ['skill']),
   obj('DiscoverSkills', 'List available skills in project and user .cursor/skills.', {}, []),
+  obj(
+    'DiscoverCommands',
+    'List slash commands: built-in workflow playbooks, custom ~/.cursor/commands, project commands, skills-as-slash, and UI-only chat commands.',
+    {},
+    [],
+  ),
+  obj(
+    'SlashCommand',
+    'Load and follow a slash command playbook by name (without leading /). Returns workflow/custom markdown for playbook commands; UI-only commands return a hint to use chat or Agent tools.',
+    {
+      command: { type: 'string', description: 'Slash command name, e.g. research-codebase or rppit' },
+      args: { type: 'string', description: 'Optional user notes appended to the playbook' },
+    },
+    ['command'],
+  ),
   obj('CallMcpTool', 'Invoke an MCP tool on a configured server.', {
     server: { type: 'string' },
     toolName: { type: 'string' },

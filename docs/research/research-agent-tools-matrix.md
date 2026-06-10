@@ -96,7 +96,7 @@
 |------|--------|--------------|-------------|----------|----------|----------|
 | Task 派生子代理 | 已实现 | 已实现 subagent 族 | 已实现 `Agent` | 已实现 `task` | 已实现 `task` | 已实现 `Task` |
 | explore / shell 等类型 | 已实现多种 | 部分 | 已实现 | 部分 agent 配置 | 部分 | 已实现 CC 对齐集 |
-| bugbot / security-review | 已实现 | 部分 `review` | 未实现 | 未实现 | 未实现 | 未实现 |
+| bugbot / security-review | 已实现 | 部分 `review` | 未实现 | 未实现 | 未实现 | 已实现 |
 | TaskOutput / 读后台输出 | 部分 Await | 部分 | 已实现 | 部分 | 部分 `bash_output` | 已实现 |
 | TaskStop | 部分 | 部分 | 已实现 | 部分 | 已实现 `kill_shell` | 已实现 |
 | 子代理不可递归 | 已实现 | 已实现 | 已实现 | 部分 | 部分 | 已实现 |
@@ -137,7 +137,7 @@
 |------|--------|--------------|-------------|----------|----------|----------|
 | Skill 加载 | 已实现 | 已实现 `load_skill` | 已实现 | 已实现 `skill` | 已实现 `run_skill` | 已实现 `Skill` |
 | DiscoverSkills | 已实现 | 部分 系统提示 | 部分 | 部分 skill 列表 | 部分 | 已实现 |
-| 斜杠命令工具化 | 未实现 | 未实现 | 已实现 commands | 部分 | 已实现 `slash_command` | 部分 builtin |
+| 斜杠命令工具化 | 未实现 | 未实现 | 已实现 commands | 部分 | 已实现 `slash_command` | 已实现 `SlashCommand`+`DiscoverCommands` |
 | Workflow 脚本工具 | 未实现 | 部分 automation | 部分 feature | 未实现 | 未实现 | 部分 stub |
 | Hooks 生命周期 | 未实现 | 已实现 hook_executor | 已实现 | 部分 plugin | 部分 | 已实现 `agent-hooks.ts` + `/hooks` |
 
@@ -249,7 +249,7 @@
 1. **create_plan** + Plan Build UI  
 2. **SemanticSearch** 向量语义搜索（CodeGraph 已覆盖结构搜索）  
 3. **WebSearch** 默认开启 / 多 provider（Serper 已接，仍 feature 门控）  
-4. **bugbot / security-review** 子代理  
+4. ~~**bugbot / security-review** 子代理~~（已实现，见 `docs/deliverables/bugbot-security-review/`）
 5. **mcp.json 通用 OAuth**（非内置插件）  
 6. **StrReplace / Shell / FetchMcpResource** 别名兼容 Cursor  
 7. **Await** 独立工具名（当前 `TaskOutput`+`run_in_background` 替代）  

@@ -153,7 +153,7 @@ When NOT to use:
 Parameters:
 - description: short 3–5 word label for UI/logging.
 - prompt: full instructions for the subagent.
-- subagent_type: built-in profile (explore read-only, shell for terminal-only, etc.).
+- subagent_type: built-in profile (explore read-only, shell for terminal-only, bugbot/security-review for diff review, etc.).
 - model: optional model id override.
 - resume: agent id to continue a prior subagent transcript.
 - readonly: force read-only tools even for generalPurpose.
