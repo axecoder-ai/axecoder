@@ -33,6 +33,8 @@ export type AgentToolName =
   | 'TaskStop'
   | 'ToolSearch'
   | 'LSP'
+  | 'ReadLints'
+  | 'FixLints'
   | 'CodeGraphExplore'
   | 'CodeGraphSearch'
   | 'CodeGraphNode'
@@ -197,6 +199,8 @@ export const EXTENDED_AGENT_TOOL_NAMES: AgentToolName[] = [
   'TaskStop',
   'ToolSearch',
   'LSP',
+  'ReadLints',
+  'FixLints',
   'CodeGraphExplore',
   'CodeGraphSearch',
   'CodeGraphNode',

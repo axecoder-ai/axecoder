@@ -3,6 +3,7 @@ import type {
   CallHierarchyIncomingCall,
   CallHierarchyItem,
   CallHierarchyOutgoingCall,
+  Diagnostic,
   DocumentSymbol,
   Hover,
   Location,
@@ -539,5 +540,35 @@ export function formatOutgoingCallsResult(
     }
   }
 
+  return lines.join('\n')
+}
+
+const diagnosticSeverityLabel = (severity: number | undefined): string => {
+  if (severity === 1) return 'error'
+  if (severity === 2) return 'warning'
+  if (severity === 3) return 'info'
+  if (severity === 4) return 'hint'
+  return 'diagnostic'
+}
+
+/**
+ * Formats LSP diagnostics for a single file (ReadLints output).
+ */
+export function formatDiagnosticsResult(
+  relPath: string,
+  items: Diagnostic[] | null | undefined,
+  _cwd?: string,
+): string {
+  if (!items?.length) {
+    return `${relPath}: No linter errors found.`
+  }
+  const lines = items.map((d) => {
+    const line = (d.range?.start?.line ?? 0) + 1
+    const col = (d.range?.start?.character ?? 0) + 1
+    const sev = diagnosticSeverityLabel(d.severity)
+    const code = d.code !== undefined && d.code !== null ? ` ${d.code}` : ''
+    const source = d.source ? ` (${d.source})` : ''
+    return `${relPath}:${line}:${col} ${sev}${code}: ${d.message}${source}`
+  })
   return lines.join('\n')
 }

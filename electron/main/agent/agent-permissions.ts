@@ -26,6 +26,7 @@ const READ_ONLY_TOOLS = new Set<AgentToolName>([
   'TaskOutput',
   'ToolSearch',
   'LSP',
+  'ReadLints',
 ])
 
 export const normalizePermissionMode = (cfg: AppConfig): AgentPermissionMode => {

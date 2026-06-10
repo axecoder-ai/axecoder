@@ -139,6 +139,31 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
     line: { type: 'number', description: 'The line number (1-based, as shown in editors)' },
     character: { type: 'number', description: 'The character offset (1-based, as shown in editors)' },
   }, ['operation', 'filePath', 'line', 'character']),
+  obj(
+    'ReadLints',
+    'Read linter/IDE diagnostics for project files via LSP. Use after edits to verify no type or lint errors. Requires agentFeatureLsp and LSP servers in lsp.json.',
+    {
+      paths: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Optional file paths relative to project root. Omit to scan up to 30 common source files.',
+      },
+    },
+    [],
+  ),
+  obj(
+    'FixLints',
+    'Auto-fix linter/IDE diagnostics via LSP codeAction (quickfix / fixAll). Applies WorkspaceEdit then re-runs ReadLints. Requires agentFeatureLsp. Not available in plan mode.',
+    {
+      paths: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Optional file paths to fix. Omit to scan up to 30 common source files.',
+      },
+    },
+    [],
+  ),
   obj('CodeGraphExplore', CODEGRAPH_EXPLORE_DESCRIPTION, {
     query: { type: 'string', description: 'Symbol names, file names, or terms to explore' },
     maxFiles: { type: 'number', description: 'Max files to include source from (default 12)' },

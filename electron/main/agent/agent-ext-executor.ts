@@ -70,7 +70,7 @@ export const executeExtendedAgentTool = async (
   const sessionId = ctx.sessionId ?? ''
   const session = sessionId ? getSession(sessionId) : undefined
 
-  if (ctx.planMode && ['Edit', 'Write', 'Delete', 'Move', 'Bash'].includes(name)) {
+  if (ctx.planMode && ['Edit', 'Write', 'Delete', 'Move', 'Bash', 'FixLints'].includes(name)) {
     return immediate(name, name, 'Error: Plan mode is active. Exit plan mode before mutating files or running shell commands.', false)
   }
 
@@ -319,6 +319,44 @@ export const executeExtendedAgentTool = async (
     const { executeAgentLsp } = await import('./agent-lsp')
     const res = await executeAgentLsp(ctx.projectRoot, args as Record<string, unknown>)
     return immediate(name, 'LSP', res.text, res.ok)
+  }
+
+  if (name === 'ReadLints') {
+    const cfg = await getConfig()
+    if (!cfg.agentFeatureLsp) {
+      return immediate(
+        name,
+        'ReadLints',
+        'Error: ReadLints disabled. Enable agentFeatureLsp in AxeCoder Settings.',
+        false,
+      )
+    }
+    const { executeAgentReadLints } = await import('./agent-read-lints')
+    const res = await executeAgentReadLints(ctx.projectRoot, args as Record<string, unknown>)
+    const summary =
+      Array.isArray(args.paths) && args.paths.length
+        ? `ReadLints ${(args.paths as string[]).length} file(s)`
+        : 'ReadLints'
+    return immediate(name, summary, res.text, res.ok)
+  }
+
+  if (name === 'FixLints') {
+    const cfg = await getConfig()
+    if (!cfg.agentFeatureLsp) {
+      return immediate(
+        name,
+        'FixLints',
+        'Error: FixLints disabled. Enable agentFeatureLsp in AxeCoder Settings.',
+        false,
+      )
+    }
+    const { executeAgentFixLints } = await import('./agent-fix-lints')
+    const res = await executeAgentFixLints(ctx.projectRoot, args as Record<string, unknown>)
+    const summary =
+      Array.isArray(args.paths) && args.paths.length
+        ? `FixLints ${(args.paths as string[]).length} file(s)`
+        : 'FixLints'
+    return immediate(name, summary, res.text, res.ok)
   }
 
   if (isCodeGraphAgentTool(name)) {
