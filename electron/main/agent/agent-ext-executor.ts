@@ -17,7 +17,7 @@ import { callMcpTool, listMcpResources, readMcpResource } from './agent-mcp'
 import { fetchUrl, webSearch } from './agent-web'
 import { runWebRun } from './agent-browser-playwright'
 import { editNotebookCell } from './agent-notebook'
-import { formatShellTaskOutput, getShellTask } from './agent-bash-tasks'
+import { formatShellTaskOutput, getShellTask, stopShellTask, writeShellStdin } from './agent-bash-tasks'
 import {
   createBackgroundRunId,
   formatTaskOutput,
@@ -282,10 +282,32 @@ export const executeExtendedAgentTool = async (
     return immediate(name, 'TaskOutput', 'Error: task not found', false)
   }
 
+  if (name === 'ShellStdin') {
+    const taskId = str(args.task_id)
+    const input = typeof args.input === 'string' ? args.input : ''
+    if (!taskId) return immediate(name, 'ShellStdin', 'Error: task_id is required', false)
+    if (!input) return immediate(name, 'ShellStdin', 'Error: input is required', false)
+    const res = writeShellStdin(taskId, input, { closeStdin: args.close_stdin === true })
+    if (!res.ok) return immediate(name, 'ShellStdin', `Error: ${res.error}`, false)
+    const closeNote = args.close_stdin === true ? ' (stdin closed)' : ''
+    return immediate(name, 'ShellStdin', `Wrote ${input.length} byte(s) to task ${taskId}${closeNote}`, true)
+  }
+
   if (name === 'TaskStop') {
-    const run = stopBackgroundRun(str(args.task_id))
-    if (!run) return immediate(name, 'TaskStop', 'Error: task not found', false)
-    return immediate(name, 'TaskStop', `Stopped task ${run.id}`, true)
+    const taskId = str(args.task_id)
+    const subRun = stopBackgroundRun(taskId)
+    if (subRun) return immediate(name, 'TaskStop', `Stopped task ${subRun.id}`, true)
+    const wasRunning = getShellTask(taskId)?.status === 'running'
+    const shellRun = stopShellTask(taskId)
+    if (shellRun) {
+      return immediate(
+        name,
+        'TaskStop',
+        wasRunning ? `Stopped shell task ${shellRun.id}` : `Shell task ${shellRun.id} (${shellRun.status})`,
+        true,
+      )
+    }
+    return immediate(name, 'TaskStop', 'Error: task not found', false)
   }
 
   if (name === 'ToolSearch') {

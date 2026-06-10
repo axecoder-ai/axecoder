@@ -144,7 +144,20 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
     task_id: { type: 'string' },
     block: { type: 'boolean' },
   }, ['task_id']),
-  obj('TaskStop', 'Stop a running background sub-agent task.', {
+  obj(
+    'ShellStdin',
+    'Write stdin to a running background shell task (from Bash with run_in_background). Use TaskOutput to read prompts first, then ShellStdin to respond. Set close_stdin:true to send EOF.',
+    {
+      task_id: { type: 'string', description: 'Background shell task id from Bash' },
+      input: { type: 'string', description: 'Bytes/text to write to the process stdin' },
+      close_stdin: {
+        type: 'boolean',
+        description: 'When true, close stdin after writing (EOF). Default false.',
+      },
+    },
+    ['task_id', 'input'],
+  ),
+  obj('TaskStop', 'Stop a running background sub-agent task or background Bash shell task by task_id.', {
     task_id: { type: 'string' },
   }, ['task_id']),
   obj('ToolSearch', 'Search available tools by keyword when the tool pool is large.', {

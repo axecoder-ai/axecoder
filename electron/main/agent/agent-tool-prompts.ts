@@ -127,7 +127,8 @@ Usage:
 - command (required): a single shell command string. Quote paths that contain spaces.
 - timeout: optional timeout in milliseconds (default 120000, max 600000). Alias: timeout_ms.
 - description: optional short label for the UI (3–10 words).
-- run_in_background: when true, start the command asynchronously after approval and return a task id immediately. Do not append \`&\` to the command. Poll output with TaskOutput using task_id.
+- run_in_background: when true, start the command asynchronously after approval and return a task id immediately. Do not append \`&\` to the command. Poll output with TaskOutput using task_id. For multi-step interactive prompts, use ShellStdin with the same task_id.
+- stdin: optional string piped to the command stdin on start (single-shot). After write, stdin is closed. For ongoing interaction use run_in_background + ShellStdin + TaskOutput.
 - Foreground calls block until the command finishes; stdout/stderr are returned (large output truncated).
 - Some commands require user approval before execution.
 
@@ -340,6 +341,11 @@ export const buildCoreAgentTools = (): AgentToolDef[] => [
           type: 'boolean',
           description:
             'If true, run asynchronously after approval; use TaskOutput with the returned task_id to read output.',
+        },
+        stdin: {
+          type: 'string',
+          description:
+            'Optional stdin to pipe when the command starts (single-shot). Use ShellStdin for multi-step interactive input on background tasks.',
         },
       },
       required: ['command'],

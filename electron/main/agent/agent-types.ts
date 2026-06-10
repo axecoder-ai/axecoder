@@ -31,6 +31,7 @@ export type AgentToolName =
   | 'ListMcpResources'
   | 'ReadMcpResource'
   | 'TaskOutput'
+  | 'ShellStdin'
   | 'TaskStop'
   | 'ToolSearch'
   | 'LSP'
@@ -198,6 +199,7 @@ export const EXTENDED_AGENT_TOOL_NAMES: AgentToolName[] = [
   'ListMcpResources',
   'ReadMcpResource',
   'TaskOutput',
+  'ShellStdin',
   'TaskStop',
   'ToolSearch',
   'LSP',

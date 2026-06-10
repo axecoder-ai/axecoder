@@ -13,6 +13,7 @@ import { applyStringReplace, patchToUnifiedDiff } from './edit-utils'
 import {
   formatBackgroundBashStarted,
   formatBashToolContent,
+  parseBashStdin,
   parseBashTimeoutMs,
   runAgentBash,
 } from './agent-bash'
@@ -389,6 +390,7 @@ export const executeAgentTool = async (
     const timeoutMs = parseBashTimeoutMs(args)
     const description = str(args.description) || undefined
     const runInBackground = args.run_in_background === true
+    const stdinInput = parseBashStdin(args)
     const summary = description?.slice(0, 80) || command.slice(0, 80) || 'Bash'
     const id = nextPendingId()
     return {
@@ -411,6 +413,8 @@ export const executeAgentTool = async (
               timeoutMs,
               description,
               sandboxEnabled: sandboxOn,
+              sessionId: ctx.sessionId,
+              ...(stdinInput !== undefined ? { stdin: stdinInput } : {}),
             })
             if (!bg.ok) return { ok: false as const, error: bg.error }
             return {
@@ -419,7 +423,7 @@ export const executeAgentTool = async (
               logOk: true,
             }
           }
-          const res = await runAgentBash(ctx.projectRoot, command, timeoutMs, bashEnv)
+          const res = await runAgentBash(ctx.projectRoot, command, timeoutMs, bashEnv, stdinInput)
           if (!res.ok) return { ok: false as const, error: res.error }
           return {
             ok: true as const,

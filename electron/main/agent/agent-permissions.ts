@@ -24,6 +24,7 @@ const READ_ONLY_TOOLS = new Set<AgentToolName>([
   'ListMcpResources',
   'ReadMcpResource',
   'TaskOutput',
+  'ShellStdin',
   'ToolSearch',
   'LSP',
   'ReadLints',

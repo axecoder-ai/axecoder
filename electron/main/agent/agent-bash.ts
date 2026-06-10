@@ -5,8 +5,19 @@ import { buildShellSpawnSpec } from './agent-sandbox'
 
 export const DEFAULT_BASH_TIMEOUT_MS = 120_000
 export const MAX_BASH_TIMEOUT_MS = 600_000
+export const MAX_BASH_STDIN_CHARS = 65_536
 const DEFAULT_TIMEOUT_MS = DEFAULT_BASH_TIMEOUT_MS
 const MAX_OUTPUT_CHARS = 200_000
+
+/** Bash 可选 stdin 参数（一次性管道输入） */
+export const parseBashStdin = (args: Record<string, unknown>): string | undefined => {
+  const raw = args.stdin
+  if (typeof raw !== 'string' || !raw.length) return undefined
+  if (raw.length > MAX_BASH_STDIN_CHARS) {
+    return raw.slice(0, MAX_BASH_STDIN_CHARS)
+  }
+  return raw
+}
 
 /** CC 参数 `timeout`（毫秒）；兼容旧 `timeout_ms` */
 export const parseBashTimeoutMs = (args: Record<string, unknown>): number | undefined => {
@@ -24,6 +35,7 @@ export const formatBackgroundBashStarted = (taskId: string, description?: string
   const lines = ['Background shell task started.', `Task id: ${taskId}`]
   if (description?.trim()) lines.push(`Description: ${description.trim()}`)
   lines.push('Use TaskOutput with task_id to read output while running or after completion.')
+  lines.push('For interactive prompts, use ShellStdin with the same task_id to write stdin.')
   return lines.join('\n')
 }
 
@@ -46,6 +58,7 @@ export const runAgentBash = async (
   command: string,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   envOverride?: NodeJS.ProcessEnv,
+  stdinInput?: string,
 ): Promise<
   | { ok: true; stdout: string; stderr: string; exitCode: number | null }
   | { ok: false; error: string }
@@ -72,12 +85,19 @@ export const runAgentBash = async (
 
   const spawnSpec = buildShellSpawnSpec(projectRoot, cmd, { enabled: sandboxOn })
 
+  const useStdinPipe = stdinInput !== undefined
+
   return new Promise((resolve) => {
     const proc = spawn(spawnSpec.program, spawnSpec.args, {
       cwd: projectRoot,
       env: envOverride ? { ...process.env, ...envOverride } : process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [useStdinPipe ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     })
+
+    if (useStdinPipe && proc.stdin) {
+      proc.stdin.write(stdinInput!)
+      proc.stdin.end()
+    }
 
     let stdout = ''
     let stderr = ''

@@ -1,6 +1,6 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { getConfig } from '../config-store'
-import { isDangerousGitCommand, trimBashOutput } from './agent-bash'
+import { isDangerousGitCommand, MAX_BASH_STDIN_CHARS, trimBashOutput } from './agent-bash'
 import { evaluateExecPolicy } from './agent-execpolicy'
 import { buildShellSpawnSpec } from './agent-sandbox'
 
@@ -8,20 +8,71 @@ export type BackgroundShellRun = {
   id: string
   description: string
   command: string
-  status: 'running' | 'completed' | 'failed'
+  status: 'running' | 'completed' | 'failed' | 'stopped'
   stdout: string
   stderr: string
   exitCode: number | null
   error?: string
   startedAt: number
+  stdinOpen: boolean
+  sessionId?: string
 }
 
 const runs = new Map<string, BackgroundShellRun>()
+const procById = new Map<string, ChildProcess>()
 let runSeq = 0
 
 export const createShellTaskId = () => `shell-${Date.now()}-${runSeq++}`
 
+export const resetShellTasksForTests = () => {
+  runs.clear()
+  procById.clear()
+  runSeq = 0
+}
+
 export const getShellTask = (id: string) => runs.get(id)
+
+export const stopShellTask = (id: string): BackgroundShellRun | null => {
+  const run = runs.get(id)
+  if (!run) return null
+  if (run.status !== 'running') return run
+  run.status = 'stopped'
+  run.error = 'Stopped by TaskStop.'
+  const proc = procById.get(id)
+  if (proc && !proc.killed) proc.kill('SIGTERM')
+  return run
+}
+
+export const stopShellTasksForSession = (sessionId: string) => {
+  const sid = sessionId.trim()
+  if (!sid) return
+  for (const run of runs.values()) {
+    if (run.sessionId === sid && run.status === 'running') stopShellTask(run.id)
+  }
+}
+
+const clampStdin = (input: string) =>
+  input.length > MAX_BASH_STDIN_CHARS ? input.slice(0, MAX_BASH_STDIN_CHARS) : input
+
+export const writeShellStdin = (
+  taskId: string,
+  input: string,
+  opts?: { closeStdin?: boolean },
+): { ok: true } | { ok: false; error: string } => {
+  const run = runs.get(taskId)
+  if (!run) return { ok: false, error: `Task not found: ${taskId}` }
+  if (run.status !== 'running') return { ok: false, error: `Task is not running: ${taskId}` }
+  if (!run.stdinOpen) return { ok: false, error: `Task stdin is closed: ${taskId}` }
+  const proc = procById.get(taskId)
+  if (!proc?.stdin) return { ok: false, error: 'Shell stdin not available' }
+
+  proc.stdin.write(clampStdin(input))
+  if (opts?.closeStdin) {
+    proc.stdin.end()
+    run.stdinOpen = false
+  }
+  return { ok: true }
+}
 
 export const formatShellTaskOutput = (run: BackgroundShellRun): string => {
   const lines = [
@@ -29,6 +80,7 @@ export const formatShellTaskOutput = (run: BackgroundShellRun): string => {
     `Status: ${run.status}`,
     `Description: ${run.description}`,
     `Command: ${run.command}`,
+    `Stdin open: ${run.stdinOpen}`,
   ]
   if (run.error) lines.push(`Error: ${run.error}`)
   lines.push(`Exit code: ${run.exitCode ?? 'null'}`)
@@ -42,7 +94,13 @@ export const formatShellTaskOutput = (run: BackgroundShellRun): string => {
 export const startBackgroundBash = async (
   projectRoot: string,
   command: string,
-  opts?: { timeoutMs?: number; description?: string; sandboxEnabled?: boolean },
+  opts?: {
+    timeoutMs?: number
+    description?: string
+    sandboxEnabled?: boolean
+    stdin?: string
+    sessionId?: string
+  },
 ): Promise<{ ok: true; taskId: string } | { ok: false; error: string }> => {
   const cmd = command.trim()
   if (!cmd) return { ok: false, error: 'command is required' }
@@ -68,6 +126,7 @@ export const startBackgroundBash = async (
 
   const timeoutMs = opts?.timeoutMs ?? 120_000
   const id = createShellTaskId()
+  const initialStdin = opts?.stdin
   const run: BackgroundShellRun = {
     id,
     description: opts?.description?.trim() || cmd.slice(0, 80),
@@ -77,6 +136,8 @@ export const startBackgroundBash = async (
     stderr: '',
     exitCode: null,
     startedAt: Date.now(),
+    stdinOpen: true,
+    ...(opts?.sessionId?.trim() ? { sessionId: opts.sessionId.trim() } : {}),
   }
   runs.set(id, run)
 
@@ -85,17 +146,27 @@ export const startBackgroundBash = async (
   const proc = spawn(spawnSpec.program, spawnSpec.args, {
     cwd: projectRoot,
     env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   })
+  procById.set(id, proc)
+
+  if (initialStdin !== undefined && proc.stdin) {
+    proc.stdin.write(clampStdin(initialStdin))
+    proc.stdin.end()
+    run.stdinOpen = false
+  }
 
   let settled = false
   const finishRunning = () => {
     run.stdout = trimBashOutput(run.stdout)
     run.stderr = trimBashOutput(run.stderr)
+    run.stdinOpen = false
+    procById.delete(id)
   }
 
   const timer = setTimeout(() => {
     if (settled) return
+    if (run.status === 'stopped') return
     proc.kill('SIGTERM')
     run.status = 'failed'
     run.error = `Command timed out after ${timeoutMs}ms`
@@ -123,7 +194,7 @@ export const startBackgroundBash = async (
     settled = true
     clearTimeout(timer)
     run.exitCode = code
-    run.status = code === 0 ? 'completed' : 'failed'
+    if (run.status !== 'stopped') run.status = code === 0 ? 'completed' : 'failed'
     finishRunning()
   })
 

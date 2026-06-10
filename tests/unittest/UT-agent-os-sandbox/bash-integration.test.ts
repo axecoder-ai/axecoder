@@ -1,15 +1,21 @@
 import { describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../../electron/main/config-store', () => ({
+  getConfig: vi.fn(async () => ({ agentOsSandboxEnabled: true })),
+}))
+
+vi.mock('../../../electron/main/agent/agent-execpolicy', () => ({
+  evaluateExecPolicy: () => ({ kind: 'deny', reason: 'execpolicy denied by test: rm -rf /' }),
+  loadExecPolicy: () => null,
+  parseExecPolicyToml: () => ({ rules: {} }),
+  defaultExecPolicyPath: () => '',
+  formatExecPolicyBlock: () => '',
+}))
+
+import { executeAgentTool } from '../../../electron/main/agent/tool-executor'
+
 describe('tool-executor execpolicy deny', () => {
   it('execpolicy deny 时立即返回而非 bash_pending', async () => {
-    vi.doMock('../../../electron/main/agent/agent-execpolicy', () => ({
-      evaluateExecPolicy: () => ({ kind: 'deny', reason: 'execpolicy denied by test: rm -rf /' }),
-      loadExecPolicy: () => null,
-      parseExecPolicyToml: () => ({ rules: {} }),
-      defaultExecPolicyPath: () => '',
-      formatExecPolicyBlock: () => '',
-    }))
-    const { executeAgentTool } = await import('../../../electron/main/agent/tool-executor')
     const ctx = { projectRoot: '/tmp', readCache: new Set<string>() }
     const run = await executeAgentTool(ctx, {
       id: 'tc-deny',
@@ -21,6 +27,5 @@ describe('tool-executor execpolicy deny', () => {
       expect(run.content).toContain('BLOCKED')
       expect(run.log.ok).toBe(false)
     }
-    vi.doUnmock('../../../electron/main/agent/agent-execpolicy')
   })
 })

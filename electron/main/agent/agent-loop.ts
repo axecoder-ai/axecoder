@@ -68,6 +68,7 @@ import {
   getAgentRunAbortSignal,
 } from './agent-run-abort'
 import { interruptBackgroundRun, listBackgroundRuns } from './agent-subagent-tasks'
+import { stopShellTasksForSession } from './agent-bash-tasks'
 import { refreshCustomOutputStylesCache } from './agent-output-styles-custom'
 import type { AgentToolName } from './agent-types'
 import {
@@ -334,6 +335,7 @@ export const stopAgentTurn = (sessionId: string): { ok: true } | { ok: false; er
   for (const run of listBackgroundRuns(sid)) {
     if (run.status === 'running') interruptBackgroundRun(run.id)
   }
+  stopShellTasksForSession(sid)
   return { ok: true }
 }
 
