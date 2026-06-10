@@ -73,6 +73,11 @@ export type AppSettings = {
   agentLoopGuardStormThreshold?: number
   agentLoopGuardRepeatSuccessThreshold?: number
   agentMaxToolRounds?: number
+  /** Serper web search (Settings → Agent) */
+  agentFeatureWebSearch?: boolean
+  agentWebSearchApiKey?: string
+  /** Playwright browser automation WebRun */
+  agentFeatureWebRun?: boolean
 }
 
 export type PickProfileAvatarResult =
@@ -116,6 +121,14 @@ export type ChatModeId =
   | 'multi-agent'
 
 export type ModelProvider = 'openai' | 'ollama' | 'anthropic' | 'codex'
+
+export type AiProviderCapabilities = {
+  requiresApiKey: boolean
+  supportsSseStream: boolean
+  defaultBaseUrl: string
+  displayName: string
+  missingApiKeyError?: string
+}
 
 export type ModelEntry = {
   id: string
@@ -375,6 +388,12 @@ export type AgentProgressPayload =
       sessionId: string
       kind: 'loop_guard'
       text: string
+    }
+  | {
+      sessionId: string
+      kind: 'chat_mode'
+      chatMode: ChatModeId
+      planMode: boolean
     }
   | {
       sessionId: string
@@ -839,6 +858,7 @@ export type AxeCoderFs = {
   toggleModel: (id: string, enabled: boolean) => Promise<ModelsMutationResult>
   setActiveModel: (id: string) => Promise<ModelsMutationResult>
   pingModel: (id: string) => Promise<ModelPingResult>
+  getProviderCapabilities: () => Promise<Record<ModelProvider, AiProviderCapabilities>>
   listMcpPlugins: (projectRoot?: string) => Promise<McpPluginsListResult>
   connectMcpPlugin: (id: string, projectRoot?: string) => Promise<McpPluginMutationResult>
   disconnectMcpPlugin: (id: string) => Promise<McpPluginMutationResult>

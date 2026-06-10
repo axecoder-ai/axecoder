@@ -1,0 +1,15 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm.
+
+> axecoder@0.6.0 test
+> vitest run tests/unittest/UT-agent-mcp-auth/agent-mcp-auth.test.ts
+
+
+ RUN  v3.2.4 /Users/cuiyunfeng/workspace/AxeCoder
+
+ ✓ tests/unittest/UT-agent-mcp-auth/agent-mcp-auth.test.ts (6 tests) 6ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  16:35:20
+   Duration  266ms (transform 41ms, setup 0ms, collect 51ms, tests 6ms, environment 0ms, prepare 49ms)
+

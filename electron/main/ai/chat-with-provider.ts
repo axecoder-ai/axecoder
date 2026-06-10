@@ -8,14 +8,11 @@ import {
 import { traceModelCall, type AiTraceSource } from '../ai-trace-store'
 
 export type AiTraceContext = { sessionId?: string; turn?: number }
-import { chatOpenAi, type OpenAiStreamDelta } from './providers/openai'
-import { chatCodex } from './providers/codex'
-import { chatOllama } from './providers/ollama'
-import { chatAnthropic } from './providers/anthropic'
+import type { OpenAiStreamDelta } from './providers/openai'
 import { normalizeAiChatResult, prepareMessagesForVisionModel } from './ai-vision-guard'
 import { estimateTokenUsage } from './parse-token-usage'
-import { reasoningEffortForApi, type ReasoningEffortLevel } from '../../../shared/reasoning-effort'
-import { providerRequiresApiKey } from '../models-types'
+import type { ReasoningEffortLevel } from '../../../shared/reasoning-effort'
+import { getProviderAdapter } from './provider-registry'
 
 const messageInputChars = (messages: AiChatMessage[]) =>
   messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0)
@@ -34,7 +31,7 @@ export const chatWithProvider = async (
   const prepared = prepareMessagesForVisionModel(model, messages)
   if (!prepared.ok) return prepared
   const wireMessages = prepared.messages
-  const apiName = (apiModelId?.trim() || model.modelId).trim()
+  const adapter = getProviderAdapter(model.provider)
   const metricsMeta = {
     modelId: model.id,
     modelName: model.name,
@@ -43,47 +40,31 @@ export const chatWithProvider = async (
   }
   const startedAt = Date.now()
   const callId = beginAiMetricsCall(metricsMeta)
-  const wrappedDelta = onDelta
-    ? (delta: OpenAiStreamDelta) => {
-        markAiMetricsFirstToken(callId)
-        onDelta(delta)
-      }
-    : undefined
+  const wrappedDelta =
+    onDelta && adapter.capabilities.supportsSseStream
+      ? (delta: OpenAiStreamDelta) => {
+          markAiMetricsFirstToken(callId)
+          onDelta(delta)
+        }
+      : undefined
   let result: AiChatResult
-  if (model.provider === 'openai' || model.provider === 'codex') {
-    if (providerRequiresApiKey(model.provider) && !apiKey.trim()) {
-      result = {
-        ok: false,
-        error:
-          model.provider === 'codex'
-            ? 'Codex (Responses API) requires an API Key'
-            : 'OpenAI-compatible API requires an API Key',
-      }
-    } else if (model.provider === 'codex') {
-      result = await chatCodex(
-        model.baseUrl,
-        apiName,
-        apiKey,
-        wireMessages,
-        wrappedDelta,
-        reasoningEffortForApi(reasoningEffort ?? 'auto'),
-      )
-    } else {
-      result = await chatOpenAi(
-        model.baseUrl,
-        apiName,
-        apiKey,
-        wireMessages,
-        wrappedDelta,
-        reasoningEffortForApi(reasoningEffort ?? 'auto'),
-      )
+  if (adapter.capabilities.requiresApiKey && !apiKey.trim()) {
+    result = {
+      ok: false,
+      error: adapter.capabilities.missingApiKeyError ?? 'API Key required',
     }
-  } else if (model.provider === 'ollama') {
-    result = await chatOllama(model.baseUrl, apiName, apiKey, wireMessages)
-    if (result.ok) markAiMetricsFirstToken(callId)
   } else {
-    result = await chatAnthropic(model.baseUrl, apiName, apiKey, wireMessages)
-    if (result.ok) markAiMetricsFirstToken(callId)
+    result = await adapter.chat({
+      model,
+      apiKey,
+      messages: wireMessages,
+      onDelta: wrappedDelta,
+      apiModelId,
+      reasoningEffort,
+    })
+    if (result.ok && !adapter.capabilities.supportsSseStream) {
+      markAiMetricsFirstToken(callId)
+    }
   }
   const normalized = normalizeAiChatResult(model, result)
   const usage = normalized.ok

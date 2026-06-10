@@ -781,6 +781,7 @@ export const startAgentTurn = async (
     sessionId,
     planMode: false,
     scratchpadDir,
+    ...(roleWorkflowInvoke ? { workshopAutoApply: true } : {}),
   }
 
   await refreshCustomOutputStylesCache(projectRoot)
@@ -829,6 +830,13 @@ export const startAgentTurn = async (
     roleWorkflowInvoke,
   )
 
+  if (roleWorkflowInvoke && !resolvedAssignee && messages[0]?.role === 'system') {
+    messages[0] = {
+      ...messages[0],
+      content: `${messages[0].content}\n\n[Workflow slash command]\nThe latest user message IS the workflow playbook. Execute it step by step immediately. Use Write (or Edit) to save deliverables to disk under the paths the playbook specifies—do not only paste the report in chat.`,
+    }
+  }
+
   const session: StoredAgentSession = {
     projectRoot,
     modelId,
@@ -840,6 +848,7 @@ export const startAgentTurn = async (
     pendingAskById: new Map(),
     turn: 0,
     planMode: false,
+    chatMode: 'agent',
     revealedToolNames,
     activeTools,
     proactiveEnabled: cfg.agentProactiveEnabled ?? false,
@@ -1197,6 +1206,7 @@ export const runWorkshopRoleAgentTurn = async (
     pendingAskById: new Map(),
     turn: 0,
     planMode: false,
+    chatMode: 'agent',
     revealedToolNames,
     activeTools,
     proactiveEnabled: false,

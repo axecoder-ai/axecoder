@@ -26,11 +26,6 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
       'Like Agent, but complex tasks auto-enter read-only plan mode first (heuristic + cheap model)',
   },
   {
-    id: 'reflection',
-    label: 'Reflection',
-    description: 'Analyze trade-offs first, then decide whether to edit code',
-  },
-  {
     id: 'rppit',
     label: 'rppit',
     description: 'Each message runs the /rppit playbook (proposals → plan → implement → review)',
@@ -41,11 +36,6 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
     description: 'Plan first; file writes and shell need exiting plan mode',
   },
   {
-    id: 'planning-only',
-    label: 'Planning Only',
-    description: 'Read-only exploration and proposals; no file changes',
-  },
-  {
     id: 'multi-agent',
     label: 'Multi-Agent',
     description: 'Collab workshop in this chat: roles discuss in turn',
@@ -54,18 +44,25 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
 
 export const DEFAULT_CHAT_MODE: ChatModeId = 'agent'
 
+/** 暂不在 UI / SwitchMode 中开放 */
+export const DISABLED_CHAT_MODES = new Set<ChatModeId>(['planning-only', 'reflection'])
+
+export const isChatModeEnabled = (id: ChatModeId) => !DISABLED_CHAT_MODES.has(id)
+
 const CHAT_MODE_STORAGE_KEY = 'axecoder.chatMode'
 
 export const chatModeLabel = (id: ChatModeId) =>
   CHAT_MODE_OPTIONS.find((m) => m.id === id)?.label ?? 'Agent'
 
 export const isChatModeId = (v: unknown): v is ChatModeId =>
-  typeof v === 'string' && CHAT_MODE_OPTIONS.some((m) => m.id === v)
+  typeof v === 'string' &&
+  (CHAT_MODE_OPTIONS.some((m) => m.id === v) || DISABLED_CHAT_MODES.has(v as ChatModeId))
 
 export const loadStoredChatMode = (): ChatModeId => {
   try {
     const raw = localStorage.getItem(CHAT_MODE_STORAGE_KEY)
-    return isChatModeId(raw) ? raw : DEFAULT_CHAT_MODE
+    if (!isChatModeId(raw) || !isChatModeEnabled(raw)) return DEFAULT_CHAT_MODE
+    return raw
   } catch {
     return DEFAULT_CHAT_MODE
   }
@@ -85,6 +82,7 @@ export const canPickChatMode = (
   next: ChatModeId,
   hasMessages: boolean,
 ): boolean => {
+  if (!isChatModeEnabled(next)) return false
   if (current === next) return true
   if (!hasMessages) return true
   if (current === 'multi-agent') return false

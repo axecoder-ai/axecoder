@@ -1,4 +1,8 @@
-import { buildWorkflowSendPrompt, loadWorkflowSlugPrompt } from '../utils/role-workflow-send'
+import {
+  buildWorkflowSendPrompt,
+  defaultWorkflowUserNotes,
+  loadWorkflowSlugPrompt,
+} from '../utils/role-workflow-send'
 import type { SlashCommandDef } from './types'
 
 const WORKFLOW_COMMANDS: { name: string; description: string }[] = [
@@ -22,12 +26,16 @@ export const registerWorkflowBuiltinCommands = (): SlashCommandDef[] =>
     run: async (ctx, args) => {
       const loaded = await loadWorkflowSlugPrompt(ctx.projectRoot, name)
       if (!loaded.ok) return { ok: false, message: loaded.error ?? 'Failed to load command' }
-      const sendPrompt = buildWorkflowSendPrompt(loaded.text, args.trim())
+      const sendPrompt = buildWorkflowSendPrompt(
+        loaded.text,
+        defaultWorkflowUserNotes(name, args.trim()),
+      )
       return {
         ok: true,
         message: `Ran /${name}`,
         silent: true,
         sendPrompt,
+        roleWorkflowInvoke: true,
       }
     },
   }))

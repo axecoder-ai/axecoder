@@ -19,7 +19,12 @@ describe('canPickChatMode', () => {
 
   it('allows switching between non-multi-agent modes with messages', () => {
     expect(canPickChatMode('agent', 'planning', true)).toBe(true)
-    expect(canPickChatMode('reflection', 'rppit', true)).toBe(true)
+    expect(canPickChatMode('planning', 'rppit', true)).toBe(true)
+  })
+
+  it('blocks disabled chat modes', () => {
+    expect(canPickChatMode('agent', 'reflection', false)).toBe(false)
+    expect(canPickChatMode('agent', 'planning-only', false)).toBe(false)
   })
 
   it('allows re-selecting current mode', () => {

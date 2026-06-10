@@ -1,10 +1,16 @@
-export type ModelProvider = 'openai' | 'ollama' | 'anthropic' | 'codex'
+export type {
+  ModelProvider,
+  AiProviderCapabilities,
+} from '../../shared/ai/provider-capabilities'
+export {
+  providerRequiresApiKey,
+  providerSupportsSseStream,
+  defaultBaseUrl,
+  getProviderCapabilities,
+  listAllProviderCapabilities,
+} from '../../shared/ai/provider-capabilities'
 
-export const providerRequiresApiKey = (provider: ModelProvider): boolean =>
-  provider === 'openai' || provider === 'anthropic' || provider === 'codex'
-
-export const providerSupportsSseStream = (provider: ModelProvider): boolean =>
-  provider === 'openai' || provider === 'codex'
+import type { ModelProvider } from '../../shared/ai/provider-capabilities'
 
 export type ModelEntry = {
   id: string
@@ -53,9 +59,11 @@ export type AppConfig = {
   agentOsSandboxEnabled?: boolean
   /** Agent System提示Output风格（内置 id 或自定义 output-styles 目录中的 slug） */
   agentOutputStyle: string
-  /** Wave4：联网Search（需 API Key） */
+  /** Wave4：联网Search（需 Serper API Key） */
   agentFeatureWebSearch?: boolean
   agentWebSearchApiKey?: string
+  /** Wave4：Playwright 浏览器自动化 WebRun */
+  agentFeatureWebRun?: boolean
   agentFeatureLsp?: boolean
   /** 内置 CodeGraph 代码知识图谱（tree-sitter + SQLite） */
   agentFeatureCodeGraph?: boolean
@@ -140,12 +148,6 @@ export type AiChatResult =
   | { ok: false; error: string }
 
 export type ModelSaveInput = ModelEntry & { apiKey?: string }
-
-export const defaultBaseUrl = (provider: ModelProvider): string => {
-  if (provider === 'openai' || provider === 'codex') return 'https://api.openai.com/v1'
-  if (provider === 'ollama') return 'http://127.0.0.1:11434'
-  return 'https://api.anthropic.com'
-}
 
 export const isAllowedBaseUrl = (url: string): boolean => {
   try {

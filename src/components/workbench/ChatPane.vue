@@ -64,6 +64,7 @@ import {
   type ChatModeId,
 } from '../../utils/chat-modes'
 import { workshopIdForAgentChat } from '../../utils/workshop-agent-link'
+import { providerSupportsSseStream } from '@shared/ai/provider-capabilities'
 import { formatAiChatRequestError, visionUnsupportedMessage } from '../../utils/ai-chat-error'
 import { visionBlockedForPendingImages } from '../../utils/chat-vision'
 import { expandUserMessageForApi } from '../../utils/expand-user-message'
@@ -414,10 +415,7 @@ const onChatModePick = (id: ChatModeId) => {
   void syncMultiAgentWorkshop()
 }
 
-const agentMode = computed(() => {
-  const m = activeModel.value
-  return !!m && m.provider !== 'ollama'
-})
+const agentMode = computed(() => !!activeModel.value)
 
 const sendAgent = (
   projectRoot: string,
@@ -963,6 +961,11 @@ const bindAgentProgress = (initialSessionId?: string, assigneeUserId?: string) =
       subagentTasks.value = next
     } else if (payload.kind === 'loop_guard') {
       loopGuardNotice.value = payload.text
+    } else if (payload.kind === 'chat_mode') {
+      if (canPickChatMode(chatModeId.value, payload.chatMode, hasSessionMessagesForModeLock.value)) {
+        chatModeId.value = payload.chatMode
+        saveStoredChatMode(payload.chatMode)
+      }
     } else {
       progressSteps.value = applyProgressPayload(progressSteps.value, payload)
     }
@@ -1292,7 +1295,7 @@ const onAgentAutoApplyChange = async (checked: boolean) => {
 }
 
 const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiChatMessage[]) => {
-  const useSse = model.provider === 'openai' || model.provider === 'codex'
+  const useSse = providerSupportsSseStream(model.provider)
   let streamId = ''
   if (useSse) {
     streamText.value = ''
@@ -1542,7 +1545,13 @@ const send = async () => {
         await persist()
         const apiMessages = await buildApiMessages(session.messages)
         if (agentMode.value) {
-          const res = await sendAgent(props.projectRoot, modelId, apiMessages)
+          const res = await sendAgent(
+            props.projectRoot,
+            modelId,
+            apiMessages,
+            undefined,
+            slashResult.roleWorkflowInvoke === true,
+          )
           pushAssistantFromAgent(res, model)
         } else {
           await runPlainChat(model, modelId, apiMessages)

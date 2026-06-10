@@ -135,6 +135,7 @@ export const filterToolsForCcSubagent = (
   if (t === 'plan') {
     blocked.add('EnterPlanMode')
     blocked.add('ExitPlanMode')
+    blocked.add('SwitchMode')
   }
   if (cfg.shellOnly) {
     return tools.filter((tool) => SHELL_ALLOWED.has(tool.name))

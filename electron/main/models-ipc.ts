@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { listAllProviderCapabilities } from '../../shared/ai/provider-capabilities'
 import type { ModelSaveInput } from './models-types'
 import {
   listModels,
@@ -45,4 +46,6 @@ export const registerModelsIpc = () => {
   })
 
   ipcMain.handle('models:ping', async (_, id: string) => pingModel(id))
+
+  ipcMain.handle('models:getProviderCapabilities', async () => listAllProviderCapabilities())
 }

@@ -10,6 +10,8 @@ Document the current state of the codebase strictly as it exists today. Do not g
 
 ## Steps After Receiving a Research Request
 
+If the user provides **no topic or scope** (empty message after `/research-codebase` or `@Researcher` with no args), treat the scope as **the entire codebase** and proceed immediately—do not ask what to research.
+
 1. **Read fully**
    - Start by reading every directly referenced file in full.
 2. **Decompose and plan**
@@ -26,7 +28,8 @@ Document the current state of the codebase strictly as it exists today. Do not g
      - A **summary of key findings** that answer the research questions
      - **Detailed sections by component/domain** with code citations
      - **Cross-component connections and data flows**
-   - Save the report under `research/` at the project root (create the directory if needed).
+   - **You MUST persist the report with the `Write` tool** (not chat-only output).
+   - Save under `docs/research/research-<topic-slug>.md` when the topic is known; otherwise `docs/research/research-codebase.md`. Create parent directories if needed.
 
 ## Output Format
 

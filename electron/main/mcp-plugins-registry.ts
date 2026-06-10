@@ -36,3 +36,6 @@ export const BUILTIN_MCP_PLUGINS: McpPluginDefinition[] = [CONTEXT7_DEF]
 
 export const getMcpPluginById = (id: string): McpPluginDefinition | undefined =>
   BUILTIN_MCP_PLUGINS.find((p) => p.id === id)
+
+export const getMcpPluginByServerName = (serverName: string): McpPluginDefinition | undefined =>
+  BUILTIN_MCP_PLUGINS.find((p) => p.serverName === serverName)

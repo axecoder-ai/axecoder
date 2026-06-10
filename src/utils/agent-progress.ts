@@ -1,3 +1,5 @@
+import type { ChatModeId } from './chat-modes'
+
 export type AgentProgressPhase = 'model' | 'tool'
 
 export type AgentProgressStep = {
@@ -51,6 +53,12 @@ export type AgentProgressPayload =
       sessionId: string
       kind: 'loop_guard'
       text: string
+    }
+  | {
+      sessionId: string
+      kind: 'chat_mode'
+      chatMode: ChatModeId
+      planMode: boolean
     }
 
 export const labelForModelTurn = (turn: number) => `Turn ${turn}: calling model…`

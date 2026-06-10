@@ -10,7 +10,7 @@ describe('agent-tool-level-prompts', () => {
     const names = AGENT_TOOLS.map((t) => t.name).sort()
     expect(built).toEqual(names)
     expect(names).toEqual([...ALL_AGENT_TOOL_NAMES].sort())
-    expect(names.length).toBe(40)
+    expect(names.length).toBe(ALL_AGENT_TOOL_NAMES.length)
   })
 
   it('strict：各工具 description 达到长文下限', () => {
@@ -66,6 +66,7 @@ describe('agent-tool-level-prompts', () => {
   it('扩展工具已注册', () => {
     expect(tool('TodoWrite').name).toBe('TodoWrite')
     expect(tool('EnterPlanMode').name).toBe('EnterPlanMode')
+    expect(tool('SwitchMode').name).toBe('SwitchMode')
     expect(tool('CallMcpTool').name).toBe('CallMcpTool')
     expect(tool('ToolSearch').name).toBe('ToolSearch')
   })

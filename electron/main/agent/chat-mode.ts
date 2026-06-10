@@ -14,6 +14,8 @@ export type ChatModeId =
 
 export const DEFAULT_CHAT_MODE: ChatModeId = 'agent'
 
+const DISABLED = new Set<ChatModeId>(['planning-only', 'reflection'])
+
 const VALID = new Set<string>([
   'agent',
   'auto-plan',
@@ -24,8 +26,11 @@ const VALID = new Set<string>([
   'multi-agent',
 ])
 
-export const normalizeChatMode = (v: unknown): ChatModeId =>
-  typeof v === 'string' && VALID.has(v) ? (v as ChatModeId) : DEFAULT_CHAT_MODE
+export const normalizeChatMode = (v: unknown): ChatModeId => {
+  if (typeof v !== 'string' || !VALID.has(v)) return DEFAULT_CHAT_MODE
+  const mode = v as ChatModeId
+  return DISABLED.has(mode) ? DEFAULT_CHAT_MODE : mode
+}
 
 export const chatModeSystemAddon = (mode: ChatModeId): string => {
   if (mode === 'auto-plan') {
@@ -50,10 +55,34 @@ export const chatModeSystemAddon = (mode: ChatModeId): string => {
 }
 
 export const applyChatModeToNewSession = (session: StoredAgentSession, mode: ChatModeId) => {
+  session.chatMode = mode
+  applyChatModeEffects(session, mode)
+}
+
+/** Cursor playbook + 扩展 ChatMode 子集；不含 rppit / multi-agent */
+export const SWITCH_MODE_TARGETS = new Set([
+  'agent',
+  'plan',
+  'planning',
+  'auto-plan',
+])
+
+export const resolveSwitchModeTarget = (raw: string): ChatModeId | null => {
+  const v = raw.trim()
+  if (v === 'plan') return 'planning'
+  if (v === 'agent') return 'agent'
+  if (SWITCH_MODE_TARGETS.has(v) && VALID.has(v)) return v as ChatModeId
+  return null
+}
+
+const applyChatModeEffects = (session: StoredAgentSession, mode: ChatModeId) => {
   const allTools = buildFullAgentTools()
   if (mode === 'planning' || mode === 'planning-only') {
     session.planMode = true
     session.ctx.planMode = true
+  } else if (mode === 'agent' || mode === 'auto-plan' || mode === 'reflection') {
+    session.planMode = false
+    session.ctx.planMode = false
   }
   if (mode === 'planning-only') {
     session.activeTools = filterToolsForSubagent(allTools, 'explore') as AgentToolDef[]
@@ -65,4 +94,22 @@ export const applyChatModeToNewSession = (session: StoredAgentSession, mode: Cha
     session.activeTools = getSessionActiveTools(allTools, session.revealedToolNames)
     return
   }
+  session.activeTools = getSessionActiveTools(allTools, session.revealedToolNames)
+}
+
+export const applySwitchModeToSession = (
+  session: StoredAgentSession,
+  targetModeId: string,
+): { ok: true; chatMode: ChatModeId; message: string } | { ok: false; error: string } => {
+  const chatMode = resolveSwitchModeTarget(targetModeId)
+  if (!chatMode) {
+    return {
+      ok: false,
+      error: `Unknown or unsupported target_mode_id "${targetModeId}". Use agent, plan, planning, or auto-plan.`,
+    }
+  }
+  session.chatMode = chatMode
+  applyChatModeEffects(session, chatMode)
+  const label = targetModeId.trim() === 'plan' ? 'plan (planning)' : chatMode
+  return { ok: true, chatMode, message: `Switched to ${label} mode.` }
 }

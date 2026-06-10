@@ -1,4 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+
+vi.mock('../../../electron/main/renderer-broadcast', () => ({
+  broadcastToRenderers: () => {},
+}))
 import { buildOpenAiChatUrl } from '../../../electron/main/ai/providers/openai'
 import { buildOllamaChatUrl } from '../../../electron/main/ai/providers/ollama'
 import { buildAnthropicMessagesUrl } from '../../../electron/main/ai/providers/anthropic'

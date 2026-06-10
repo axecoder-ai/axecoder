@@ -12,8 +12,10 @@ import {
   type AgentTaskItem,
 } from './agent-todo-store'
 import { discoverSkills, findSkillByName, readSkillContent } from './agent-skills'
-import { callMcpTool, listMcpResources, loadMcpConfig, readMcpResource } from './agent-mcp'
-import { fetchUrl, webSearchStub } from './agent-web'
+import { authenticateMcpServer } from './agent-mcp-auth'
+import { callMcpTool, listMcpResources, readMcpResource } from './agent-mcp'
+import { fetchUrl, webSearch } from './agent-web'
+import { runWebRun } from './agent-browser-playwright'
 import { editNotebookCell } from './agent-notebook'
 import { formatShellTaskOutput, getShellTask } from './agent-bash-tasks'
 import {
@@ -30,6 +32,8 @@ import { buildExtendedAgentTools } from './agent-tool-prompts-ext'
 import { buildCoreAgentTools } from './agent-tool-prompts'
 import { executeCodeGraphAgentTool, isCodeGraphAgentTool } from './agent-codegraph'
 import { forgetMemory, saveMemory } from './agent-memory'
+import { applySwitchModeToSession } from './chat-mode'
+import { emitAgentProgress } from './agent-progress-emit'
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
@@ -145,8 +149,27 @@ export const executeExtendedAgentTool = async (
         false,
       )
     }
-    const res = await webSearchStub(str(args.search_term), cfg.agentWebSearchApiKey)
+    const res = await webSearch(str(args.search_term), cfg.agentWebSearchApiKey)
     return immediate(name, 'WebSearch', res.ok ? res.text : `Error: ${res.error}`, res.ok)
+  }
+
+  if (name === 'WebRun') {
+    const cfg = await getConfig()
+    if (!cfg.agentFeatureWebRun) {
+      return immediate(
+        name,
+        'WebRun',
+        'Error: WebRun disabled. Enable agentFeatureWebRun in AxeCoder Settings.',
+        false,
+      )
+    }
+    const res = await runWebRun({
+      action: str(args.action),
+      url: str(args.url) || undefined,
+      selector: str(args.selector) || undefined,
+      text: str(args.text) || undefined,
+    })
+    return immediate(name, 'WebRun', res.ok ? res.text : `Error: ${res.error}`, res.ok)
   }
 
   if (name === 'NotebookEdit') {
@@ -172,6 +195,30 @@ export const executeExtendedAgentTool = async (
     if (session) session.planMode = false
     if (ctx) ctx.planMode = false
     return immediate(name, 'ExitPlanMode', 'Plan mode disabled. Normal tools restored.', true)
+  }
+
+  if (name === 'SwitchMode') {
+    const target = str(args.target_mode_id)
+    if (!target) {
+      return immediate(name, 'SwitchMode', 'Error: target_mode_id is required', false)
+    }
+    if (!session) {
+      return immediate(name, 'SwitchMode', 'Error: no active agent session', false)
+    }
+    const switched = applySwitchModeToSession(session, target)
+    if (!switched.ok) {
+      return immediate(name, 'SwitchMode', `Error: ${switched.error}`, false)
+    }
+    if (ctx) ctx.planMode = session.planMode
+    if (ctx.sessionId) {
+      emitAgentProgress({
+        sessionId: ctx.sessionId,
+        kind: 'chat_mode',
+        chatMode: switched.chatMode,
+        planMode: session.planMode,
+      })
+    }
+    return immediate(name, 'SwitchMode', switched.message, true)
   }
 
   if (name === 'Skill') {
@@ -205,16 +252,11 @@ export const executeExtendedAgentTool = async (
   }
 
   if (name === 'McpAuth') {
-    const { servers, error } = await loadMcpConfig(ctx.projectRoot)
     const server = str(args.server)
-    const found = servers.find((s) => s.name === server)
-    if (!found) return immediate(name, 'McpAuth', `Error: ${error ?? 'server not found'}`, false)
-    return immediate(
-      name,
-      'McpAuth',
-      `MCP server "${server}" is configured (${found.url ? 'url' : 'stdio'}). If the server requires OAuth, complete authentication in mcp.json / Cursor MCP settings, then retry CallMcpTool.`,
-      true,
-    )
+    if (!server) return immediate(name, 'McpAuth', 'Error: server is required', false)
+    const res = await authenticateMcpServer(server, ctx.projectRoot)
+    if (!res.ok) return immediate(name, 'McpAuth', `Error: ${res.error}`, false)
+    return immediate(name, 'McpAuth', res.message, true)
   }
 
   if (name === 'ListMcpResources') {
@@ -396,6 +438,7 @@ export const getSessionActiveTools = (
           'TodoWrite',
           'EnterPlanMode',
           'ExitPlanMode',
+          'SwitchMode',
           'ToolSearch',
           'DiscoverSkills',
           'CodeGraphExplore',

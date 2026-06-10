@@ -62,9 +62,24 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
   obj('WebFetch', 'Fetch a URL and return readable text content. HTTPS only.', {
     url: { type: 'string' },
   }, ['url']),
-  obj('WebSearch', 'Search the web (requires agentWebSearchApiKey in config).', {
-    search_term: { type: 'string' },
+  obj('WebSearch', 'Search the web via Serper API (enable in Settings + API key).', {
+    search_term: { type: 'string', description: 'Search query' },
+    explanation: { type: 'string', description: 'Why this search is needed' },
   }, ['search_term']),
+  obj(
+    'WebRun',
+    'Browser automation via Playwright (navigate, snapshot, click, type, screenshot). Requires agentFeatureWebRun in Settings.',
+    {
+      action: {
+        type: 'string',
+        description: 'navigate | snapshot | click | type | screenshot',
+      },
+      url: { type: 'string', description: 'URL for navigate' },
+      selector: { type: 'string', description: 'CSS selector for click/type' },
+      text: { type: 'string', description: 'Text for type action' },
+    },
+    ['action'],
+  ),
   obj('NotebookEdit', 'Edit Jupyter notebook cells (.ipynb).', {
     target_notebook: { type: 'string' },
     cell_idx: { type: 'number' },
@@ -75,6 +90,15 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
   }, ['target_notebook', 'cell_idx', 'is_new_cell', 'cell_language', 'old_string', 'new_string']),
   obj('EnterPlanMode', 'Switch to plan mode: read-only planning before implementation.', {}, []),
   obj('ExitPlanMode', 'Exit plan mode and resume normal agent execution.', {}, []),
+  obj(
+    'SwitchMode',
+    'Switch interaction mode. target_mode_id: agent | plan | planning | auto-plan. plan is a Cursor alias for planning.',
+    {
+      target_mode_id: { type: 'string', description: 'Target mode id' },
+      explanation: { type: 'string', description: 'Optional reason for switching mode' },
+    },
+    ['target_mode_id'],
+  ),
   obj('Skill', 'Load and follow a skill by name from .cursor/skills.', {
     skill: { type: 'string' },
   }, ['skill']),
@@ -84,9 +108,12 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
     toolName: { type: 'string' },
     arguments: { type: 'object' },
   }, ['server', 'toolName']),
-  obj('McpAuth', 'Authenticate an MCP server when required.', {
-    server: { type: 'string' },
-  }, ['server']),
+  obj(
+    'McpAuth',
+    'Authenticate an MCP server when required. For OAuth plugins (e.g. context7), opens browser sign-in. Retry CallMcpTool after success.',
+    { server: { type: 'string', description: 'MCP server name from mcp.json or builtin plugins' } },
+    ['server'],
+  ),
   obj('ListMcpResources', 'List MCP resources from configured servers.', {}, []),
   obj('ReadMcpResource', 'Read an MCP resource by URI.', {
     server: { type: 'string' },

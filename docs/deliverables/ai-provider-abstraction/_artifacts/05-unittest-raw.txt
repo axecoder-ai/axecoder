@@ -1,0 +1,23 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm.
+
+> axecoder@0.6.0 test
+> vitest run tests/unittest/UT-ai-provider-abstraction tests/unittest/UT-models-settings/ai-providers.test.ts tests/unittest/UT-codex-provider tests/unittest/UT-openai-messages/chat-with-tools-reasoning.test.ts tests/unittest/UT-model-settings/models-ping.test.ts tests/unittest/UT-workshop-chat-align/workshop-llm.test.ts
+
+
+ RUN  v3.2.4 /Users/cuiyunfeng/workspace/AxeCoder
+
+ ✓ tests/unittest/UT-codex-provider/responses-messages.test.ts (3 tests) 2ms
+ ✓ tests/unittest/UT-model-settings/models-ping.test.ts (4 tests) 12ms
+ ✓ tests/unittest/UT-workshop-chat-align/workshop-llm.test.ts (1 test) 113ms
+ ✓ tests/unittest/UT-codex-provider/codex-provider.test.ts (3 tests) 5ms
+ ✓ tests/unittest/UT-codex-provider/responses-sse.test.ts (2 tests) 2ms
+ ✓ tests/unittest/UT-codex-provider/models-types-codex.test.ts (3 tests) 1ms
+ ✓ tests/unittest/UT-ai-provider-abstraction/provider-registry.test.ts (4 tests) 2ms
+ ✓ tests/unittest/UT-models-settings/ai-providers.test.ts (6 tests) 4ms
+ ✓ tests/unittest/UT-openai-messages/chat-with-tools-reasoning.test.ts (1 test) 4ms
+
+ Test Files  9 passed (9)
+      Tests  27 passed (27)
+   Start at  14:17:40
+   Duration  720ms (transform 632ms, setup 0ms, collect 1.75s, tests 145ms, environment 1ms, prepare 625ms)
+

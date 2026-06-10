@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { UserEntry } from '../../../src/types/axecoder'
 import {
+  RESEARCH_CODEBASE_WHOLE_REPO_NOTES,
   ROLE_MENTION_SINGLE_ERROR,
+  defaultWorkflowUserNotes,
   loadWorkflowSlugPrompt,
   prepareRoleWorkflowSendPlan,
   validateRoleMentionText,
@@ -69,6 +71,23 @@ describe('role-workflow-send', () => {
       text: 'SKILL BODY',
     })
     expect(ax.agentLoadSkill).toHaveBeenCalledWith('/proj', 'my-skill')
+  })
+
+  it('defaultWorkflowUserNotes research-codebase 无参数时默认全库调研', () => {
+    expect(defaultWorkflowUserNotes('research-codebase', '')).toBe(
+      RESEARCH_CODEBASE_WHOLE_REPO_NOTES,
+    )
+    expect(defaultWorkflowUserNotes('research-codebase', '  only auth  ')).toBe('only auth')
+    expect(defaultWorkflowUserNotes('implement', '')).toBe('')
+  })
+
+  it('prepareRoleWorkflowSendPlan @Researcher 无参数时默认全库调研', async () => {
+    const plan = await prepareRoleWorkflowSendPlan('@Lois·Lane ', [lois], '/proj')
+    expect(plan).toMatchObject({ kind: 'workflow', slug: 'research-codebase' })
+    if (plan.kind === 'workflow') {
+      expect(plan.prompt).toContain('PLAYBOOK')
+      expect(plan.prompt).toContain(RESEARCH_CODEBASE_WHOLE_REPO_NOTES)
+    }
   })
 
   it('prepareRoleWorkflowSendPlan @ 角色加载 playbook', async () => {

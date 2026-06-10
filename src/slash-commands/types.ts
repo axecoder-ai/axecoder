@@ -38,5 +38,7 @@ export type SlashRunResult =
       skillName?: string
       /** Custom command: expanded text sent as user message */
       sendPrompt?: string
+      /** 内置工作流：等同 @角色 执行 playbook，自动落盘 */
+      roleWorkflowInvoke?: boolean
     }
   | { ok: false; message: string }

@@ -59,6 +59,17 @@ export const loadWorkflowSlugPrompt = async (
   return { ok: false, error: `无法加载 /${key}` }
 }
 
+export const RESEARCH_CODEBASE_WHOLE_REPO_NOTES =
+  'Research the entire codebase comprehensively. Cover architecture, main modules, data flows, key dependencies, and the current implementation state. Proceed without asking for a narrower scope.'
+
+/** 工作流无用户补充说明时的默认任务（如 /research-codebase 不带参数） */
+export const defaultWorkflowUserNotes = (slug: string, userNotes: string): string => {
+  const notes = userNotes.trim()
+  if (notes) return notes
+  if (slug.trim().toLowerCase() === 'research-codebase') return RESEARCH_CODEBASE_WHOLE_REPO_NOTES
+  return ''
+}
+
 export const buildWorkflowSendPrompt = (playbookText: string, userNotes: string) =>
   buildRoleCommandPromptText(playbookText, userNotes)
 
@@ -77,7 +88,10 @@ export const prepareRoleWorkflowFromMention = async (
   if (!loaded.ok) return { kind: 'error', message: loaded.error }
 
   const slugs = effectiveUserSkillSlugs(user)
-  const userNotes = stripRoleCommandPrefix(mention.args, slug, slugs)
+  const userNotes = defaultWorkflowUserNotes(
+    slug,
+    stripRoleCommandPrefix(mention.args, slug, slugs),
+  )
   return {
     kind: 'workflow',
     slug,

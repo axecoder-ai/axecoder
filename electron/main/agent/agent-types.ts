@@ -18,9 +18,11 @@ export type AgentToolName =
   | 'TaskList'
   | 'WebFetch'
   | 'WebSearch'
+  | 'WebRun'
   | 'NotebookEdit'
   | 'EnterPlanMode'
   | 'ExitPlanMode'
+  | 'SwitchMode'
   | 'Skill'
   | 'DiscoverSkills'
   | 'CallMcpTool'
@@ -180,9 +182,11 @@ export const EXTENDED_AGENT_TOOL_NAMES: AgentToolName[] = [
   'TaskList',
   'WebFetch',
   'WebSearch',
+  'WebRun',
   'NotebookEdit',
   'EnterPlanMode',
   'ExitPlanMode',
+  'SwitchMode',
   'Skill',
   'DiscoverSkills',
   'CallMcpTool',

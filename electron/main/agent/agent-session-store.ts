@@ -7,6 +7,7 @@ import type {
   PendingBashPublic,
   PendingWritePublic,
 } from './agent-types'
+import type { ChatModeId } from './chat-mode'
 import type {
   AgentContext,
   PendingAskUserInternal,
@@ -26,6 +27,7 @@ export type StoredAgentSession = {
   pendingAskById: Map<string, PendingAskUserInternal>
   turn: number
   planMode: boolean
+  chatMode: ChatModeId
   revealedToolNames: Set<AgentToolName>
   activeTools: AgentToolDef[]
   proactiveEnabled: boolean

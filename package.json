@@ -63,6 +63,7 @@
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
     "picomatch": "^4.0.3",
+    "playwright": "^1.60.0",
     "tree-sitter-wasms": "^0.1.11",
     "vscode-jsonrpc": "^8.2.1",
     "vscode-languageserver-protocol": "^3.17.5",

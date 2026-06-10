@@ -15,6 +15,7 @@ const makeSession = (): StoredAgentSession => ({
   pendingAskById: new Map(),
   turn: 0,
   planMode: false,
+  chatMode: 'agent',
   revealedToolNames: new Set(),
   activeTools: [],
   proactiveEnabled: false,

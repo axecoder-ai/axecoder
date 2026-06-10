@@ -253,6 +253,10 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('models:setActive', id) as Promise<import('../../src/types/axecoder').ModelsMutationResult>,
   pingModel: (id: string) =>
     ipcRenderer.invoke('models:ping', id) as Promise<import('../../src/types/axecoder').ModelPingResult>,
+  getProviderCapabilities: () =>
+    ipcRenderer.invoke('models:getProviderCapabilities') as Promise<
+      Record<import('../../src/types/axecoder').ModelProvider, import('../../src/types/axecoder').AiProviderCapabilities>
+    >,
   listMcpPlugins: (projectRoot?: string) =>
     ipcRenderer.invoke('mcpPlugins:list', projectRoot ? cloneForIpc(projectRoot) : undefined) as Promise<
       import('../../src/types/axecoder').McpPluginsListResult

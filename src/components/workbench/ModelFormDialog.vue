@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import type { ModelEntry, ModelProvider } from '../../types/axecoder'
+import {
+  defaultBaseUrl,
+  getProviderCapabilities,
+} from '@shared/ai/provider-capabilities'
 import SwitchToggle from './SwitchToggle.vue'
 
 const props = defineProps<{
@@ -22,15 +26,9 @@ const apiKey = ref('')
 const enabled = ref(true)
 const supportsVision = ref(false)
 
-const defaultUrl = (p: ModelProvider) => {
-  if (p === 'openai' || p === 'codex') return 'https://api.openai.com/v1'
-  if (p === 'ollama') return 'http://127.0.0.1:11434'
-  return 'https://api.anthropic.com'
-}
+const defaultUrl = (p: ModelProvider) => defaultBaseUrl(p)
 
-const needsKey = computed(
-  () => provider.value === 'openai' || provider.value === 'anthropic' || provider.value === 'codex',
-)
+const needsKey = computed(() => getProviderCapabilities(provider.value).requiresApiKey)
 
 watch(
   () => props.visible,

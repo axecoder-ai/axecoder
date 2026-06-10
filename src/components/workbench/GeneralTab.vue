@@ -117,6 +117,19 @@ const onAiRateLimitRetryDelaySec = (e: Event) => {
   emit('save', { aiRateLimitRetryDelaySec: Math.floor(n) })
 }
 
+const onWebSearchEnabled = (v: boolean) => {
+  emit('save', { agentFeatureWebSearch: v })
+}
+
+const onWebSearchApiKey = (e: Event) => {
+  const v = (e.target as HTMLInputElement).value
+  emit('save', { agentWebSearchApiKey: v })
+}
+
+const onWebRunEnabled = (v: boolean) => {
+  emit('save', { agentFeatureWebRun: v })
+}
+
 const onOutputStyle = (e: Event) => {
   const v = (e.target as HTMLSelectElement).value as AgentOutputStyleId
   if (v === props.settings.agentOutputStyle) return
@@ -338,6 +351,39 @@ const clearCompletionSound = () => {
             step="1"
             :value="settings.aiRateLimitRetryDelaySec ?? 60"
             @change="onAiRateLimitRetryDelaySec"
+          />
+        </div>
+      </div>
+      <div class="pref-item pref-item--stack">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.webSearch') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.webSearchHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <SwitchToggle
+            :model-value="!!settings.agentFeatureWebSearch"
+            @update:model-value="onWebSearchEnabled"
+          />
+        </div>
+        <div v-if="settings.agentFeatureWebSearch" class="sound-row">
+          <input
+            type="password"
+            class="pref-input pref-input--wide"
+            :placeholder="t('settings.agent.webSearchApiKey')"
+            :value="settings.agentWebSearchApiKey ?? ''"
+            @change="onWebSearchApiKey"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.webRun') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.webRunHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <SwitchToggle
+            :model-value="!!settings.agentFeatureWebRun"
+            @update:model-value="onWebRunEnabled"
           />
         </div>
       </div>
