@@ -10,6 +10,7 @@ export type AgentToolName =
   | 'AskUserQuestion'
   | 'Bash'
   | 'Task'
+  | 'Coordinator'
   | 'Agent'
   | 'TodoWrite'
   | 'TaskCreate'
@@ -182,6 +183,7 @@ export const EXTENDED_AGENT_TOOL_NAMES: AgentToolName[] = [
   'TaskGet',
   'TaskUpdate',
   'TaskList',
+  'Coordinator',
   'WebFetch',
   'WebSearch',
   'WebRun',

@@ -101,7 +101,7 @@
 | TaskStop | 部分 | 部分 | 已实现 | 部分 | 已实现 `kill_shell` | 已实现 |
 | 子代理不可递归 | 已实现 | 已实现 | 已实现 | 部分 | 部分 | 已实现 |
 | 并行子代理 best-of-n | 部分 | 未实现 | 部分 swarms | 未实现 | 未实现 | 部分 stub worktree |
-| Coordinator 多 Agent | 未实现 | 未实现 | 部分 feature | 未实现 | 部分 coordinator | 部分 Workshop |
+| Coordinator 多 Agent | 未实现 | 未实现 | 部分 feature | 未实现 | 部分 coordinator | 已实现 Workshop + Coordinator 工具 |
 
 ---
 

@@ -14,4 +14,4 @@ export const buildSubAgentToolList = (
 ): AgentToolDef[] =>
   filterToolsForCcSubagent(buildFullAgentTools(), subagentType || 'generalPurpose', readonlyFlag) as AgentToolDef[]
 
-export const SUB_AGENT_DISALLOWED: AgentToolName[] = ['Task', 'Agent', 'AskUserQuestion']
+export const SUB_AGENT_DISALLOWED: AgentToolName[] = ['Task', 'Coordinator', 'Agent', 'AskUserQuestion']

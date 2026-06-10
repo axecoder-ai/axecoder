@@ -59,6 +59,27 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
     status: { type: 'string' },
   }, ['task_id']),
   obj('TaskList', 'List all tasks in this session.', {}, []),
+  obj(
+    'Coordinator',
+    'Coordinate multiple sub-agents: pass an array of subtasks (description + prompt + optional subagent_type). Runs in parallel by default; set parallel:false for serial. Returns aggregated reports. Use for decomposable work instead of many separate Task calls.',
+    {
+      tasks: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            description: { type: 'string', description: 'Short label for this subtask' },
+            prompt: { type: 'string', description: 'Full prompt for the sub-agent' },
+            subagent_type: { type: 'string', description: 'e.g. explore, generalPurpose, shell' },
+            readonly: { type: 'boolean' },
+          },
+          required: ['description', 'prompt'],
+        },
+      },
+      parallel: { type: 'boolean', description: 'Run subtasks in parallel (default true)' },
+    },
+    ['tasks'],
+  ),
   obj('WebFetch', 'Fetch a URL and return readable text content. HTTPS only.', {
     url: { type: 'string' },
   }, ['url']),

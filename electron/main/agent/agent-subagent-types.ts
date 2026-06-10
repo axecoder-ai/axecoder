@@ -127,7 +127,7 @@ export const filterToolsForCcSubagent = (
 ) => {
   const cfg = getSubagentTypeConfig(rawType)
   const readOnly = readonlyFlag === true || cfg.readOnly
-  const blocked = new Set<AgentToolName>(['Task', 'Agent', 'AskUserQuestion'])
+  const blocked = new Set<AgentToolName>(['Task', 'Coordinator', 'Agent', 'AskUserQuestion'])
   if (readOnly) {
     for (const n of ['Edit', 'Write', 'Delete', 'Move', 'Bash'] as AgentToolName[]) blocked.add(n)
   }

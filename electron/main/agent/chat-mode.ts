@@ -49,7 +49,7 @@ export const chatModeSystemAddon = (mode: ChatModeId): string => {
     return '\n\n<chat-mode>Planning Only: read and plan only—no file writes, shell mutations, or sub-agent tasks. Deliver plans and clarifying questions.</chat-mode>'
   }
   if (mode === 'multi-agent') {
-    return '\n\n<chat-mode>Multi-Agent: decompose work; use the Task tool to delegate isolated or parallel subtasks when it helps.</chat-mode>'
+    return '\n\n<chat-mode>Multi-Agent: collaboration runs in the Workshop multi-role panel in this chat. Do not use Task/Agent/Coordinator tools here.</chat-mode>'
   }
   return ''
 }
@@ -89,8 +89,6 @@ const applyChatModeEffects = (session: StoredAgentSession, mode: ChatModeId) => 
     return
   }
   if (mode === 'multi-agent') {
-    session.revealedToolNames.add('Task')
-    session.revealedToolNames.add('Agent')
     session.activeTools = getSessionActiveTools(allTools, session.revealedToolNames)
     return
   }

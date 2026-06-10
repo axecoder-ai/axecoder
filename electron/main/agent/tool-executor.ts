@@ -556,6 +556,45 @@ export const executeAgentTool = async (
     }
   }
 
+  if (name === 'Coordinator') {
+    if ((ctx.subAgentDepth ?? 0) >= 1) {
+      return {
+        kind: 'immediate',
+        content: 'Error: Sub-agents cannot use Coordinator.',
+        log: { name, summary: 'Coordinator (denied)', ok: false },
+      }
+    }
+    if (!ctx.modelId?.trim()) {
+      return {
+        kind: 'immediate',
+        content: 'Error: Coordinator requires an active model session',
+        log: { name, summary: 'Coordinator', ok: false },
+      }
+    }
+    const { parseCoordinatorTasks, runCoordinatorTasks } = await import('../coordinator/coordinator-agent')
+    const parsed = parseCoordinatorTasks(args.tasks)
+    if ('error' in parsed) {
+      return {
+        kind: 'immediate',
+        content: `Error: ${parsed.error}`,
+        log: { name, summary: 'Coordinator', ok: false },
+      }
+    }
+    const parallel = args.parallel !== false
+    const result = await runCoordinatorTasks({
+      projectRoot: ctx.projectRoot,
+      modelId: ctx.modelId,
+      sessionId: ctx.sessionId,
+      tasks: parsed,
+      parallel,
+    })
+    return {
+      kind: 'immediate',
+      content: result.summary,
+      log: { name, summary: `Coordinator ${result.results.length} task(s)`, ok: result.ok },
+    }
+  }
+
   if (name === 'AskUserQuestion') {
     const parsed = parseAskUserQuestions(args.questions)
     if (!parsed.ok) {
