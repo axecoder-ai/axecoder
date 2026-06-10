@@ -11,6 +11,7 @@ import {
   findManager,
   type RouterLLM,
 } from '../workshop/workshop-router'
+import { resolveWorkshopReplyLanguage, workshopReplyLanguageFromLocale } from '../workshop/workshop-language'
 import type {
   RoleSpeaker,
   RoleSpeakInput,
@@ -112,12 +113,20 @@ const runManagerSpeak = async (
   users: import('../users-types').UserEntry[],
   routerLlm: RouterLLM,
   speaker: RoleSpeaker,
+  replyLanguage: string,
   onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
 ) => {
   const codeBrief = await runManagerCodeBrief(session, users, speaker, onProgress)
   onProgress?.('manager', 'thinking')
   const prior = priorSummaryFromMessages(session.messages)
-  const mgr = await runManagerTurnLlm(routerLlm, session.userBrief, prior, users, codeBrief)
+  const mgr = await runManagerTurnLlm(
+    routerLlm,
+    session.userBrief,
+    prior,
+    users,
+    codeBrief,
+    replyLanguage,
+  )
   if (!mgr.ok) {
     pushMessage(session, 'system', `Tech Lead routing failed: ${mgr.error}`)
     session.phase = 'done'
@@ -145,6 +154,7 @@ const runManagerFinalReport = async (
   session: WorkshopSession,
   users: import('../users-types').UserEntry[],
   routerLlm: RouterLLM,
+  replyLanguage: string,
   onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
 ) => {
   onProgress?.('manager', 'thinking')
@@ -155,6 +165,7 @@ const runManagerFinalReport = async (
     `${prior}\n[Note] All member work is done. Give BOSS a final report and end collaboration (done:true).`,
     users,
     undefined,
+    replyLanguage,
   )
   onProgress?.('manager', 'speaking')
   const manager = findManager(users)
@@ -171,6 +182,7 @@ const afterMemberSummary = async (
   users: import('../users-types').UserEntry[],
   routerLlm: RouterLLM,
   speaker: RoleSpeaker,
+  replyLanguage: string,
   onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
   memberDetail?: string,
 ): Promise<WorkshopRunResult> => {
@@ -194,10 +206,10 @@ const afterMemberSummary = async (
     return { ok: true, session }
   }
   if (routed.kind === 'done') {
-    await runManagerFinalReport(session, users, routerLlm, onProgress)
+    await runManagerFinalReport(session, users, routerLlm, replyLanguage, onProgress)
     return { ok: true, session }
   }
-  const mgrRes = await runManagerSpeak(session, users, routerLlm, speaker, onProgress)
+  const mgrRes = await runManagerSpeak(session, users, routerLlm, speaker, replyLanguage, onProgress)
   if (mgrRes.done) return { ok: true, session }
   const memberOut = await runMemberSpeak(session, mgrRes.assignee, users, speaker, onProgress)
   return afterMemberSummary(
@@ -206,6 +218,7 @@ const afterMemberSummary = async (
     users,
     routerLlm,
     speaker,
+    replyLanguage,
     onProgress,
     memberOut.detail,
   )
@@ -217,6 +230,7 @@ export type SendWorkshopMessageOptions = {
   userImageRefs?: import('../chat-attachments').ChatImageRef[]
   userImagePreviews?: string[]
   preferredAssigneeUserId?: string
+  projectRoot?: string
 }
 
 const isManagerUser = (u: import('../users-types').UserEntry) =>
@@ -227,6 +241,7 @@ const runAfterUserMessage = async (
   users: import('../users-types').UserEntry[],
   speaker: RoleSpeaker,
   routerLlm: RouterLLM,
+  replyLanguage: string,
   onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
   preferredAssigneeUserId?: string,
 ): Promise<WorkshopRunResult> => {
@@ -242,12 +257,13 @@ const runAfterUserMessage = async (
       users,
       routerLlm,
       speaker,
+      replyLanguage,
       onProgress,
       memberOut.detail,
     )
   }
 
-  const mgrRes = await runManagerSpeak(session, users, routerLlm, speaker, onProgress)
+  const mgrRes = await runManagerSpeak(session, users, routerLlm, speaker, replyLanguage, onProgress)
   if (mgrRes.done) return { ok: true, session }
   const memberOut = await runMemberSpeak(session, mgrRes.assignee, users, speaker, onProgress)
   return afterMemberSummary(
@@ -256,6 +272,7 @@ const runAfterUserMessage = async (
     users,
     routerLlm,
     speaker,
+    replyLanguage,
     onProgress,
     memberOut.detail,
   )
@@ -274,6 +291,10 @@ export const sendWorkshopMessage = async (
   if (options?.userImages?.length) session.pendingUserImages = options.userImages
   const userDisplay = options?.displayText?.trim() || trimmed
   const preferredAssigneeUserId = options?.preferredAssigneeUserId?.trim()
+  const projectRoot = options?.projectRoot?.trim() ?? ''
+  const replyLanguage = projectRoot
+    ? await resolveWorkshopReplyLanguage(projectRoot)
+    : workshopReplyLanguageFromLocale()
 
   const usersFile = await listUsers()
   const users = usersFile.users
@@ -315,6 +336,7 @@ export const sendWorkshopMessage = async (
       users,
       routerLlm,
       speaker,
+      replyLanguage,
       onProgress,
       memberOut.detail,
     )
@@ -338,6 +360,7 @@ export const sendWorkshopMessage = async (
     users,
     speaker,
     routerLlm,
+    replyLanguage,
     onProgress,
     preferredAssigneeUserId,
   )

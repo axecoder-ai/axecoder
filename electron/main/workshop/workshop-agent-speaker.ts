@@ -8,6 +8,7 @@ import {
 } from './workshop-display'
 import { buildRoleTaskPrompt, parseSubagentReport } from './workshop-subagent-speaker'
 import { enrichRoleSpeakInputWithSkills } from './workshop-user-skills'
+import { resolveWorkshopReplyLanguage } from './workshop-language'
 import type { RoleSpeaker } from './workshop-types'
 
 export const buildAgentRoleSpeaker = (
@@ -21,7 +22,8 @@ export const buildAgentRoleSpeaker = (
     if (!root) throw new Error('Open a project first')
     const enriched = await enrichRoleSpeakInputWithSkills(input, root)
     const name = enriched.assigneeUser?.displayName?.trim() || enriched.roleId
-    const taskPrompt = buildRoleTaskPrompt(enriched)
+    const replyLanguage = await resolveWorkshopReplyLanguage(root)
+    const taskPrompt = buildRoleTaskPrompt(enriched, replyLanguage)
     const streamKey =
       (enriched.speakMode === 'member' ||
         enriched.speakMode === 'execute' ||

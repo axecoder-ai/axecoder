@@ -18,6 +18,18 @@ describe('workshop-subagent-speaker', () => {
     expect(files.some((f) => f.includes('handler'))).toBe(true)
   })
 
+  it('buildRoleTaskPrompt 注入回复语言', () => {
+    const p = buildRoleTaskPrompt(
+      {
+        roleId: 'backend',
+        userBrief: '查看 zhongzhi 收款助手',
+        priorSummary: '',
+      },
+      '中文',
+    )
+    expect(p).toContain('Always respond in 中文')
+  })
+
   it('buildRoleTaskPrompt 要求使用工具读代码', () => {
     const p = buildRoleTaskPrompt({
       roleId: 'backend',

@@ -6,6 +6,7 @@ import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
 import { modelTaskKindForWorkshopRole } from '../ai/model-resolve'
 import type { RoleSpeaker } from './workshop-types'
 import { buildWorkshopStreamId } from './workshop-stream'
+import { resolveWorkshopReplyLanguage, workshopLanguageInstruction } from './workshop-language'
 
 const extractSummary = (raw: string): string => {
   const t = raw.trim()
@@ -31,6 +32,7 @@ const extractSummary = (raw: string): string => {
 
 export const buildLlmRoleSpeaker = (
   modelId: string,
+  projectRoot: string,
   workshopId: string,
   getUserImages: () => import('../models-types').AiChatImagePart[] | undefined,
   onStreamDelta?: (streamId: string, delta: string) => void,
@@ -40,9 +42,11 @@ export const buildLlmRoleSpeaker = (
     if (!model) throw new Error('Model not found')
     const apiKey = await getSecret(modelId)
     const name = input.assigneeUser?.displayName?.trim() || input.roleId
+    const lang = await resolveWorkshopReplyLanguage(projectRoot)
     const system = [
       `You are Collab Workshop member "${name}".`,
-      'Same as main chat Q&A: answer concisely in English; do not call tools.',
+      workshopLanguageInstruction(lang),
+      'Same as main chat Q&A: answer concisely; do not call tools.',
       'Prefer JSON output for parsing:',
       '{"summary":"core conclusion","needsUser":false,"userQuestion":"","relatedFiles":[]}',
       'Set needsUser true only when user clarification is required.',

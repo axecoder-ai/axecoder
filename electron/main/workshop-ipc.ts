@@ -78,7 +78,7 @@ export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) 
     const routerLlm =
       useScripted || process.env.AXECODER_WORKSHOP_SCRIPTED === '1'
         ? scriptedRouterLlm({})
-        : buildWorkshopRouterLlm(session.modelId)
+        : buildWorkshopRouterLlm(session.modelId, root)
     if (!useScripted && process.env.AXECODER_WORKSHOP_SCRIPTED !== '1') {
       const model = await getModelById(session.modelId)
       if (!model) return { ok: false as const, error: 'Model not found' }
@@ -117,6 +117,7 @@ export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) 
             ).filter(Boolean)
           : undefined,
         preferredAssigneeUserId,
+        projectRoot: root,
       },
     )
     if (!res.ok) return res

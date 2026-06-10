@@ -1,4 +1,8 @@
 import type { UserEntry } from '../users-types'
+import {
+  workshopLanguageInstruction,
+  workshopReplyLanguageFromLocale,
+} from './workshop-language'
 
 export type PickSpeakerResult =
   | { ok: true; assigneeUserId: string }
@@ -135,14 +139,17 @@ export const buildManagerTurnPrompt = (
   priorSummary: string,
   users: UserEntry[],
   codeBrief?: string,
+  replyLanguage?: string,
 ): string => {
+  const lang = replyLanguage?.trim() || workshopReplyLanguageFromLocale()
   const roster = employeeUsers(users)
     .map((u) => `- "${u.id}": ${u.displayName} (${u.role})`)
     .join('\n')
   return [
     'You are the Tech Lead, speaking for the BOSS and assigning work.',
-    'Output JSON: {"summary":"message to the group in English","assigneeUserId":"user-xxx","done":false}',
-    'If all work is done: {"summary":"closing message","done":true} (omit assigneeUserId)',
+    workshopLanguageInstruction(lang),
+    `Output JSON: {"summary":"message to the group in ${lang}","assigneeUserId":"user-xxx","done":false}`,
+    `If all work is done: {"summary":"closing message in ${lang}","done":true} (omit assigneeUserId)`,
     '',
     `[Task] ${userBrief}`,
     priorSummary ? `[Discussion]\n${priorSummary}` : '',
@@ -183,7 +190,10 @@ export const runManagerTurnLlm = async (
   priorSummary: string,
   users: UserEntry[],
   codeBrief?: string,
+  replyLanguage?: string,
 ): Promise<ManagerTurnResult> => {
-  const raw = await llm(buildManagerTurnPrompt(userBrief, priorSummary, users, codeBrief))
+  const raw = await llm(
+    buildManagerTurnPrompt(userBrief, priorSummary, users, codeBrief, replyLanguage),
+  )
   return parseManagerTurn(raw, users)
 }

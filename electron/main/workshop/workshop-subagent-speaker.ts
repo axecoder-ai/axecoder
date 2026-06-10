@@ -3,6 +3,11 @@ import { modelTaskKindForWorkshopRole, resolveModelIdForTask } from '../ai/model
 import { buildSubAgentToolList } from '../agent/agent-tool-registry'
 import { buildWorkshopStreamId } from './workshop-stream'
 import { enrichRoleSpeakInputWithSkills } from './workshop-user-skills'
+import {
+  resolveWorkshopReplyLanguage,
+  workshopLanguageInstruction,
+  workshopReplyLanguageFromLocale,
+} from './workshop-language'
 import type { RoleSpeaker, RoleSpeakInput, RoleSpeakOutput } from './workshop-types'
 
 const PATH_IN_TEXT =
@@ -21,11 +26,14 @@ export const extractRelatedFiles = (text: string): string[] => {
   return [...found].slice(0, 12)
 }
 
-export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
+export const buildRoleTaskPrompt = (input: RoleSpeakInput, replyLanguage?: string): string => {
+  const lang = replyLanguage?.trim() || workshopReplyLanguageFromLocale()
+  const langLine = workshopLanguageInstruction(lang)
   const name = input.assigneeUser?.displayName?.trim() || input.roleId
   if (input.speakMode === 'manager_chat' && input.assigneeUser) {
     return [
       `[Collab Workshop · ${name} (${input.assigneeUser.role}) · Tech Lead]`,
+      langLine,
       'Same tool capabilities as Chat Agent mode: Read, Write, Grep, Glob, CodeGraph, Bash, etc.',
       'Inspect the codebase with tools before concluding; answer substantively for routing.',
       '',
@@ -38,6 +46,7 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
   if (input.speakMode === 'member' && input.assigneeUser) {
     return [
       `[Collab Workshop · ${name} (${input.assigneeUser.role}) · group message]`,
+      langLine,
       'Same tool capabilities as Chat Agent mode. Use tools on real code before delivering.',
       'Answer the user request substantively; list changed/touched paths when applicable.',
       input.skillPromptBlock ?? '',
@@ -59,8 +68,9 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
       : ''
     return [
       '[Collab Workshop · Tech Lead · plan steps】',
+      langLine,
       'Inspect code with tools first; do not put reasoning in the final reply.',
-      'Final reply must be exactly one ```json block (English step titles):',
+      `Final reply must be exactly one \`\`\`json block (${lang} step titles):`,
       '{ "steps": [ { "id": "s1", "title": "Step title", "assigneeUserId": "user-xxx" } ] }',
       'assigneeUserId must be chosen from the list below (do not assign Tech Lead):',
       roster || '(No executors yet; add users in Settings)',
@@ -75,6 +85,7 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
   if (input.speakMode === 'verify') {
     return [
       '[Collab Workshop · Tech Lead · verification]',
+      langLine,
       `[Current step] ${input.step?.title ?? ''} (id: ${input.step?.id ?? ''})`,
       `[Step output]\n${input.stepOutput ?? ''}`,
       'Review this step. First line must be one of: VERIFY: approve | VERIFY: redo | VERIFY: abort',
@@ -86,6 +97,7 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
   if (input.speakMode === 'execute' && input.assigneeUser) {
     return [
       `[Collab Workshop · ${name} (${input.assigneeUser.role}) · execute step]`,
+      langLine,
       `[Step task] ${input.step?.title ?? ''}`,
       'Same tool capabilities as Chat Agent mode. Use tools on real code before delivering.',
       'Answer substantively; list changed/touched paths when applicable.',
@@ -99,6 +111,7 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput): string => {
   }
   return [
     `[Collab Workshop · ${name}]`,
+    langLine,
     'Same tool capabilities as Chat Agent mode. Use Read, Grep, Glob, CodeGraph on real code before concluding.',
     'If the user names a path or directory, read it first; do not ask for business clarification without reading code.',
     'Reply with a substantive conclusion, files inspected, and suggested follow-ups.',
@@ -161,7 +174,8 @@ export const buildSubagentRoleSpeaker = (
     const enriched = await enrichRoleSpeakInputWithSkills(input, root)
     const subagentType = subagentTypeForRole(enriched.roleId)
     const tools = buildSubAgentToolList(subagentType)
-    const taskPrompt = buildRoleTaskPrompt(enriched)
+    const replyLanguage = await resolveWorkshopReplyLanguage(root)
+    const taskPrompt = buildRoleTaskPrompt(enriched, replyLanguage)
     const streamKey =
       enriched.speakMode === 'execute' && enriched.assigneeUser
         ? `u-${enriched.assigneeUser.id}`
