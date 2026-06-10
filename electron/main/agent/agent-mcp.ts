@@ -2,6 +2,8 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { axecoderPath } from '../axecoder-dir'
+import { BUILTIN_MCP_PLUGINS } from '../mcp-plugins-registry'
+import { isPluginEnabled, pluginToServerConfig } from '../mcp-plugins-store'
 import {
   callMcpToolLive,
   describeMcpServerForPrompt,
@@ -17,6 +19,8 @@ export type McpServerConfig = {
   env?: Record<string, string>
   headers?: Record<string, string>
   cwd?: string
+  /** 内置 MCP 插件 OAuth（Settings → MCP Connect） */
+  oauthPluginId?: string
 }
 
 /** 从低优先级到高优先级；同名 server 后者覆盖前者 */
@@ -77,24 +81,9 @@ const mergeMcpServers = (layers: McpServerConfig[][]): McpServerConfig[] => {
   return [...byName.values()]
 }
 
-export const loadMcpConfig = async (
+const loadMcpJsonLayers = async (
   projectRoot?: string,
-): Promise<{
-  servers: McpServerConfig[]
-  configPath?: string
-  error?: string
-}> => {
-  const override = process.env.AXECODER_MCP_CONFIG_OVERRIDE?.trim()
-  if (override) {
-    try {
-      const raw = await fs.readFile(override, 'utf-8')
-      const { servers } = parseMcpServersFromJson(raw)
-      return { servers, configPath: override }
-    } catch {
-      return { servers: [], error: `MCP config not found: ${override}` }
-    }
-  }
-
+): Promise<{ servers: McpServerConfig[]; loadedPaths: string[] }> => {
   const layers: McpServerConfig[][] = []
   const loadedPaths: string[] = []
   for (const p of mcpConfigPaths(projectRoot)) {
@@ -109,15 +98,68 @@ export const loadMcpConfig = async (
       /* try next */
     }
   }
-  const servers = mergeMcpServers(layers)
+  return { servers: mergeMcpServers(layers), loadedPaths }
+}
+
+/** 各层 mcp.json 合并后的 server 名（不含内置插件层） */
+export const getMcpJsonServerNames = async (projectRoot?: string): Promise<Set<string>> => {
+  const { servers } = await loadMcpJsonLayers(projectRoot)
+  return new Set(servers.map((s) => s.name))
+}
+
+export const materializeEnabledPlugins = async (
+  existingNames: Set<string>,
+): Promise<McpServerConfig[]> => {
+  const out: McpServerConfig[] = []
+  for (const def of BUILTIN_MCP_PLUGINS) {
+    if (existingNames.has(def.serverName)) continue
+    if (!(await isPluginEnabled(def.id))) continue
+    const cfg = await pluginToServerConfig(def)
+    if (!cfg) continue
+    out.push(cfg)
+  }
+  return out
+}
+
+const mergeWithPlugins = async (
+  fileServers: McpServerConfig[],
+  projectRoot?: string,
+): Promise<McpServerConfig[]> => {
+  const names = new Set(fileServers.map((s) => s.name))
+  const pluginServers = await materializeEnabledPlugins(names)
+  return [...fileServers, ...pluginServers]
+}
+
+export const loadMcpConfig = async (
+  projectRoot?: string,
+): Promise<{
+  servers: McpServerConfig[]
+  configPath?: string
+  error?: string
+}> => {
+  const override = process.env.AXECODER_MCP_CONFIG_OVERRIDE?.trim()
+  if (override) {
+    try {
+      const raw = await fs.readFile(override, 'utf-8')
+      const { servers: fromOverride } = parseMcpServersFromJson(raw)
+      const servers = await mergeWithPlugins(fromOverride, projectRoot)
+      return { servers, configPath: override }
+    } catch {
+      return { servers: [], error: `MCP config not found: ${override}` }
+    }
+  }
+
+  const { servers: fromFiles, loadedPaths } = await loadMcpJsonLayers(projectRoot)
+  const servers = await mergeWithPlugins(fromFiles, projectRoot)
   if (!servers.length) {
     return {
       servers: [],
       error:
-        'No MCP config found. Add project-root `.mcp.json` or `~/.cursor/mcp.json` with mcpServers.',
+        'No MCP servers configured. Enable a plugin in Settings → MCP or add `.mcp.json` / `~/.cursor/mcp.json`.',
     }
   }
-  return { servers, configPath: loadedPaths.join(', ') }
+  const configPath = loadedPaths.length ? loadedPaths.join(', ') : undefined
+  return { servers, configPath }
 }
 
 export const findMcpServer = async (

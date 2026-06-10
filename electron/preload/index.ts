@@ -253,6 +253,35 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('models:setActive', id) as Promise<import('../../src/types/axecoder').ModelsMutationResult>,
   pingModel: (id: string) =>
     ipcRenderer.invoke('models:ping', id) as Promise<import('../../src/types/axecoder').ModelPingResult>,
+  listMcpPlugins: (projectRoot?: string) =>
+    ipcRenderer.invoke('mcpPlugins:list', projectRoot ? cloneForIpc(projectRoot) : undefined) as Promise<
+      import('../../src/types/axecoder').McpPluginsListResult
+    >,
+  connectMcpPlugin: (id: string, projectRoot?: string) =>
+    ipcRenderer.invoke(
+      'mcpPlugins:connect',
+      id,
+      projectRoot ? cloneForIpc(projectRoot) : undefined,
+    ) as Promise<import('../../src/types/axecoder').McpPluginMutationResult>,
+  disconnectMcpPlugin: (id: string) =>
+    ipcRenderer.invoke('mcpPlugins:disconnect', id) as Promise<
+      import('../../src/types/axecoder').McpPluginMutationResult
+    >,
+  setMcpPluginEnabled: (id: string, enabled: boolean, projectRoot?: string) =>
+    ipcRenderer.invoke(
+      'mcpPlugins:setEnabled',
+      id,
+      enabled,
+      projectRoot ? cloneForIpc(projectRoot) : undefined,
+    ) as Promise<import('../../src/types/axecoder').McpPluginMutationResult>,
+  setMcpPluginApiKey: (id: string, apiKey: string) =>
+    ipcRenderer.invoke('mcpPlugins:setApiKey', id, apiKey) as Promise<
+      import('../../src/types/axecoder').McpPluginMutationResult
+    >,
+  testMcpPlugin: (id: string) =>
+    ipcRenderer.invoke('mcpPlugins:test', id) as Promise<
+      import('../../src/types/axecoder').McpPluginTestResult
+    >,
   listUsers: () =>
     ipcRenderer.invoke('users:list') as Promise<import('../../src/types/axecoder').UsersFile>,
   saveUser: (input: import('../../src/types/axecoder').UserSaveInput) =>

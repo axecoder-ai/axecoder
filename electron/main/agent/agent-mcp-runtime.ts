@@ -3,6 +3,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse'
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport'
+import { createMcpOAuthProviderFromSession } from '../mcp-oauth-provider'
 import type { McpServerConfig } from './agent-mcp'
 
 const CLIENT_INFO = { name: 'axecoder', version: '0.1.0' }
@@ -31,13 +32,17 @@ const withTimeout = async <T>(p: Promise<T>, ms: number, label: string): Promise
   }
 }
 
-const buildTransport = (cfg: McpServerConfig): Transport => {
+const buildTransport = async (cfg: McpServerConfig): Promise<Transport> => {
   if (cfg.url) {
     const url = new URL(cfg.url)
     const headers = cfg.headers ?? {}
     const requestInit: RequestInit = Object.keys(headers).length
       ? { headers: { ...headers } }
       : {}
+    if (cfg.oauthPluginId) {
+      const authProvider = await createMcpOAuthProviderFromSession(cfg.oauthPluginId)
+      return new StreamableHTTPClientTransport(url, { requestInit, authProvider })
+    }
     if (url.pathname.toLowerCase().includes('sse')) {
       return new SSEClientTransport(url, { requestInit })
     }
@@ -109,7 +114,7 @@ export const getMcpClient = async (
 
   let transport: Transport
   try {
-    transport = buildTransport(cfg)
+    transport = await buildTransport(cfg)
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }

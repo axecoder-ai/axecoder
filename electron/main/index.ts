@@ -10,6 +10,7 @@ import { registerWorkshopIpc } from './workshop-ipc'
 import { registerAiIpc } from './ai-ipc'
 import { registerAgentIpc } from './agent-ipc'
 import { registerModelsIpc } from './models-ipc'
+import { registerMcpPluginsIpc } from './mcp-plugins-ipc'
 import { registerUsersIpc } from './users-ipc'
 import { registerRulesIpc } from './rules/rules-ipc'
 import { registerPermissionsIpc } from './permissions-ipc'
@@ -490,6 +491,7 @@ app.whenReady().then(async () => {
   registerChatIpc()
   registerSessionIpc()
   registerModelsIpc()
+  registerMcpPluginsIpc()
   registerUsersIpc(() => win)
   registerRulesIpc()
   registerPermissionsIpc()

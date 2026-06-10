@@ -1,4 +1,5 @@
 import { getModelById } from '../models-store'
+import { providerSupportsSseStream } from '../models-types'
 import { getSecret } from '../secrets-store'
 import { chatWithProvider } from '../ai/chat-with-provider'
 import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
@@ -57,7 +58,7 @@ export const buildLlmRoleSpeaker = (
       .join('\n\n')
     const streamId = buildWorkshopStreamId(workshopId, input.roleId)
     const onDelta =
-      onStreamDelta && model.provider === 'openai'
+      onStreamDelta && providerSupportsSseStream(model.provider)
         ? (delta: { content?: string; reasoning?: string }) => {
             const text = delta.content ?? ''
             if (text) onStreamDelta(streamId, text)

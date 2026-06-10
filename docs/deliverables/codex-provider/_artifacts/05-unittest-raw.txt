@@ -1,0 +1,18 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm.
+
+> axecoder@0.6.0 test
+> vitest run tests/unittest/UT-codex-provider
+
+
+ RUN  v3.2.4 /Users/cuiyunfeng/workspace/AxeCoder
+
+ ✓ tests/unittest/UT-codex-provider/models-types-codex.test.ts (3 tests) 1ms
+ ✓ tests/unittest/UT-codex-provider/responses-sse.test.ts (2 tests) 2ms
+ ✓ tests/unittest/UT-codex-provider/responses-messages.test.ts (3 tests) 2ms
+ ✓ tests/unittest/UT-codex-provider/codex-provider.test.ts (3 tests) 12ms
+
+ Test Files  4 passed (4)
+      Tests  11 passed (11)
+   Start at  12:28:40
+   Duration  478ms (transform 159ms, setup 0ms, collect 255ms, tests 17ms, environment 0ms, prepare 226ms)
+

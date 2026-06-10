@@ -1292,7 +1292,7 @@ const onAgentAutoApplyChange = async (checked: boolean) => {
 }
 
 const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiChatMessage[]) => {
-  const useSse = model.provider === 'openai'
+  const useSse = model.provider === 'openai' || model.provider === 'codex'
   let streamId = ''
   if (useSse) {
     streamText.value = ''

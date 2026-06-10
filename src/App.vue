@@ -361,7 +361,7 @@ const onBottomSplitPointerDown = (e: PointerEvent) => {
 
 watch(hasOpenEditorTabs, () => {})
 
-type SettingsTabId = 'general' | 'models' | 'users' | 'rules' | 'permissions'
+type SettingsTabId = 'general' | 'models' | 'users' | 'rules' | 'permissions' | 'mcp'
 
 const openSettingsPanel = async (tab: SettingsTabId = 'general') => {
   await wb.loadSettings()

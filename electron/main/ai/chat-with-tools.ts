@@ -12,6 +12,7 @@ import { estimateTokenUsage, parseOpenAiUsage } from './parse-token-usage'
 import { resolveAgentToolName } from '../agent/agent-tool-aliases'
 import { AGENT_TOOLS } from '../agent/agent-tool-defs'
 import { buildOpenAiChatUrl } from './providers/openai'
+import { chatCodexWithTools } from './providers/codex'
 import { buildAnthropicMessagesUrl } from './providers/anthropic'
 import { fetchAiWithRetry, formatAiRequestFailedError } from './ai-request-retry'
 import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from './request-timeout'
@@ -27,6 +28,7 @@ import {
 } from './openai-sse'
 import type { OpenAiStreamDelta } from './providers/openai'
 import { reasoningEffortForApi, type ReasoningEffortLevel } from '../../../shared/reasoning-effort'
+import { providerRequiresApiKey } from '../models-types'
 
 export type ChatWithToolsResult =
   | {
@@ -314,9 +316,26 @@ export const chatWithToolsForModel = async (
       }
     : undefined
   let result: ChatWithToolsResult
-  if (model.provider === 'ollama' || model.provider === 'openai') {
-    if (model.provider === 'openai' && !apiKey.trim()) {
-      result = { ok: false, error: 'OpenAI-compatible API requires an API Key' }
+  if (model.provider === 'ollama' || model.provider === 'openai' || model.provider === 'codex') {
+    if (providerRequiresApiKey(model.provider) && !apiKey.trim()) {
+      result = {
+        ok: false,
+        error:
+          model.provider === 'codex'
+            ? 'Codex (Responses API) requires an API Key'
+            : 'OpenAI-compatible API requires an API Key',
+      }
+    } else if (model.provider === 'codex') {
+      result = await chatCodexWithTools(
+        model.baseUrl,
+        (apiModelId?.trim() || model.modelId).trim(),
+        apiKey,
+        wireMessages,
+        wrappedDelta,
+        tools,
+        abortSignal,
+        reasoningEffortForApi(reasoningEffort ?? 'auto'),
+      )
     } else {
       result = await chatOpenAiWithTools(
         model,

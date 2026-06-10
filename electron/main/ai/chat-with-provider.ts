@@ -9,11 +9,13 @@ import { traceModelCall, type AiTraceSource } from '../ai-trace-store'
 
 export type AiTraceContext = { sessionId?: string; turn?: number }
 import { chatOpenAi, type OpenAiStreamDelta } from './providers/openai'
+import { chatCodex } from './providers/codex'
 import { chatOllama } from './providers/ollama'
 import { chatAnthropic } from './providers/anthropic'
 import { normalizeAiChatResult, prepareMessagesForVisionModel } from './ai-vision-guard'
 import { estimateTokenUsage } from './parse-token-usage'
 import { reasoningEffortForApi, type ReasoningEffortLevel } from '../../../shared/reasoning-effort'
+import { providerRequiresApiKey } from '../models-types'
 
 const messageInputChars = (messages: AiChatMessage[]) =>
   messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0)
@@ -48,9 +50,24 @@ export const chatWithProvider = async (
       }
     : undefined
   let result: AiChatResult
-  if (model.provider === 'openai') {
-    if (!apiKey.trim()) {
-      result = { ok: false, error: 'OpenAI-compatible API requires an API Key' }
+  if (model.provider === 'openai' || model.provider === 'codex') {
+    if (providerRequiresApiKey(model.provider) && !apiKey.trim()) {
+      result = {
+        ok: false,
+        error:
+          model.provider === 'codex'
+            ? 'Codex (Responses API) requires an API Key'
+            : 'OpenAI-compatible API requires an API Key',
+      }
+    } else if (model.provider === 'codex') {
+      result = await chatCodex(
+        model.baseUrl,
+        apiName,
+        apiKey,
+        wireMessages,
+        wrappedDelta,
+        reasoningEffortForApi(reasoningEffort ?? 'auto'),
+      )
     } else {
       result = await chatOpenAi(
         model.baseUrl,

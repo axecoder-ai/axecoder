@@ -1,4 +1,10 @@
-export type ModelProvider = 'openai' | 'ollama' | 'anthropic'
+export type ModelProvider = 'openai' | 'ollama' | 'anthropic' | 'codex'
+
+export const providerRequiresApiKey = (provider: ModelProvider): boolean =>
+  provider === 'openai' || provider === 'anthropic' || provider === 'codex'
+
+export const providerSupportsSseStream = (provider: ModelProvider): boolean =>
+  provider === 'openai' || provider === 'codex'
 
 export type ModelEntry = {
   id: string
@@ -136,7 +142,7 @@ export type AiChatResult =
 export type ModelSaveInput = ModelEntry & { apiKey?: string }
 
 export const defaultBaseUrl = (provider: ModelProvider): string => {
-  if (provider === 'openai') return 'https://api.openai.com/v1'
+  if (provider === 'openai' || provider === 'codex') return 'https://api.openai.com/v1'
   if (provider === 'ollama') return 'http://127.0.0.1:11434'
   return 'https://api.anthropic.com'
 }

@@ -115,7 +115,7 @@ export type ChatModeId =
   | 'planning-only'
   | 'multi-agent'
 
-export type ModelProvider = 'openai' | 'ollama' | 'anthropic'
+export type ModelProvider = 'openai' | 'ollama' | 'anthropic' | 'codex'
 
 export type ModelEntry = {
   id: string
@@ -153,6 +153,28 @@ export type ModelsMutationResult =
 
 export type ModelPingResult =
   | { ok: true; preview: string }
+  | { ok: false; error: string }
+
+export type McpPluginView = {
+  id: string
+  displayName: string
+  description: string
+  docUrl: string
+  enabled: boolean
+  authMode: 'oauth' | 'api_key'
+  connected: boolean
+  hasApiKey: boolean
+  managedBy: 'plugin' | 'mcp.json'
+}
+
+export type McpPluginsListResult =
+  | { ok: true; plugins: McpPluginView[] }
+  | { ok: false; error: string }
+
+export type McpPluginMutationResult = { ok: true } | { ok: false; error: string }
+
+export type McpPluginTestResult =
+  | { ok: true; tools: string[] }
   | { ok: false; error: string }
 
 export type UserEntry = {
@@ -817,6 +839,16 @@ export type AxeCoderFs = {
   toggleModel: (id: string, enabled: boolean) => Promise<ModelsMutationResult>
   setActiveModel: (id: string) => Promise<ModelsMutationResult>
   pingModel: (id: string) => Promise<ModelPingResult>
+  listMcpPlugins: (projectRoot?: string) => Promise<McpPluginsListResult>
+  connectMcpPlugin: (id: string, projectRoot?: string) => Promise<McpPluginMutationResult>
+  disconnectMcpPlugin: (id: string) => Promise<McpPluginMutationResult>
+  setMcpPluginEnabled: (
+    id: string,
+    enabled: boolean,
+    projectRoot?: string,
+  ) => Promise<McpPluginMutationResult>
+  setMcpPluginApiKey: (id: string, apiKey: string) => Promise<McpPluginMutationResult>
+  testMcpPlugin: (id: string) => Promise<McpPluginTestResult>
   listUsers: () => Promise<UsersFile>
   saveUser: (input: UserSaveInput) => Promise<UsersMutationResult>
   deleteUser: (id: string) => Promise<UsersMutationResult>

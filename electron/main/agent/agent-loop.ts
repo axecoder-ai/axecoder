@@ -1,4 +1,4 @@
-import type { ModelEntry } from '../models-types'
+import { providerSupportsSseStream, type ModelEntry } from '../models-types'
 import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 import { chatWithToolsForModel } from '../ai/chat-with-tools'
@@ -109,8 +109,7 @@ const runModelStep = async (session: StoredAgentSession, sessionId: string) => {
     lastUserTextFromMessages(session.messages),
   )
   const workshopStream = sessionId.startsWith('workshop-')
-  const onDelta =
-    model.provider === 'openai'
+  const onDelta = providerSupportsSseStream(model.provider)
       ? (delta: { content?: string; reasoning?: string }) => {
           if (workshopStream) {
             if (delta.content) {

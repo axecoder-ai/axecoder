@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import fs from 'node:fs/promises'
-import type { AiChatMessage } from './models-types'
+import { providerSupportsSseStream, type AiChatMessage } from './models-types'
 import { getModelById } from './models-store'
 import { getSecret } from './secrets-store'
 import { chatWithProvider } from './ai/chat-with-provider'
@@ -119,8 +119,9 @@ export const registerAiIpc = () => {
         typeof clientStreamId === 'string' && clientStreamId.trim()
           ? clientStreamId.trim()
           : `ai-${Date.now()}-${++aiStreamSeq}`
-      const onDelta =
-        model.provider === 'openai' ? openAiStreamHandler(event, streamId) : undefined
+      const onDelta = providerSupportsSseStream(model.provider)
+        ? openAiStreamHandler(event, streamId)
+        : undefined
       const lastUser = [...messages].reverse().find((m) => m.role === 'user')
       const userText = typeof lastUser?.content === 'string' ? lastUser.content : ''
       const apiModelId = await resolveApiModelIdForTask(model, 'main', userText)

@@ -23,12 +23,14 @@ const enabled = ref(true)
 const supportsVision = ref(false)
 
 const defaultUrl = (p: ModelProvider) => {
-  if (p === 'openai') return 'https://api.openai.com/v1'
+  if (p === 'openai' || p === 'codex') return 'https://api.openai.com/v1'
   if (p === 'ollama') return 'http://127.0.0.1:11434'
   return 'https://api.anthropic.com'
 }
 
-const needsKey = computed(() => provider.value === 'openai' || provider.value === 'anthropic')
+const needsKey = computed(
+  () => provider.value === 'openai' || provider.value === 'anthropic' || provider.value === 'codex',
+)
 
 watch(
   () => props.visible,
@@ -93,6 +95,7 @@ const onSave = () => {
         Provider
         <select v-model="provider">
           <option value="openai">OpenAI</option>
+          <option value="codex">Codex</option>
           <option value="ollama">Ollama</option>
           <option value="anthropic">Anthropic</option>
         </select>
