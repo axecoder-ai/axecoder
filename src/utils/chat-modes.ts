@@ -26,6 +26,12 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
       'Like Agent, but complex tasks auto-enter read-only plan mode first (heuristic + cheap model)',
   },
   {
+    id: 'reflection',
+    label: 'Reflection',
+    description:
+      'Developer↔Reviewer reflection loop with Tech Lead guidance (1–3 rounds) in Workshop panel',
+  },
+  {
     id: 'rppit',
     label: 'rppit',
     description: 'Each message runs the /rppit playbook (proposals → plan → implement → review)',
@@ -45,7 +51,10 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
 export const DEFAULT_CHAT_MODE: ChatModeId = 'agent'
 
 /** 暂不在 UI / SwitchMode 中开放 */
-export const DISABLED_CHAT_MODES = new Set<ChatModeId>(['planning-only', 'reflection'])
+export const DISABLED_CHAT_MODES = new Set<ChatModeId>(['planning-only'])
+
+export const isWorkshopEmbeddedChatMode = (id: ChatModeId) =>
+  id === 'multi-agent' || id === 'reflection'
 
 export const isChatModeEnabled = (id: ChatModeId) => !DISABLED_CHAT_MODES.has(id)
 
@@ -76,7 +85,7 @@ export const saveStoredChatMode = (id: ChatModeId) => {
   }
 }
 
-/** 会话已有消息后：multi-agent 不可切出；其他模式不可切入 multi-agent */
+/** 会话已有消息后：multi-agent / reflection 互斥；不可切入嵌入 Workshop 的模式 */
 export const canPickChatMode = (
   current: ChatModeId,
   next: ChatModeId,
@@ -85,7 +94,7 @@ export const canPickChatMode = (
   if (!isChatModeEnabled(next)) return false
   if (current === next) return true
   if (!hasMessages) return true
-  if (current === 'multi-agent') return false
-  if (next === 'multi-agent') return false
+  if (isWorkshopEmbeddedChatMode(current) && isWorkshopEmbeddedChatMode(next)) return false
+  if (isWorkshopEmbeddedChatMode(next)) return false
   return true
 }

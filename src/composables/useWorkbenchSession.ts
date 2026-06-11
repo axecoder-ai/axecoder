@@ -13,6 +13,7 @@ export const useWorkbenchSession = (
     displayText?: string,
     imageRefs?: import('../types/axecoder').ChatImageRef[],
     preferredAssigneeUserId?: string,
+    orchestrationChatMode?: string,
   ): Promise<WorkshopRunResult> => {
     if (kind.value !== 'workshop') {
       return { ok: false, error: 'Not a Workshop session' }
@@ -25,6 +26,7 @@ export const useWorkbenchSession = (
       displayText,
       imageRefs,
       preferredAssigneeUserId,
+      orchestrationChatMode,
     )
   }
 

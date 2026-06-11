@@ -14,7 +14,7 @@ export type ChatModeId =
 
 export const DEFAULT_CHAT_MODE: ChatModeId = 'agent'
 
-const DISABLED = new Set<ChatModeId>(['planning-only', 'reflection'])
+const DISABLED = new Set<ChatModeId>(['planning-only'])
 
 const VALID = new Set<string>([
   'agent',
@@ -37,7 +37,7 @@ export const chatModeSystemAddon = (mode: ChatModeId): string => {
     return '\n\n<chat-mode>Auto Plan: same tools as Agent. Complex multi-step requests may auto-enter read-only plan mode before writes (ExitPlanMode to implement). When drafting an implementation plan, call CreatePlan (writes docs/plans/plan-*.md and shows Build)—do not only paste plan markdown in chat.</chat-mode>'
   }
   if (mode === 'reflection') {
-    return '\n\n<chat-mode>Reflection: think step-by-step before acting. State assumptions, options, and trade-offs. Prefer analysis unless the user clearly wants implementation.</chat-mode>'
+    return '\n\n<chat-mode>Reflection: collaboration runs in the Workshop panel with Developer↔Reviewer reflection loops (1–3 rounds). Do not use Task/Agent tools here; user messages trigger the reflection orchestrator.</chat-mode>'
   }
   if (mode === 'rppit') {
     return '\n\n<chat-mode>rppit: The latest user message embeds the full /rppit command playbook (same as running /rppit). Follow that workflow strictly step by step; use built-in workflow commands under resources/builtin-commands when substeps reference ~/.cursor/commands.</chat-mode>'

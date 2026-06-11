@@ -152,11 +152,16 @@ const isWorkshopMode = computed(() => activeTabKind.value === 'workshop')
 const isMultiAgentInAgentChat = computed(
   () => activeTabKind.value === 'agent' && chatModeId.value === 'multi-agent',
 )
+const isWorkshopEmbeddedInAgentChat = computed(
+  () =>
+    activeTabKind.value === 'agent' &&
+    (chatModeId.value === 'multi-agent' || chatModeId.value === 'reflection'),
+)
 const showWorkshopPanel = computed(
-  () => isWorkshopMode.value || isMultiAgentInAgentChat.value,
+  () => isWorkshopMode.value || isWorkshopEmbeddedInAgentChat.value,
 )
 const showAgentComposer = computed(
-  () => hasProject.value && (!showWorkshopPanel.value || isMultiAgentInAgentChat.value),
+  () => hasProject.value && (!showWorkshopPanel.value || isWorkshopEmbeddedInAgentChat.value),
 )
 const workshopLoading = computed(() => !!workshopSectionRef.value?.loading)
 
@@ -185,9 +190,10 @@ const addUnifiedTab = (id: string, kind: SessionKind) => {
 }
 
 const wsTabTitleFor = (id: string) => {
+  const fallback = embeddedWorkshopTitlePlaceholder()
   const liveId = workshopSectionRef.value?.activeId
-  if (id === liveId) return workshopSectionRef.value?.activeTitle ?? 'Multi-Agent'
-  return wsTitleById.value[id] ?? wsMetas.value.find((m) => m.id === id)?.title ?? 'Multi-Agent'
+  if (id === liveId) return workshopSectionRef.value?.activeTitle ?? fallback
+  return wsTitleById.value[id] ?? wsMetas.value.find((m) => m.id === id)?.title ?? fallback
 }
 
 const agentTabTitleFor = (id: string) => {
@@ -276,7 +282,7 @@ const onWorkshopActiveChange = (id: string) => {
 let lastMultiAgentSyncKey = ''
 
 const syncMultiAgentWorkshop = async () => {
-  if (!isMultiAgentInAgentChat.value || !hasProject.value || !activeId.value) return
+  if (!isWorkshopEmbeddedInAgentChat.value || !hasProject.value || !activeId.value) return
   const key = activeId.value
   if (lastMultiAgentSyncKey === key) return
   lastMultiAgentSyncKey = key
@@ -285,15 +291,23 @@ const syncMultiAgentWorkshop = async () => {
   await syncMultiAgentAgentSessionTitle()
 }
 
-const AGENT_TITLE_PLACEHOLDERS = new Set(['New Agent', 'New chat', '新对话'])
-const WS_TITLE_PLACEHOLDER = 'Multi-Agent'
+const embeddedWorkshopTitlePlaceholder = () =>
+  chatModeId.value === 'reflection' ? 'Reflection' : 'Multi-Agent'
+const AGENT_TITLE_PLACEHOLDERS = new Set([
+  'New Agent',
+  'New chat',
+  '新对话',
+  'Multi-Agent',
+  'Reflection',
+])
 
-/** Multi-Agent 对话在 Workshop 线程；侧栏/标签仍显示 Agent 会话，需把 Workshop 标题写回 */
+/** Multi-Agent / Reflection 对话在 Workshop 线程；侧栏/标签仍显示 Agent 会话，需把 Workshop 标题写回 */
 const syncMultiAgentAgentSessionTitle = async () => {
-  if (!isMultiAgentInAgentChat.value || !hasProject.value || !activeSession.value || !activeId.value)
+  if (!isWorkshopEmbeddedInAgentChat.value || !hasProject.value || !activeSession.value || !activeId.value)
     return
   const wsTitle = workshopSectionRef.value?.activeTitle?.trim()
-  if (!wsTitle || wsTitle === WS_TITLE_PLACEHOLDER) return
+  const placeholder = embeddedWorkshopTitlePlaceholder()
+  if (!wsTitle || wsTitle === placeholder) return
   const s = activeSession.value
   if (!AGENT_TITLE_PLACEHOLDERS.has(s.title) && s.title !== wsTitle) return
   if (s.title === wsTitle) {
@@ -319,7 +333,7 @@ const workshopMessagesForTitleSuggest = (
     }))
 
 const maybeRefreshMultiAgentSessionTitle = async () => {
-  if (titleSuggestInFlight || !isMultiAgentInAgentChat.value || !hasProject.value || !activeSession.value)
+  if (titleSuggestInFlight || !isWorkshopEmbeddedInAgentChat.value || !hasProject.value || !activeSession.value)
     return
   const modelId = modelsFile.value.activeModelId
   if (!modelId) return
@@ -429,7 +443,11 @@ const workshopMessageCount = ref(0)
 
 const hasSessionMessagesForModeLock = computed(() => {
   if ((activeSession.value?.messages.length ?? 0) > 0) return true
-  if (chatModeId.value === 'multi-agent' && workshopMessageCount.value > 0) return true
+  if (
+    (chatModeId.value === 'multi-agent' || chatModeId.value === 'reflection') &&
+    workshopMessageCount.value > 0
+  )
+    return true
   return false
 })
 
@@ -437,7 +455,7 @@ const onChatModePick = (id: ChatModeId) => {
   if (!canPickChatMode(chatModeId.value, id, hasSessionMessagesForModeLock.value)) return
   chatModeId.value = id
   saveStoredChatMode(id)
-  if (id !== 'multi-agent') {
+  if (id !== 'multi-agent' && id !== 'reflection') {
     lastMultiAgentSyncKey = ''
     return
   }
@@ -1618,14 +1636,14 @@ const ensureChatSession = async (): Promise<boolean> => {
   if (activeSession.value) return true
   await newChat()
   if (!activeSession.value) return false
-  if (isMultiAgentInAgentChat.value) {
+  if (isWorkshopEmbeddedInAgentChat.value) {
     await syncMultiAgentWorkshop()
   }
   return true
 }
 
 const send = async () => {
-  if (isMultiAgentInAgentChat.value) {
+  if (isWorkshopEmbeddedInAgentChat.value) {
     const text = input.value.trim()
     const imageRefs = imageRefsForPersist()
     const hasPendingImages = imageRefs.length > 0
@@ -2158,7 +2176,11 @@ watch(
   () => chatModeId.value,
   (mode, prev) => {
     void loadMentionUsers()
-    if (mode === 'multi-agent' && prev !== 'multi-agent') void syncMultiAgentWorkshop()
+    if (
+      (mode === 'multi-agent' || mode === 'reflection') &&
+      mode !== prev
+    )
+      void syncMultiAgentWorkshop()
   },
 )
 
@@ -2166,14 +2188,14 @@ watch(
   () => activeId.value,
   (id, prev) => {
     if (id !== prev) workshopMessageCount.value = 0
-    if (!isMultiAgentInAgentChat.value || !id || id === prev) return
+    if (!isWorkshopEmbeddedInAgentChat.value || !id || id === prev) return
     lastMultiAgentSyncKey = ''
     void syncMultiAgentWorkshop()
   },
 )
 
 watch(workshopMessageCount, (n, prev) => {
-  if (!isMultiAgentInAgentChat.value || n <= 0 || n === prev) return
+  if (!isWorkshopEmbeddedInAgentChat.value || n <= 0 || n === prev) return
   void syncMultiAgentAgentSessionTitle()
 })
 
@@ -2188,7 +2210,7 @@ onMounted(async () => {
   void loadModels()
   await load()
   void loadWsMetas()
-  if (chatModeId.value === 'multi-agent') {
+  if (chatModeId.value === 'multi-agent' || chatModeId.value === 'reflection') {
     await syncMultiAgentWorkshop()
     await loadMentionUsers()
   }
@@ -2329,17 +2351,18 @@ defineExpose({
       :project-root="projectRoot"
       :profile-display-name="profileDisplayName"
       :profile-avatar-path="profileAvatarPath"
-      :embedded-in-agent-chat="isMultiAgentInAgentChat"
-      :linked-agent-chat-id="isMultiAgentInAgentChat ? activeId : ''"
-      :agent-history-count="isMultiAgentInAgentChat ? (activeSession?.messages.length ?? 0) : 0"
-      :preferred-model-id="isMultiAgentInAgentChat ? modelsFile.activeModelId : undefined"
+      :embedded-in-agent-chat="isWorkshopEmbeddedInAgentChat"
+      :linked-agent-chat-id="isWorkshopEmbeddedInAgentChat ? activeId : ''"
+      :agent-history-count="isWorkshopEmbeddedInAgentChat ? (activeSession?.messages.length ?? 0) : 0"
+      :preferred-model-id="isWorkshopEmbeddedInAgentChat ? modelsFile.activeModelId : undefined"
+      :orchestration-chat-mode="isWorkshopEmbeddedInAgentChat ? chatModeId : undefined"
       @sessions-changed="onWorkshopSessionsChanged"
       @message-count-change="(n) => (workshopMessageCount = n)"
       @open-file="(p) => emit('openFile', p)"
       @open-models-settings="emit('openModelsSettings')"
       @active-change="onWorkshopActiveChange"
     >
-      <template v-if="isMultiAgentInAgentChat" #mode-picker>
+      <template v-if="isWorkshopEmbeddedInAgentChat" #mode-picker>
         <ChatModePickerDropdown
           :active-mode-id="chatModeId"
           :has-session-messages="hasSessionMessagesForModeLock"

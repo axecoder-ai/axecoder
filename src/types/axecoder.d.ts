@@ -518,6 +518,7 @@ export type WorkshopProgressPayload = {
   workshopId: string
   roleId: WorkshopRoleId
   status: 'thinking' | 'speaking' | 'done'
+  speakerUserId?: string
 }
 
 export type WorkshopRunResult =
@@ -1211,6 +1212,7 @@ export type AxeCoderFs = {
     displayText?: string,
     imageRefs?: ChatImageRef[],
     preferredAssigneeUserId?: string,
+    orchestrationChatMode?: string,
   ) => Promise<WorkshopRunResult>
   workshopSendUserAnswer: (
     projectRoot: string,

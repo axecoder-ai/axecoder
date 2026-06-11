@@ -16,7 +16,7 @@ import type {
   RoleSpeaker,
   RoleSpeakInput,
   WorkshopMessage,
-  WorkshopProgressPayload,
+  WorkshopProgressHandler,
   WorkshopRunResult,
   WorkshopSession,
 } from '../workshop/workshop-types'
@@ -47,11 +47,11 @@ const runMemberSpeak = async (
   assignee: import('../users-types').UserEntry,
   users: import('../users-types').UserEntry[],
   speaker: RoleSpeaker,
-  onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
+  onProgress?: WorkshopProgressHandler,
 ) => {
   const roleId = inferWorkshopRoleId(assignee)
   session.phase = 'running'
-  onProgress?.(roleId, 'thinking')
+  onProgress?.(roleId, 'thinking', assignee.id)
   const inp: RoleSpeakInput = {
     roleId,
     userBrief: session.userBrief,
@@ -60,7 +60,7 @@ const runMemberSpeak = async (
     assigneeUser: assignee,
     users,
   }
-  onProgress?.(roleId, 'speaking')
+  onProgress?.(roleId, 'speaking', assignee.id)
   const out = await speaker(inp)
   const summary = out.summary.trim() || '(no conclusion)'
   pushMessage(session, roleId, summary, {
@@ -68,7 +68,7 @@ const runMemberSpeak = async (
     reasoningContent: out.reasoningContent,
     speakerUserId: assignee.id,
   })
-  onProgress?.(roleId, 'done')
+  onProgress?.(roleId, 'done', assignee.id)
   return { summary, detail: out.reasoningContent ?? '' }
 }
 
@@ -76,11 +76,11 @@ const runManagerCodeBrief = async (
   session: WorkshopSession,
   users: import('../users-types').UserEntry[],
   speaker: RoleSpeaker,
-  onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
+  onProgress?: WorkshopProgressHandler,
 ): Promise<string> => {
   const manager = findManager(users)
   if (!manager) return ''
-  onProgress?.('manager', 'thinking')
+  onProgress?.('manager', 'thinking', manager.id)
   const inp: RoleSpeakInput = {
     roleId: 'manager',
     userBrief: session.userBrief,
@@ -89,7 +89,7 @@ const runManagerCodeBrief = async (
     assigneeUser: manager,
     users,
   }
-  onProgress?.('manager', 'speaking')
+  onProgress?.('manager', 'speaking', manager.id)
   let brief = ''
   try {
     const out = await speaker(inp)
@@ -104,7 +104,7 @@ const runManagerCodeBrief = async (
   } catch {
     /* 读码失败不阻塞 JSON 路由 */
   }
-  onProgress?.('manager', 'done')
+  onProgress?.('manager', 'done', manager.id)
   return brief
 }
 
@@ -114,10 +114,11 @@ const runManagerSpeak = async (
   routerLlm: RouterLLM,
   speaker: RoleSpeaker,
   replyLanguage: string,
-  onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
+  onProgress?: WorkshopProgressHandler,
 ) => {
   const codeBrief = await runManagerCodeBrief(session, users, speaker, onProgress)
-  onProgress?.('manager', 'thinking')
+  const manager = findManager(users)
+  onProgress?.('manager', 'thinking', manager?.id)
   const prior = priorSummaryFromMessages(session.messages)
   const mgr = await runManagerTurnLlm(
     routerLlm,
@@ -132,10 +133,9 @@ const runManagerSpeak = async (
     session.phase = 'done'
     return { done: true as const }
   }
-  onProgress?.('manager', 'speaking')
-  const manager = findManager(users)
+  onProgress?.('manager', 'speaking', manager?.id)
   pushMessage(session, 'manager', mgr.summary, { speakerUserId: manager?.id })
-  onProgress?.('manager', 'done')
+  onProgress?.('manager', 'done', manager?.id)
   if (mgr.done) {
     session.phase = 'done'
     session.pendingQuestion = undefined
@@ -155,9 +155,10 @@ const runManagerFinalReport = async (
   users: import('../users-types').UserEntry[],
   routerLlm: RouterLLM,
   replyLanguage: string,
-  onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
+  onProgress?: WorkshopProgressHandler,
 ) => {
-  onProgress?.('manager', 'thinking')
+  const manager = findManager(users)
+  onProgress?.('manager', 'thinking', manager?.id)
   const prior = priorSummaryFromMessages(session.messages)
   const mgr = await runManagerTurnLlm(
     routerLlm,
@@ -167,11 +168,10 @@ const runManagerFinalReport = async (
     undefined,
     replyLanguage,
   )
-  onProgress?.('manager', 'speaking')
-  const manager = findManager(users)
+  onProgress?.('manager', 'speaking', manager?.id)
   const summary = mgr.ok ? mgr.summary : 'All tasks done; see member reports above.'
   pushMessage(session, 'manager', summary, { speakerUserId: manager?.id })
-  onProgress?.('manager', 'done')
+  onProgress?.('manager', 'done', manager?.id)
   session.phase = 'done'
   session.pendingQuestion = undefined
 }
@@ -183,7 +183,7 @@ const afterMemberSummary = async (
   routerLlm: RouterLLM,
   speaker: RoleSpeaker,
   replyLanguage: string,
-  onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
+  onProgress?: WorkshopProgressHandler,
   memberDetail?: string,
 ): Promise<WorkshopRunResult> => {
   const prior = priorSummaryFromMessages(session.messages)
@@ -242,7 +242,7 @@ const runAfterUserMessage = async (
   speaker: RoleSpeaker,
   routerLlm: RouterLLM,
   replyLanguage: string,
-  onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
+  onProgress?: WorkshopProgressHandler,
   preferredAssigneeUserId?: string,
 ): Promise<WorkshopRunResult> => {
   const preferred = preferredAssigneeUserId?.trim()
@@ -283,7 +283,7 @@ export const sendWorkshopMessage = async (
   text: string,
   speaker: RoleSpeaker,
   routerLlm: RouterLLM,
-  onProgress?: (roleId: WorkshopProgressPayload['roleId'], status: 'thinking' | 'speaking' | 'done') => void,
+  onProgress?: WorkshopProgressHandler,
   options?: SendWorkshopMessageOptions,
 ): Promise<WorkshopRunResult> => {
   const trimmed = text.trim()

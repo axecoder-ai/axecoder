@@ -769,6 +769,7 @@ contextBridge.exposeInMainWorld('axecoder', {
     displayText?: string,
     imageRefs?: import('../../src/types/axecoder').ChatImageRef[],
     preferredAssigneeUserId?: string,
+    orchestrationChatMode?: string,
   ) =>
     ipcRenderer.invoke(
       'workshop:sendMessage',
@@ -780,6 +781,7 @@ contextBridge.exposeInMainWorld('axecoder', {
       cloneForIpc(displayText),
       cloneForIpc(imageRefs),
       cloneForIpc(preferredAssigneeUserId),
+      cloneForIpc(orchestrationChatMode),
     ) as Promise<import('../../src/types/axecoder').WorkshopRunResult>,
   workshopSendUserAnswer: (projectRoot: string, workshopId: string, answer: string) =>
     ipcRenderer.invoke(

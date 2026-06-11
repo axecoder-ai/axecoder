@@ -57,10 +57,12 @@ const activeModel = computed(() =>
 )
 const loading = ref(false)
 const thinkingRole = ref<WorkshopProgressPayload['roleId'] | null>(null)
+const thinkingSpeakerUserId = ref<string | null>(null)
 const streamText = ref('')
 const thinkingText = ref('')
 const thinkingTypeLabel = ref('')
 const streamRoleId = ref<WorkshopRoleId | null>(null)
+const streamSpeakerUserId = ref<string | null>(null)
 const modelId = ref('')
 const enabledModels = ref<ModelEntry[]>([])
 const { scrollEl: listEl, onScrollContainer, scrollToBottom } = useStickToBottomScroll()
@@ -168,12 +170,15 @@ const bindWorkshopAgentProgress = () => {
       }
       if (roleKey.startsWith('u-')) {
         const uid = roleKey.slice(2)
+        streamSpeakerUserId.value = uid
         const u = findUserById(usersList.value, uid)
         streamRoleId.value = u ? inferWorkshopRoleId(u) : 'backend'
       } else {
+        streamSpeakerUserId.value = null
         streamRoleId.value = roleKey as WorkshopRoleId
       }
       thinkingRole.value = null
+      thinkingSpeakerUserId.value = null
     }
     if (payload.kind === 'delta') {
       streamText.value += payload.delta
@@ -278,7 +283,18 @@ const rollbackOptimisticUser = () => {
 
 const employeeRoles: WorkshopRoleId[] = ['manager', 'backend', 'frontend', 'tester']
 
-const roleProps = (roleId: WorkshopRoleId) => {
+const roleProps = (roleId: WorkshopRoleId, speakerUserId?: string | null) => {
+  if (speakerUserId) {
+    const u = findUserById(usersList.value, speakerUserId)
+    if (u) {
+      return {
+        avatarUrl: userAvatarUrls.value[u.id],
+        nickname: u.displayName,
+        roleTitle: u.role,
+        unbound: false,
+      }
+    }
+  }
   const id = roleIdentity.value[roleId]
   const isEmployee = employeeRoles.includes(roleId)
   const unbound = isEmployee && !id
@@ -524,8 +540,11 @@ onMounted(async () => {
           resetLiveProgressSteps()
         }
         thinkingRole.value = p.roleId
+        thinkingSpeakerUserId.value = p.speakerUserId ?? null
+        if (p.speakerUserId) streamSpeakerUserId.value = p.speakerUserId
         if (!agentProgressActive.value) {
           streamRoleId.value = null
+          if (!p.speakerUserId) streamSpeakerUserId.value = null
         } else {
           streamRoleId.value = p.roleId
         }
@@ -536,13 +555,17 @@ onMounted(async () => {
           resetLiveProgressSteps()
         }
         thinkingRole.value = null
+        thinkingSpeakerUserId.value = null
         streamRoleId.value = p.roleId
+        if (p.speakerUserId) streamSpeakerUserId.value = p.speakerUserId
       } else {
         thinkingRole.value = null
+        thinkingSpeakerUserId.value = null
       }
       void scrollToBottom()
     } else if (p.status === 'done') {
       thinkingRole.value = null
+      thinkingSpeakerUserId.value = null
       if (!agentProgressActive.value) clearStreamUi()
       void syncWorkshopSession()
     }
@@ -633,7 +656,7 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
             thinkingText: thinkingText,
             thinkingType: thinkingTypeLabel,
           }"
-          v-bind="roleProps(streamRoleId)"
+          v-bind="roleProps(streamRoleId, streamSpeakerUserId)"
         />
         <WorkshopMessageItem
           v-else-if="
@@ -644,7 +667,7 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
           :role-id="thinkingRole"
           text=""
           thinking
-          v-bind="roleProps(thinkingRole)"
+          v-bind="roleProps(thinkingRole, thinkingSpeakerUserId)"
         />
       </div>
       <div v-if="hasProject" class="composer">

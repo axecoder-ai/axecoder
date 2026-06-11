@@ -8,6 +8,10 @@ import {
   saveWorkshopSession,
 } from './workshop/workshop-store'
 import { sendWorkshopMessage } from './workshop/workshop-turn-orchestrator'
+import {
+  buildReflectionJudgeLlm,
+  sendReflectionMessage,
+} from './workshop/reflection-turn-orchestrator'
 import { buildWorkshopRouterLlm } from './workshop/workshop-router-llm'
 import { buildAgentRoleSpeaker } from './workshop/workshop-agent-speaker'
 import { emitWorkshopProgress } from './workshop/workshop-progress-emit'
@@ -48,6 +52,7 @@ export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) 
     displayText?: string,
     imageRefs?: ChatImageRef[],
     preferredAssigneeUserId?: string,
+    orchestrationChatMode?: string,
   ) => {
     let session: WorkshopSession | null = null
     if (workshopId?.trim()) {
@@ -86,40 +91,49 @@ export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) 
         return { ok: false as const, error: visionUnsupportedError(model) }
       }
     }
-    const res = await sendWorkshopMessage(
-      session,
-      text,
-      speaker,
-      routerLlm,
-      (roleId, status) => {
-        emitWorkshopProgress({ workshopId: session!.id, roleId, status })
-        if (status === 'done') {
-          void saveWorkshopSession(root, session!).catch(() => {
-            /* 增量落盘失败不中断编排；终态 save 会再试并向前端报错 */
-          })
-        }
-      },
-      {
-        displayText,
-        userImages,
-        userImageRefs: refs.length ? refs : undefined,
-        userImagePreviews: refs.length
-          ? (
-              await Promise.all(
-                refs.map(async (ref) => {
-                  try {
-                    return await chatImageRefPreviewDataUrl(ref)
-                  } catch {
-                    return ''
-                  }
-                }),
-              )
-            ).filter(Boolean)
-          : undefined,
-        preferredAssigneeUserId,
-        projectRoot: root,
-      },
-    )
+    const sendOptions = {
+      displayText,
+      userImages,
+      userImageRefs: refs.length ? refs : undefined,
+      userImagePreviews: refs.length
+        ? (
+            await Promise.all(
+              refs.map(async (ref) => {
+                try {
+                  return await chatImageRefPreviewDataUrl(ref)
+                } catch {
+                  return ''
+                }
+              }),
+            )
+          ).filter(Boolean)
+        : undefined,
+      preferredAssigneeUserId,
+      projectRoot: root,
+    }
+    const onProgress: import('./workshop/workshop-types').WorkshopProgressHandler = (
+      roleId,
+      status,
+      speakerUserId,
+    ) => {
+      emitWorkshopProgress({ workshopId: session!.id, roleId, status, speakerUserId })
+      if (status === 'done') {
+        void saveWorkshopSession(root, session!).catch(() => {
+          /* 增量落盘失败不中断编排；终态 save 会再试并向前端报错 */
+        })
+      }
+    }
+    const res =
+      orchestrationChatMode === 'reflection'
+        ? await sendReflectionMessage(
+            session,
+            text,
+            speaker,
+            buildReflectionJudgeLlm(session.modelId, root),
+            onProgress,
+            sendOptions,
+          )
+        : await sendWorkshopMessage(session, text, speaker, routerLlm, onProgress, sendOptions)
     if (!res.ok) return res
     res.session.pendingUserImages = undefined
     const saved = await saveWorkshopSession(root, res.session)
@@ -139,6 +153,7 @@ export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) 
       displayText?: string,
       imageRefs?: ChatImageRef[],
       preferredAssigneeUserId?: string,
+      orchestrationChatMode?: string,
     ) =>
       runSend(
         typeof projectRoot === 'string' ? projectRoot : '',
@@ -149,6 +164,7 @@ export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) 
         displayText,
         imageRefs,
         preferredAssigneeUserId,
+        orchestrationChatMode,
       ),
   )
 

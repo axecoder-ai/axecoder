@@ -45,6 +45,8 @@ const props = defineProps<{
   agentHistoryCount?: number
   /** Multi-Agent 嵌入时与 Agent 底栏共用 activeModelId */
   preferredModelId?: string
+  /** Agent 嵌入 Workshop 时的编排模式（multi-agent / reflection） */
+  orchestrationChatMode?: string
 }>()
 
 const emit = defineEmits<{
@@ -58,6 +60,10 @@ const emit = defineEmits<{
 const emitWorkshopActive = (id: string) => {
   if (!props.embeddedInAgentChat) emit('activeChange', id)
 }
+
+const embeddedDefaultTitle = computed(() =>
+  props.orchestrationChatMode === 'reflection' ? 'Reflection' : 'Multi-Agent',
+)
 
 const kind = ref<'workshop'>('workshop')
 const { sendWorkshop, loadWorkshop } = useWorkbenchSession(
@@ -85,6 +91,7 @@ const activeModel = computed(() =>
 )
 const loading = ref(false)
 const thinkingRole = ref<WorkshopProgressPayload['roleId'] | null>(null)
+const thinkingSpeakerUserId = ref<string | null>(null)
 const streamText = ref('')
 const thinkingText = ref('')
 const thinkingTypeLabel = ref('')
@@ -169,6 +176,7 @@ const clearStreamUi = () => {
   streamText.value = ''
   thinkingText.value = ''
   thinkingTypeLabel.value = ''
+  thinkingSpeakerUserId.value = null
   streamRoleId.value = null
   streamSpeakerUserId.value = null
   progressSteps.value = []
@@ -398,7 +406,7 @@ const pushOptimisticUser = (
     const title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
     active.value = {
       id,
-      title: title || 'Multi-Agent',
+      title: title || embeddedDefaultTitle.value,
       updatedAt: now,
       userBrief: text,
       modelId: modelId.value,
@@ -459,7 +467,7 @@ const pushLocalSystemMessage = (text: string) => {
         : newLocalWorkshopId()
     active.value = {
       id,
-      title: 'Multi-Agent',
+      title: embeddedDefaultTitle.value,
       updatedAt: now,
       userBrief: '',
       modelId: modelId.value,
@@ -522,6 +530,7 @@ const sendPayload = async (opts: {
       displayText,
       imageRefs.length ? imageRefs : undefined,
       opts.preferredAssigneeUserId,
+      props.orchestrationChatMode,
     )
     if (!res.ok) {
       rollbackOptimisticUser()
@@ -641,7 +650,7 @@ const openForAgentChat = async (agentChatId: string) => {
   const now = Date.now()
   active.value = {
     id,
-    title: 'Multi-Agent',
+    title: embeddedDefaultTitle.value,
     updatedAt: now,
     userBrief: '',
     modelId: modelId.value,
@@ -701,9 +710,11 @@ onMounted(async () => {
           resetLiveProgressSteps()
         }
         thinkingRole.value = p.roleId
+        thinkingSpeakerUserId.value = p.speakerUserId ?? null
+        if (p.speakerUserId) streamSpeakerUserId.value = p.speakerUserId
         if (!agentProgressActive.value) {
           streamRoleId.value = null
-          streamSpeakerUserId.value = null
+          if (!p.speakerUserId) streamSpeakerUserId.value = null
         } else {
           streamRoleId.value = p.roleId
         }
@@ -714,13 +725,17 @@ onMounted(async () => {
           resetLiveProgressSteps()
         }
         thinkingRole.value = null
+        thinkingSpeakerUserId.value = null
         streamRoleId.value = p.roleId
+        if (p.speakerUserId) streamSpeakerUserId.value = p.speakerUserId
       } else {
         thinkingRole.value = null
+        thinkingSpeakerUserId.value = null
       }
       void scrollBottom()
     } else if (p.status === 'done') {
       thinkingRole.value = null
+      thinkingSpeakerUserId.value = null
       if (!agentProgressActive.value) clearStreamUi()
       void syncWorkshopSession()
     }
@@ -733,7 +748,7 @@ onUnmounted(() => {
 })
 
 const activeId = computed(() => active.value?.id ?? '')
-const activeTitle = computed(() => active.value?.title ?? 'Multi-Agent')
+const activeTitle = computed(() => active.value?.title ?? embeddedDefaultTitle.value)
 
 const activeMessageCount = computed(() => active.value?.messages.length ?? 0)
 
@@ -794,14 +809,14 @@ defineExpose({
           thinkingText: thinkingText,
           thinkingType: thinkingTypeLabel,
         }"
-        v-bind="roleProps(liveRoleId)"
+        v-bind="roleProps(liveRoleId, streamSpeakerUserId)"
       />
       <WorkshopMessageItem
         v-else-if="showThinkingDots && thinkingRole"
         :role-id="thinkingRole"
         text=""
         thinking
-        v-bind="roleProps(thinkingRole)"
+        v-bind="roleProps(thinkingRole, thinkingSpeakerUserId)"
       />
     </div>
     <div v-if="hasProject && !embeddedInAgentChat" class="composer">

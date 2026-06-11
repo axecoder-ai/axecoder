@@ -55,7 +55,15 @@ export type WorkshopProgressPayload = {
   workshopId: string
   roleId: WorkshopRoleId
   status: 'thinking' | 'speaking' | 'done'
+  /** 实际发言人 users.json id，避免 roleId=backend 时 UI 误匹配到第一个 backend 角色 */
+  speakerUserId?: string
 }
+
+export type WorkshopProgressHandler = (
+  roleId: WorkshopProgressPayload['roleId'],
+  status: WorkshopProgressPayload['status'],
+  speakerUserId?: string,
+) => void
 
 export type RoleSpeakMode = 'member' | 'manager_chat' | 'plan' | 'execute' | 'verify'
 
