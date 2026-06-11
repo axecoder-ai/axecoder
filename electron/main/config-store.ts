@@ -75,7 +75,7 @@ export const getConfig = async (): Promise<AppConfig> => {
     agentOutputStyle: raw.agentOutputStyle ?? defaults.agentOutputStyle,
     agentFeatureWebSearch: raw.agentFeatureWebSearch ?? false,
     agentWebSearchApiKey: raw.agentWebSearchApiKey ?? '',
-    agentFeatureWebRun: raw.agentFeatureWebRun ?? false,
+    agentFeatureWebRun: raw.agentFeatureWebRun ?? raw.agentFeatureWebSearch ?? false,
     agentFeatureLsp: raw.agentFeatureLsp ?? false,
     agentFeatureCodeGraph: raw.agentFeatureCodeGraph ?? true,
     agentFeatureWorktree: raw.agentFeatureWorktree ?? false,

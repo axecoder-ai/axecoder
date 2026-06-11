@@ -79,6 +79,42 @@ rl.on('line', async (line) => {
       reply({ id, ok: true, text: buf.toString('base64') })
       return
     }
+    if (req.action === 'search') {
+      const q = String(req.text ?? '').trim()
+      if (!q) {
+        reply({ id, ok: false, error: 'search term required' })
+        return
+      }
+      const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`
+      await p.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+      const items = await p.evaluate(() => {
+        const out = []
+        for (const el of document.querySelectorAll('.result')) {
+          const a = el.querySelector('.result__a')
+          const snip = el.querySelector('.result__snippet')
+          if (!a) continue
+          out.push({
+            title: (a.textContent ?? '').trim(),
+            link: a.getAttribute('href') ?? '',
+            snippet: (snip?.textContent ?? '').trim(),
+          })
+        }
+        return out
+      })
+      const lines = []
+      if (!items.length) {
+        lines.push('No results found.')
+      } else {
+        items.slice(0, 10).forEach((item, i) => {
+          lines.push(`${i + 1}. ${item.title || '(no title)'}`)
+          if (item.link) lines.push(`   ${item.link}`)
+          if (item.snippet) lines.push(`   ${item.snippet}`)
+          lines.push('')
+        })
+      }
+      reply({ id, ok: true, text: lines.join('\n').trim().slice(0, 200_000) })
+      return
+    }
     reply({ id, ok: false, error: `unknown action: ${req.action}` })
   } catch (e) {
     reply({ id, ok: false, error: e instanceof Error ? e.message : String(e) })

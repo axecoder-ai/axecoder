@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { app } from 'electron'
 
 const CMD_TIMEOUT_MS = 45_000
-const VALID_ACTIONS = new Set(['navigate', 'snapshot', 'click', 'type', 'screenshot'])
+const VALID_ACTIONS = new Set(['navigate', 'snapshot', 'click', 'type', 'screenshot', 'search'])
 
 export type WebRunArgs = {
   action: string
@@ -110,6 +110,18 @@ class BrowserBridge {
 const getBridge = () => {
   if (!bridge) bridge = new BrowserBridge()
   return bridge
+}
+
+export const runBrowserSearch = async (
+  query: string,
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> => {
+  const q = query.trim()
+  if (!q) return { ok: false, error: 'search_term is required' }
+  try {
+    return await getBridge().send({ action: 'search', text: q })
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
 }
 
 export const runWebRun = async (

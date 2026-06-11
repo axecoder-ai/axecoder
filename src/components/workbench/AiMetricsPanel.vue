@@ -39,12 +39,14 @@ const chartTps = ref<HTMLCanvasElement | null>(null)
 const chartErr = ref<HTMLCanvasElement | null>(null)
 const chartE2e = ref<HTMLCanvasElement | null>(null)
 const chartTpsGauge = ref<HTMLCanvasElement | null>(null)
+const chartsEl = ref<HTMLElement | null>(null)
 const activityLogEl = ref<HTMLElement | null>(null)
 const activityLog = ref<AiMetricsActivityLine[]>([])
 
 let offMetrics: (() => void) | undefined
 let offActivity: (() => void) | undefined
 let themeObs: MutationObserver | undefined
+let chartsResizeObs: ResizeObserver | undefined
 let gaugeRaf = 0
 let gaugeNeedleTps = 0
 let gaugeLastFrame = 0
@@ -142,6 +144,14 @@ const chartUiColors = () => {
   }
 }
 
+const chartCanvasSize = (parent: HTMLElement) => {
+  const rect = parent.getBoundingClientRect()
+  const w = Math.floor(rect.width)
+  const h = Math.floor(rect.height)
+  if (w < 8 || h < 8) return null
+  return { w, h }
+}
+
 const drawLineChart = (
   canvas: HTMLCanvasElement | null,
   series: { values: number[]; color: string; label: string; markSlo?: boolean }[],
@@ -153,9 +163,10 @@ const drawLineChart = (
   if (!canvas) return
   const parent = canvas.parentElement
   if (!parent) return
+  const size = chartCanvasSize(parent)
+  if (!size) return
+  const { w, h } = size
   const dpr = window.devicePixelRatio || 1
-  const w = parent.clientWidth
-  const h = parent.clientHeight
   canvas.width = w * dpr
   canvas.height = h * dpr
   canvas.style.width = `${w}px`
@@ -266,9 +277,10 @@ const drawErrorRatePie = (
   if (!canvas) return
   const parent = canvas.parentElement
   if (!parent) return
+  const size = chartCanvasSize(parent)
+  if (!size) return
+  const { w, h } = size
   const dpr = window.devicePixelRatio || 1
-  const w = parent.clientWidth
-  const h = parent.clientHeight
   canvas.width = w * dpr
   canvas.height = h * dpr
   canvas.style.width = `${w}px`
@@ -361,9 +373,10 @@ const drawTpsGauge = (
   if (!canvas) return
   const parent = canvas.parentElement
   if (!parent) return
+  const size = chartCanvasSize(parent)
+  if (!size) return
+  const { w, h } = size
   const dpr = window.devicePixelRatio || 1
-  const w = parent.clientWidth
-  const h = parent.clientHeight
   canvas.width = w * dpr
   canvas.height = h * dpr
   canvas.style.width = `${w}px`
@@ -648,6 +661,10 @@ onMounted(async () => {
     void nextTick().then(redrawCharts)
   })
   themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  chartsResizeObs = new ResizeObserver(() => {
+    void nextTick().then(redrawCharts)
+  })
+  if (chartsEl.value) chartsResizeObs.observe(chartsEl.value)
   startGaugeLoop()
 })
 
@@ -655,6 +672,7 @@ onUnmounted(() => {
   offMetrics?.()
   offActivity?.()
   themeObs?.disconnect()
+  chartsResizeObs?.disconnect()
   window.removeEventListener('resize', redrawCharts)
   stopGaugeLoop()
 })
@@ -804,7 +822,7 @@ onUnmounted(() => {
       </table>
     </div>
 
-    <div class="charts" :class="{ 'charts--expanded': expanded }">
+    <div ref="chartsEl" class="charts" :class="{ 'charts--expanded': expanded }">
       <div class="chart-card">
         <div class="chart-title">TTFT P50 / P95 (ms)</div>
         <div class="chart-canvas-wrap"><canvas ref="chartTtft" /></div>
@@ -1162,12 +1180,10 @@ onUnmounted(() => {
 }
 
 .charts--expanded .chart-canvas-wrap {
-  min-height: 0;
+  min-height: 72px;
 }
 
 canvas {
   display: block;
-  width: 100%;
-  height: 100%;
 }
 </style>

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import MarkdownIt from 'markdown-it'
 import type {
   AgentContinueResult,
+  AgentPendingPlan,
   AgentSendResult,
   AgentToolLogEntry,
   AiChatMessage,
@@ -11,6 +12,7 @@ import type {
   ChatSessionMeta,
   ModelEntry,
   ModelsFile,
+  PlanBuildTrack,
   UserEntry,
   WorkshopSessionMeta,
 } from '../../types/axecoder'
@@ -18,9 +20,9 @@ import ModelPickerDropdown from './ModelPickerDropdown.vue'
 import ChatModePickerDropdown from './ChatModePickerDropdown.vue'
 import SlashCommandPicker from './SlashCommandPicker.vue'
 import AtRefPicker from './AtRefPicker.vue'
-import EffortSwitcher from './EffortSwitcher.vue'
 import ChatDiffCard from './ChatDiffCard.vue'
 import ChatAskUserCard from './ChatAskUserCard.vue'
+import ChatPlanCard from './ChatPlanCard.vue'
 import ChatBashCard from './ChatBashCard.vue'
 import BackgroundTaskCard from './BackgroundTaskCard.vue'
 import AgentProgressStream from './AgentProgressStream.vue'
@@ -33,6 +35,18 @@ import {
 import { useAgentStore } from '../../stores/agentStore'
 import { useStickToBottomScroll } from '../../composables/useStickToBottomScroll'
 import { detectThinkingType } from '../../utils/thinking-parser'
+import {
+  isPlanBuiltContent,
+  isPlanEditorPath,
+  markPlanFileBuilt,
+  planAbsolutePath,
+} from '../../utils/plan-built'
+import {
+  advancePlanStepStatuses,
+  completeAllPlanStepStatuses,
+  extractPlanSteps,
+  startPlanStepStatuses,
+} from '../../utils/plan-steps'
 import { runSlashCommand } from '../../slash-commands/run'
 import { refreshSlashCommandRegistry, findCommand } from '../../slash-commands/registry'
 import type { SlashContext } from '../../slash-commands/types'
@@ -77,6 +91,19 @@ import {
 const md = new MarkdownIt()
 const agentStore = useAgentStore()
 
+const liveTps = ref(0)
+let offAiMetrics: (() => void) | undefined
+
+const showTpsLive = computed(
+  () => agentProgressActive.value || loading.value || liveTps.value > 0.05,
+)
+
+const formattedLiveTps = computed(() => {
+  const v = liveTps.value
+  if (v <= 0) return '0'
+  return v < 10 ? v.toFixed(1) : String(Math.round(v))
+})
+
 const workshopSectionRef = ref<InstanceType<typeof WorkshopChatSection> | null>(null)
 
 const props = defineProps<{
@@ -84,6 +111,8 @@ const props = defineProps<{
   /** Agent/Workshop session kind from App; tab uses ChatPane activeTabKind */
   sessionKind?: SessionKind
   contextFilePath?: string | null
+  /** 当前编辑器打开文件内容（用于 plan Build 状态） */
+  contextFileContent?: string
   /** Hide landing welcome when editor has open file tabs */
   hasOpenEditorTabs?: boolean
   agentsSidebarVisible: boolean
@@ -104,6 +133,7 @@ const emit = defineEmits<{
   sessionsChanged: []
   filesChanged: []
   openFile: [path: string]
+  planFileBuilt: [path: string]
   'update:agentAutoApplyWrites': [value: boolean]
 }>()
 
@@ -966,10 +996,13 @@ const bindAgentProgress = (initialSessionId?: string, assigneeUserId?: string) =
         chatModeId.value = payload.chatMode
         saveStoredChatMode(payload.chatMode)
       }
+    } else if (payload.kind === 'tool' && payload.status === 'done' && payload.ok) {
+      bumpPlanBuildProgress(payload.sessionId)
+      progressSteps.value = applyProgressPayload(progressSteps.value, payload)
     } else {
       progressSteps.value = applyProgressPayload(progressSteps.value, payload)
     }
-    void scrollMessages()
+    if (payload.kind !== 'thinking_delta') void scrollMessages()
   })
 }
 
@@ -1067,6 +1100,7 @@ const pushAssistantFromAgent = (
     pendingWrites: res.pending,
     pendingBashes: res.pendingBashes,
     pendingAsks: res.pendingAsks,
+    pendingPlans: res.pendingPlans,
     agentSessionId: res.sessionId,
     ...(speakerUserId ? { speakerUserId } : {}),
     ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
@@ -1081,6 +1115,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     msg.pendingWrites = undefined
     msg.pendingBashes = undefined
     msg.pendingAsks = undefined
+    msg.pendingPlans = undefined
     return
   }
   const suffix = formatToolLog(res.toolLog)
@@ -1088,6 +1123,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     msg.pendingWrites = res.pending
     msg.pendingBashes = res.pendingBashes
     msg.pendingAsks = res.pendingAsks
+    msg.pendingPlans = res.pendingPlans
     msg.agentSessionId = res.sessionId
     if (res.speakerUserId) msg.speakerUserId = res.speakerUserId
     mergeBackgroundTaskIds(msg, res.backgroundTaskIds)
@@ -1097,6 +1133,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     msg.pendingWrites = undefined
     msg.pendingBashes = undefined
     msg.pendingAsks = undefined
+    msg.pendingPlans = undefined
     msg.text = (res.assistantText + suffix).trim() || msg.text
     mergeBackgroundTaskIds(msg, res.backgroundTaskIds)
     maybePlayAgentDoneSound(res)
@@ -1187,6 +1224,211 @@ const onAnswerPending = async (
   }
 }
 
+const ensurePlanBuildTrack = (msg: ChatMessage, pp: AgentPendingPlan) => {
+  if (!msg.planBuildTracks) msg.planBuildTracks = []
+  if (msg.planBuildTracks.some((t) => t.id === pp.id)) return
+  const stepCount = extractPlanSteps(pp).length
+  const track: PlanBuildTrack = {
+    id: pp.id,
+    plan: { ...pp },
+    stepStatuses: startPlanStepStatuses(stepCount),
+    building: true,
+    done: false,
+  }
+  msg.planBuildTracks.push(track)
+}
+
+const bumpPlanBuildProgress = (sessionId: string) => {
+  for (const msg of activeSession.value?.messages ?? []) {
+    if (msg.agentSessionId && msg.agentSessionId !== sessionId) continue
+    for (const track of msg.planBuildTracks ?? []) {
+      if (!track.building) continue
+      track.stepStatuses = advancePlanStepStatuses(track.stepStatuses)
+      if (!track.stepStatuses.some((s) => s === 'pending' || s === 'in_progress')) {
+        track.building = false
+        track.done = true
+      }
+    }
+  }
+}
+
+const finalizePlanBuildTracks = (msg: ChatMessage) => {
+  for (const track of msg.planBuildTracks ?? []) {
+    if (!track.building) continue
+    track.stepStatuses = completeAllPlanStepStatuses(track.stepStatuses)
+    track.building = false
+    track.done = true
+  }
+}
+
+const hasPlanBuildTrack = (msg: ChatMessage, planId: string) =>
+  (msg.planBuildTracks ?? []).some((t) => t.id === planId)
+
+const planBuildingLocal = ref(false)
+
+const pendingPlanAction = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i]!
+    if (m.role !== 'assistant') continue
+    for (const pp of m.pendingPlans ?? []) {
+      if (!hasPlanBuildTrack(m, pp.id)) return { msg: m, plan: pp }
+    }
+  }
+  return null
+})
+
+const showFooterPlanBuild = computed(() => {
+  if (pendingPlanAction.value) return true
+  return isPlanEditorPath(props.contextFilePath, props.contextFileContent ?? '')
+})
+
+const footerPlanBuilt = computed(() => {
+  const path = props.contextFilePath
+  if (!path || !isPlanEditorPath(path, props.contextFileContent ?? '')) return false
+  return isPlanBuiltContent(props.contextFileContent ?? '')
+})
+
+const footerPlanBuildDisabled = computed(
+  () =>
+    footerPlanBuilt.value ||
+    planBuildingLocal.value ||
+    loading.value ||
+    pendingBusy.value ||
+    !hasProject.value,
+)
+
+const onFooterPlanBuild = async () => {
+  if (footerPlanBuildDisabled.value) return
+  const pending = pendingPlanAction.value
+  if (pending) {
+    await onBuildPlanPending(pending.msg, pending.plan.id)
+    const path = planAbsolutePath(props.projectRoot, pending.plan.filePath)
+    emit('planFileBuilt', path)
+    return
+  }
+  const path = props.contextFilePath
+  if (!path) return
+  planBuildingLocal.value = true
+  try {
+    const built = await buildPlanFromPath(path)
+    if (built) emit('planFileBuilt', path)
+  } finally {
+    planBuildingLocal.value = false
+  }
+}
+
+const markBuiltPlanFile = async (relPath: string) => {
+  const root = props.projectRoot?.trim()
+  if (!root) return
+  await markPlanFileBuilt(planAbsolutePath(root, relPath))
+}
+
+const onBuildPlanPending = async (msg: ChatMessage, pendingId: string) => {
+  if (!msg.agentSessionId || pendingBusy.value) return
+  const pp = msg.pendingPlans?.find((p) => p.id === pendingId)
+  if (!pp) return
+  const root = props.projectRoot?.trim()
+  if (root) {
+    try {
+      const { content } = await window.axecoder.readFile(planAbsolutePath(root, pp.filePath))
+      if (isPlanBuiltContent(content)) return
+    } catch {
+      /* 文件尚未落盘则继续 */
+    }
+  }
+  ensurePlanBuildTrack(msg, pp)
+  pendingBusy.value = true
+  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
+  try {
+    if (chatModeId.value !== 'agent') {
+      chatModeId.value = 'agent'
+      saveStoredChatMode('agent')
+    }
+    const res = await window.axecoder.agentBuildPlan(msg.agentSessionId, pendingId)
+    if (res.ok && res.status === 'done') {
+      finalizePlanBuildTracks(msg)
+      await markBuiltPlanFile(pp.filePath)
+    }
+    applyContinueToMessage(msg, res)
+    activeSession.value!.updatedAt = Date.now()
+    await persist()
+  } finally {
+    pendingBusy.value = false
+    clearProgressUi()
+  }
+}
+
+const onDismissPlanPending = async (msg: ChatMessage, pendingId: string) => {
+  if (!msg.agentSessionId || pendingBusy.value) return
+  pendingBusy.value = true
+  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
+  try {
+    const res = await window.axecoder.agentDismissPlan(msg.agentSessionId, pendingId)
+    applyContinueToMessage(msg, res)
+    activeSession.value!.updatedAt = Date.now()
+    await persist()
+  } finally {
+    pendingBusy.value = false
+    clearProgressUi()
+  }
+}
+
+const buildPlanFromPath = async (absolutePlanPath: string): Promise<boolean> => {
+  const root = props.projectRoot?.trim()
+  if (!root || loading.value || pendingBusy.value) return false
+  try {
+    const { content } = await window.axecoder.readFile(absolutePlanPath)
+    if (isPlanBuiltContent(content)) return false
+  } catch {
+    return false
+  }
+  const rel = relativeToProject(root, absolutePlanPath) ?? absolutePlanPath
+  const composed = await window.axecoder.agentComposePlanBuild(root, rel)
+  if (!composed.ok) {
+    window.alert(composed.error)
+    return false
+  }
+  const session = activeSession.value
+  if (!session) return false
+  const modelId = modelsFile.value.activeModelId
+  const model = activeModel.value
+  if (!modelId || !model) {
+    window.alert('Add and enable a model in Settings before Build.')
+    return false
+  }
+  if (chatModeId.value !== 'agent') {
+    chatModeId.value = 'agent'
+    saveStoredChatMode('agent')
+  }
+  session.messages.push({ role: 'user', text: `Build plan: ${rel}`, apiContent: composed.text })
+  session.updatedAt = Date.now()
+  loading.value = true
+  bindAgentProgress()
+  try {
+    await persist()
+    const apiMessages = await buildApiMessages(session.messages)
+    const res = await sendAgent(props.projectRoot, modelId, apiMessages)
+    pushAssistantFromAgent(res, model)
+    session.updatedAt = Date.now()
+    if (res.ok && res.status === 'done') {
+      await markPlanFileBuilt(absolutePlanPath)
+      return true
+    }
+    return false
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Request error'
+    session.messages.push({
+      role: 'assistant',
+      text: formatAiChatRequestError(msg, model),
+    })
+    return false
+  } finally {
+    loading.value = false
+    clearProgressUi()
+    await persist()
+  }
+}
+
 const hasPendingWritesInSession = () => sessionPendingState.value.count > 0
 
 const hasPendingAsksInSession = () =>
@@ -1195,8 +1437,14 @@ const hasPendingAsksInSession = () =>
 const hasPendingBashesInSession = () =>
   (activeSession.value?.messages ?? []).some((m) => (m.pendingBashes?.length ?? 0) > 0)
 
+const hasPendingPlansInSession = () =>
+  (activeSession.value?.messages ?? []).some((m) => (m.pendingPlans?.length ?? 0) > 0)
+
 const hasPendingAgentInteraction = () =>
-  hasPendingWritesInSession() || hasPendingBashesInSession() || hasPendingAsksInSession()
+  hasPendingWritesInSession() ||
+  hasPendingBashesInSession() ||
+  hasPendingAsksInSession() ||
+  hasPendingPlansInSession()
 
 const sessionPendingState = computed(() => {
   const msgs = activeSession.value?.messages ?? []
@@ -1222,6 +1470,7 @@ const clearPendingForSession = (sessionId: string) => {
       m.pendingWrites = undefined
       m.pendingBashes = undefined
       m.pendingAsks = undefined
+      m.pendingPlans = undefined
     }
   }
 }
@@ -1241,6 +1490,7 @@ const applyContinueAcrossSession = (sessionId: string, anchor: ChatMessage, res:
       m.pendingWrites = undefined
       m.pendingBashes = undefined
       m.pendingAsks = undefined
+      m.pendingPlans = undefined
     }
   }
 }
@@ -1366,13 +1616,12 @@ const buildSlashContext = (): SlashContext => ({
 
 const ensureChatSession = async (): Promise<boolean> => {
   if (activeSession.value) return true
-  if (isMultiAgentInAgentChat.value) {
-    if (activeId.value) return selectSession(activeId.value)
-    if (sessionMetas.value.length) return selectSession(sessionMetas.value[0].id)
-    return false
-  }
   await newChat()
-  return !!activeSession.value
+  if (!activeSession.value) return false
+  if (isMultiAgentInAgentChat.value) {
+    await syncMultiAgentWorkshop()
+  }
+  return true
 }
 
 const send = async () => {
@@ -1928,6 +2177,13 @@ watch(workshopMessageCount, (n, prev) => {
   void syncMultiAgentAgentSessionTitle()
 })
 
+const syncLiveTps = async () => {
+  const snap = await window.axecoder.getAiMetricsSnapshot(
+    agentMode.value ? { source: 'agent' } : undefined,
+  )
+  liveTps.value = snap.realtime.kpis.tps
+}
+
 onMounted(async () => {
   void loadModels()
   await load()
@@ -1938,6 +2194,10 @@ onMounted(async () => {
   }
   void refreshSlashCommandRegistry(props.projectRoot ?? '')
   void loadMentionUsers()
+  void syncLiveTps()
+  offAiMetrics = window.axecoder.onAiMetricsUpdate(() => {
+    void syncLiveTps()
+  })
 })
 
 watch(
@@ -1948,6 +2208,8 @@ watch(
 )
 
 onUnmounted(() => {
+  offAiMetrics?.()
+  offAiMetrics = undefined
   clearProgressUi()
 })
 
@@ -2014,6 +2276,7 @@ defineExpose({
   loadWorkshop: loadWsMetas,
   workshopActiveId: activeTabId,
   activeTabKind,
+  buildPlanFromPath,
 })
 </script>
 
@@ -2242,6 +2505,23 @@ defineExpose({
             :pending="pa"
             :busy="pendingBusy"
             @submit="(answers) => onAnswerPending(msg, pa.id, answers)"
+          />
+          <ChatPlanCard
+            v-for="pp in msg.pendingPlans ?? []"
+            v-show="!hasPlanBuildTrack(msg, pp.id)"
+            :key="pp.id"
+            :pending="pp"
+            :busy="pendingBusy"
+            @dismiss="onDismissPlanPending(msg, pp.id)"
+          />
+          <ChatPlanCard
+            v-for="track in msg.planBuildTracks ?? []"
+            :key="`plan-track-${track.id}`"
+            :pending="track.plan"
+            :step-statuses="track.stepStatuses"
+            :building="track.building"
+            :built="track.done"
+            :busy="pendingBusy"
           />
           <ChatBashCard
             v-for="pb in msg.pendingBashes ?? []"
@@ -2485,17 +2765,25 @@ defineExpose({
               v-if="enabledModels.length"
               :models="enabledModels"
               :active-model-id="modelsFile.activeModelId"
+              :effort="chatEffort"
+              :effort-disabled="loading"
               @select="onModelPick"
+              @update:effort="onChatEffortPick"
               @add-models="emit('openModelsSettings')"
             />
-            <EffortSwitcher
-              v-if="enabledModels.length"
-              :model-value="chatEffort"
-              :disabled="loading"
-              @update:model-value="onChatEffortPick"
-            />
             <button
-              v-else
+              v-if="showFooterPlanBuild"
+              type="button"
+              class="footer-plan-build-btn"
+              :class="{ built: footerPlanBuilt }"
+              :disabled="footerPlanBuildDisabled"
+              :title="footerPlanBuilt ? '此计划已执行过 Build' : '按当前计划开始实现'"
+              @click="onFooterPlanBuild"
+            >
+              {{ footerPlanBuilt ? 'Built' : 'Build' }}
+            </button>
+            <button
+              v-else-if="!enabledModels.length"
               type="button"
               class="add-models-link"
               @click="emit('openModelsSettings')"
@@ -2504,6 +2792,16 @@ defineExpose({
             </button>
           </div>
           <div class="footer-right">
+            <div
+              v-if="agentMode"
+              class="footer-tps"
+              :class="{ live: showTpsLive }"
+              title="实时输出 Token 速率（最近 60s）"
+            >
+              <span class="footer-tps-dot" aria-hidden="true" />
+              <span class="footer-tps-num">{{ formattedLiveTps }}</span>
+              <span class="footer-tps-label">TPS</span>
+            </div>
             <label
               v-if="agentMode"
               class="auto-apply-toggle"
@@ -2800,6 +3098,7 @@ defineExpose({
 .chat-messages {
   flex: 1;
   overflow: auto;
+  overflow-anchor: none;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -3381,6 +3680,91 @@ defineExpose({
 .add-models-link:hover {
   color: var(--wc-text);
   background: var(--wc-muted-surface);
+}
+
+.footer-plan-build-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: none;
+  background: #e9b770;
+  color: #1a1408;
+  flex-shrink: 0;
+}
+
+.footer-plan-build-btn:hover:not(:disabled) {
+  background: #f0c585;
+}
+
+.footer-plan-build-btn:disabled,
+.footer-plan-build-btn.built {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.footer-tps {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--wc-text-dim, rgba(255, 255, 255, 0.45));
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+  user-select: none;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.footer-tps.live {
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(34, 197, 94, 0.1);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.12);
+}
+
+.footer-tps-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+.footer-tps.live .footer-tps-dot {
+  opacity: 1;
+  animation: footer-tps-pulse 1.4s ease-in-out infinite;
+}
+
+.footer-tps-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 1.5em;
+  text-align: right;
+}
+
+.footer-tps-label {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+@keyframes footer-tps-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
 }
 
 .icon-btn {

@@ -24,6 +24,7 @@ export type AgentToolName =
   | 'EnterPlanMode'
   | 'ExitPlanMode'
   | 'SwitchMode'
+  | 'CreatePlan'
   | 'Skill'
   | 'DiscoverSkills'
   | 'SlashCommand'
@@ -116,6 +117,15 @@ export type PendingBashPublic = {
   runInBackground?: boolean
 }
 
+export type PendingPlanPublic = {
+  id: string
+  name: string
+  overview: string
+  plan: string
+  filePath: string
+  todos?: { id: string; content: string }[]
+}
+
 export type AgentToolLogEntry = {
   name: AgentToolName
   summary: string
@@ -144,6 +154,7 @@ export type AgentSendResult =
       pending: PendingWritePublic[]
       pendingBashes?: PendingBashPublic[]
       pendingAsks?: PendingAskUserPublic[]
+      pendingPlans?: PendingPlanPublic[]
       assistantText: string
       toolLog: AgentToolLogEntry[]
     } & AgentReplyMeta)
@@ -163,6 +174,7 @@ export type AgentContinueResult =
       pending: PendingWritePublic[]
       pendingBashes?: PendingBashPublic[]
       pendingAsks?: PendingAskUserPublic[]
+      pendingPlans?: PendingPlanPublic[]
       assistantText: string
       toolLog: AgentToolLogEntry[]
     } & AgentReplyMeta)
@@ -196,6 +208,7 @@ export const EXTENDED_AGENT_TOOL_NAMES: AgentToolName[] = [
   'EnterPlanMode',
   'ExitPlanMode',
   'SwitchMode',
+  'CreatePlan',
   'Skill',
   'DiscoverSkills',
   'SlashCommand',

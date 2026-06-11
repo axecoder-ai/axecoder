@@ -15,7 +15,7 @@ import { discoverSkills, findSkillByName, readSkillContent } from './agent-skill
 import { discoverSlashCommands, runSlashCommandForAgent } from './agent-slash-commands'
 import { authenticateMcpServer } from './agent-mcp-auth'
 import { callMcpTool, listMcpResources, readMcpResource } from './agent-mcp'
-import { fetchUrl, webSearch } from './agent-web'
+import { fetchUrl, resolveWebSearchApiKey, webSearch } from './agent-web'
 import { runWebRun } from './agent-browser-playwright'
 import { editNotebookCell } from './agent-notebook'
 import { formatShellTaskOutput, getShellTask, stopShellTask, writeShellStdin } from './agent-bash-tasks'
@@ -142,15 +142,17 @@ export const executeExtendedAgentTool = async (
 
   if (name === 'WebSearch') {
     const cfg = await getConfig()
-    if (!cfg.agentFeatureWebSearch) {
+    const apiKey = resolveWebSearchApiKey(cfg)
+    const browserOn = !!(cfg.agentFeatureWebRun || cfg.agentFeatureWebSearch)
+    if (!apiKey && !browserOn) {
       return immediate(
         name,
         'WebSearch',
-        'Error: WebSearch disabled. Enable agentFeatureWebSearch in AxeCoder config.',
+        'Error: WebSearch unavailable. Enable browser in Settings, or set Serper API key / SERPER_API_KEY.',
         false,
       )
     }
-    const res = await webSearch(str(args.search_term), cfg.agentWebSearchApiKey)
+    const res = await webSearch(str(args.search_term), { apiKey, browserEnabled: browserOn })
     return immediate(name, 'WebSearch', res.ok ? res.text : `Error: ${res.error}`, res.ok)
   }
 
@@ -519,6 +521,7 @@ export const getSessionActiveTools = (
           'EnterPlanMode',
           'ExitPlanMode',
           'SwitchMode',
+          'CreatePlan',
           'ToolSearch',
           'DiscoverSkills',
           'DiscoverCommands',

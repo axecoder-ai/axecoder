@@ -8,7 +8,6 @@ import type { OpenFile } from '../../composables/workbench-state'
 import type { AppTheme } from '../../types/axecoder'
 import { isMarkdownPath, monacoLanguageForPath } from '../../utils/editor-language'
 import { documentPreviewKind } from '../../utils/document-preview'
-
 const props = defineProps<{
   tabs: OpenFile[]
   activePath: string | null
@@ -36,7 +35,6 @@ const activePreviewFile = computed(() =>
   props.tabs.find((t) => t.path === props.activePath) ?? null,
 )
 const isDocumentPreview = computed(() => previewKind.value !== null)
-
 const revealLine = (line: number, col = 1) => {
   monacoRef.value?.revealPosition(line, col)
 }
@@ -88,6 +86,7 @@ defineExpose({ revealLine, focusEditor, getEditorSelection })
       </div>
       <div v-if="isMarkdown" class="tab-actions">
         <button
+          v-if="isMarkdown"
           type="button"
           class="mode-btn"
           :class="{ active: mode === 'preview' }"

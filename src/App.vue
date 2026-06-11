@@ -561,6 +561,11 @@ const onEditorContentUpdate = (v: string) => {
   editorContent.value = v
 }
 
+const onPlanFileBuilt = async (planPath: string) => {
+  const res = await window.axecoder.readFile(planPath)
+  await wb.openFileAtPath(planPath, res.content)
+}
+
 const onSelectTab = (p: string) => {
   activePath.value = p
 }
@@ -1000,7 +1005,9 @@ onUnmounted(() => {
             :session-kind="activeSessionKind"
             :project-root="projectRoot"
             :context-file-path="activePath"
+            :context-file-content="editorContent"
             :has-open-editor-tabs="hasOpenEditorTabs"
+            @plan-file-built="onPlanFileBuilt"
             :agents-sidebar-visible="agentsSidebarVisible"
             :agent-auto-apply-writes="settings.agentAutoApplyWrites"
             :agent-completion-sound-enabled="settings.agentCompletionSoundEnabled"

@@ -11,10 +11,12 @@ import {
 import { listBackgroundRuns, resolveBackgroundTasks } from './agent/agent-subagent-tasks'
 import {
   answerAgentQuestions,
+  buildAgentPlan,
+  composePlanBuildMessage,
+  dismissAgentPlan,
   confirmAgentAllWrites,
   confirmAgentBash,
   confirmAgentWrite,
-  compactAgentMessages,
   formatHooksHelp,
   listAgentSessions,
   rejectAgentAllWrites,
@@ -28,6 +30,7 @@ import {
 import { getSession } from './agent/agent-session-store'
 import { axecoderPath } from './axecoder-dir'
 import type { AgentLoopMessage } from './agent/agent-types'
+import { compactAgentMessagesWithLlm } from './agent/agent-context-compact'
 import { compactChatHistory } from './chat-compact'
 import { listMcpResources } from './agent/agent-mcp'
 import {
@@ -142,8 +145,17 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
 
   ipcMain.handle(
     'agent:compactMessages',
-    async (_, messages: AgentLoopMessage[]) => {
-      const result = compactAgentMessages(messages)
+    async (
+      _,
+      messages: AgentLoopMessage[],
+      modelId?: string,
+      sessionId?: string,
+    ) => {
+      const llmOpts =
+        typeof modelId === 'string' && modelId.trim()
+          ? { modelId: modelId.trim(), sessionId: typeof sessionId === 'string' ? sessionId : undefined }
+          : undefined
+      const result = await compactAgentMessagesWithLlm(messages, 24, llmOpts)
       return { ok: true as const, ...result }
     },
   )
@@ -402,4 +414,16 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
       return answerAgentQuestions(sessionId, pendingId, answers)
     },
   )
+
+  ipcMain.handle('agent:buildPlan', async (_, sessionId: string, pendingId: string) => {
+    return buildAgentPlan(sessionId, pendingId)
+  })
+
+  ipcMain.handle('agent:dismissPlan', async (_, sessionId: string, pendingId: string) => {
+    return dismissAgentPlan(sessionId, pendingId)
+  })
+
+  ipcMain.handle('agent:composePlanBuild', async (_, projectRoot: string, planPath: string) => {
+    return composePlanBuildMessage(projectRoot, planPath)
+  })
 }

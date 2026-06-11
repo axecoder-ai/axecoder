@@ -59,8 +59,9 @@ export type AppConfig = {
   agentOsSandboxEnabled?: boolean
   /** Agent System提示Output风格（内置 id 或自定义 output-styles 目录中的 slug） */
   agentOutputStyle: string
-  /** Wave4：联网Search（需 Serper API Key） */
+  /** @deprecated 与 agentFeatureWebRun 合并；读取时回退兼容 */
   agentFeatureWebSearch?: boolean
+  /** 可选 Serper 云端搜索 Key */
   agentWebSearchApiKey?: string
   /** Wave4：Playwright 浏览器自动化 WebRun */
   agentFeatureWebRun?: boolean

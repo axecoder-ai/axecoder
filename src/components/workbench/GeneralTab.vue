@@ -117,17 +117,13 @@ const onAiRateLimitRetryDelaySec = (e: Event) => {
   emit('save', { aiRateLimitRetryDelaySec: Math.floor(n) })
 }
 
-const onWebSearchEnabled = (v: boolean) => {
-  emit('save', { agentFeatureWebSearch: v })
+const onWebRunEnabled = (v: boolean) => {
+  emit('save', { agentFeatureWebRun: v, agentFeatureWebSearch: v })
 }
 
 const onWebSearchApiKey = (e: Event) => {
   const v = (e.target as HTMLInputElement).value
   emit('save', { agentWebSearchApiKey: v })
-}
-
-const onWebRunEnabled = (v: boolean) => {
-  emit('save', { agentFeatureWebRun: v })
 }
 
 const onOutputStyle = (e: Event) => {
@@ -246,6 +242,28 @@ const clearCompletionSound = () => {
       </div>
       <div class="pref-item pref-item--stack">
         <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.webRun') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.webRunHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <SwitchToggle
+            :model-value="!!settings.agentFeatureWebRun"
+            @update:model-value="onWebRunEnabled"
+          />
+        </div>
+        <div class="sound-row">
+          <input
+            type="password"
+            class="pref-input pref-input--wide"
+            :placeholder="t('settings.agent.webSearchApiKey')"
+            :value="settings.agentWebSearchApiKey ?? ''"
+            @change="onWebSearchApiKey"
+          />
+          <p class="pref-hint pref-hint--inline">{{ t('settings.agent.webSearchCloudHint') }}</p>
+        </div>
+      </div>
+      <div class="pref-item pref-item--stack">
+        <div class="pref-info">
           <span class="pref-label">{{ t('settings.agent.autoPlanClassifierModel') }}</span>
           <p class="pref-hint">{{ t('settings.agent.autoPlanClassifierModelHint') }}</p>
         </div>
@@ -351,39 +369,6 @@ const clearCompletionSound = () => {
             step="1"
             :value="settings.aiRateLimitRetryDelaySec ?? 60"
             @change="onAiRateLimitRetryDelaySec"
-          />
-        </div>
-      </div>
-      <div class="pref-item pref-item--stack">
-        <div class="pref-info">
-          <span class="pref-label">{{ t('settings.agent.webSearch') }}</span>
-          <p class="pref-hint">{{ t('settings.agent.webSearchHint') }}</p>
-        </div>
-        <div class="pref-control">
-          <SwitchToggle
-            :model-value="!!settings.agentFeatureWebSearch"
-            @update:model-value="onWebSearchEnabled"
-          />
-        </div>
-        <div v-if="settings.agentFeatureWebSearch" class="sound-row">
-          <input
-            type="password"
-            class="pref-input pref-input--wide"
-            :placeholder="t('settings.agent.webSearchApiKey')"
-            :value="settings.agentWebSearchApiKey ?? ''"
-            @change="onWebSearchApiKey"
-          />
-        </div>
-      </div>
-      <div class="pref-item">
-        <div class="pref-info">
-          <span class="pref-label">{{ t('settings.agent.webRun') }}</span>
-          <p class="pref-hint">{{ t('settings.agent.webRunHint') }}</p>
-        </div>
-        <div class="pref-control">
-          <SwitchToggle
-            :model-value="!!settings.agentFeatureWebRun"
-            @update:model-value="onWebRunEnabled"
           />
         </div>
       </div>
@@ -562,6 +547,10 @@ h2 {
   font-size: 12px;
   line-height: 1.5;
   color: var(--wc-text-dim);
+}
+
+.pref-hint--inline {
+  margin-top: 6px;
 }
 
 .pref-control {

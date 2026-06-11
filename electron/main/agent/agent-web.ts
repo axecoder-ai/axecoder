@@ -27,6 +27,13 @@ export const fetchUrl = async (url: string): Promise<{ ok: true; text: string } 
 
 type SerperOrganic = { title?: string; link?: string; snippet?: string }
 
+/** Settings Key 优先，否则 SERPER_API_KEY */
+export const resolveWebSearchApiKey = (cfg?: { agentWebSearchApiKey?: string }): string => {
+  const fromConfig = cfg?.agentWebSearchApiKey?.trim()
+  if (fromConfig) return fromConfig
+  return process.env.SERPER_API_KEY?.trim() ?? ''
+}
+
 export const formatSerperResults = (data: { organic?: SerperOrganic[]; answerBox?: { answer?: string } }) => {
   const lines: string[] = []
   if (data.answerBox?.answer) {
@@ -46,19 +53,13 @@ export const formatSerperResults = (data: { organic?: SerperOrganic[]; answerBox
   return trimBody(lines.join('\n').trim())
 }
 
-export const webSearch = async (
+export const webSearchSerper = async (
   query: string,
-  apiKey?: string,
+  apiKey: string,
 ): Promise<{ ok: true; text: string } | { ok: false; error: string }> => {
   const q = query.trim()
   if (!q) return { ok: false, error: 'search_term is required' }
-  if (!apiKey?.trim()) {
-    return {
-      ok: false,
-      error:
-        'WebSearch requires agentFeatureWebSearch and a search API key in Settings (Serper API key).',
-    }
-  }
+  if (!apiKey.trim()) return { ok: false, error: 'Serper API key is required' }
   try {
     const res = await fetch(SERPER_URL, {
       method: 'POST',
@@ -77,6 +78,40 @@ export const webSearch = async (
     return { ok: true, text: formatSerperResults(data) }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export type WebSearchOpts = {
+  apiKey?: string
+  browserEnabled?: boolean
+}
+
+/** 有 Serper Key 走云端；否则在 browserEnabled 时走本机 Playwright */
+export const webSearch = async (
+  query: string,
+  opts: WebSearchOpts = {},
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> => {
+  const q = query.trim()
+  if (!q) return { ok: false, error: 'search_term is required' }
+  const key = opts.apiKey?.trim()
+  if (key) {
+    const cloud = await webSearchSerper(q, key)
+    if (cloud.ok) return cloud
+    if (opts.browserEnabled) {
+      const { runBrowserSearch } = await import('./agent-browser-playwright')
+      const local = await runBrowserSearch(q)
+      if (local.ok) return local
+    }
+    return cloud
+  }
+  if (opts.browserEnabled) {
+    const { runBrowserSearch } = await import('./agent-browser-playwright')
+    return runBrowserSearch(q)
+  }
+  return {
+    ok: false,
+    error:
+      'WebSearch unavailable: enable browser in Settings, or set a Serper API key / SERPER_API_KEY.',
   }
 }
 

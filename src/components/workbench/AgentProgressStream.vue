@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import {
   activeProgressHeadline,
   sliceProgressStepsForDisplay,
@@ -34,8 +34,16 @@ const safeThinkingType = computed(() => {
 })
 
 const expanded = ref(false)
+const thinkingTextEl = ref<HTMLElement | null>(null)
 /** 用户手动展开的已完成 step */
 const stepDetailExpanded = ref<Set<string>>(new Set())
+
+watch(safeThinkingText, () => {
+  nextTick(() => {
+    const el = thinkingTextEl.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+})
 
 watch(
   () => props.steps,
@@ -173,7 +181,7 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
       <div class="thinking-header">
         <span class="thinking-label">{{ thinkingTypeLabel(safeThinkingType) }}</span>
       </div>
-      <pre class="thinking-text">{{ safeThinkingText }}</pre>
+      <pre ref="thinkingTextEl" class="thinking-text">{{ safeThinkingText }}</pre>
     </div>
   </div>
 </template>
@@ -401,7 +409,8 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
   font-size: 11px;
   line-height: 1.5;
   color: var(--wc-text);
-  max-height: 180px;
-  overflow: auto;
+  height: 180px;
+  overflow-y: auto;
+  overflow-anchor: none;
 }
 </style>

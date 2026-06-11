@@ -91,11 +91,12 @@ const en: MessageTree = {
         'Allow this many identical write successes per user turn; block the next (default 2 → 3rd blocked).',
       maxToolRounds: 'Max tool rounds per message',
       maxToolRoundsHint: 'Cap model↔tool loops per user message. 0 = unlimited.',
-      webSearch: 'Web search (Serper)',
-      webSearchHint: 'Enable WebSearch tool. Get an API key at serper.dev.',
-      webSearchApiKey: 'Serper API key',
-      webRun: 'Browser automation (WebRun)',
-      webRunHint: 'Enable WebRun via Playwright. Requires: npx playwright install chromium',
+      webRun: 'Browser (WebSearch + WebRun)',
+      webRunHint:
+        'Local web search and browser automation via Playwright. Requires: npx playwright install chromium',
+      webSearchApiKey: 'Serper API key (optional, cloud)',
+      webSearchCloudHint:
+        'Optional: Serper cloud search (serper.dev). When set, used before local Playwright. Or set SERPER_API_KEY.',
     },
     permissions: {
       title: 'Permissions',

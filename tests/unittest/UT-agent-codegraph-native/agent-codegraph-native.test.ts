@@ -62,6 +62,7 @@ describe('agent-codegraph-native', () => {
         const res = await executeCodeGraphAgentTool(tmp, 'CodeGraphSearch', {
           query: 'greetUser',
         })
+        if (!res.ok) console.warn('[TEST FAIL] res.text:', res.text)
         expect(res.ok).toBe(true)
         expect(res.text.toLowerCase()).toMatch(/greet/)
       } finally {

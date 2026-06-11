@@ -5,6 +5,7 @@ import type {
   AgentToolName,
   PendingAskUserPublic,
   PendingBashPublic,
+  PendingPlanPublic,
   PendingWritePublic,
 } from './agent-types'
 import type { ChatModeId } from './chat-mode'
@@ -12,6 +13,7 @@ import type {
   AgentContext,
   PendingAskUserInternal,
   PendingBashInternal,
+  PendingPlanInternal,
   PendingWriteInternal,
 } from './tool-executor'
 import { createLoopGuardState, type LoopGuardState } from './agent-loop-guard'
@@ -25,6 +27,7 @@ export type StoredAgentSession = {
   pendingById: Map<string, PendingWriteInternal>
   pendingBashById: Map<string, PendingBashInternal>
   pendingAskById: Map<string, PendingAskUserInternal>
+  pendingPlanById: Map<string, PendingPlanInternal>
   turn: number
   planMode: boolean
   chatMode: ChatModeId
@@ -76,6 +79,15 @@ export const pendingToPublic = (p: PendingWriteInternal): PendingWritePublic => 
   filePath: p.filePath,
   summary: p.summary,
   patchText: p.patchText,
+})
+
+export const pendingPlanToPublic = (p: PendingPlanInternal): PendingPlanPublic => ({
+  id: p.id,
+  name: p.name,
+  overview: p.overview,
+  plan: p.plan,
+  filePath: p.filePath,
+  ...(p.todos?.length ? { todos: p.todos } : {}),
 })
 
 export const pendingAskToPublic = (p: PendingAskUserInternal): PendingAskUserPublic => ({

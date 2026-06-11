@@ -234,7 +234,7 @@ const bindWorkshopAgentProgress = () => {
     } else {
       progressSteps.value = applyProgressPayload(progressSteps.value, payload)
     }
-    void scrollBottom()
+    if (payload.kind !== 'thinking_delta') void scrollBottom()
   })
 }
 

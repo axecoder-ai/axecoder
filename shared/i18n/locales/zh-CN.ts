@@ -89,11 +89,11 @@ const zhCN: MessageTree = {
         '每轮用户消息内允许相同写操作成功次数，超过则拦截下一次（默认 2，即第 3 次拦）。',
       maxToolRounds: '每消息工具轮上限',
       maxToolRoundsHint: '限制单条用户消息内 model↔tool 循环次数；0 表示不限制。',
-      webSearch: '联网搜索（Serper）',
-      webSearchHint: '启用 WebSearch 工具。在 serper.dev 申请 API Key。',
-      webSearchApiKey: 'Serper API Key',
-      webRun: '浏览器自动化（WebRun）',
-      webRunHint: '通过 Playwright 启用 WebRun。需先执行：npx playwright install chromium',
+      webRun: '浏览器（WebSearch + WebRun）',
+      webRunHint: '本机联网搜索与浏览器自动化（Playwright）。需先执行：npx playwright install chromium',
+      webSearchApiKey: 'Serper API Key（可选，云端）',
+      webSearchCloudHint:
+        '可选：配置 Serper 云端搜索（serper.dev），优先于本机 Playwright；也可设环境变量 SERPER_API_KEY。',
     },
     permissions: {
       title: '权限',

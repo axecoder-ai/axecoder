@@ -34,7 +34,7 @@ export const normalizeChatMode = (v: unknown): ChatModeId => {
 
 export const chatModeSystemAddon = (mode: ChatModeId): string => {
   if (mode === 'auto-plan') {
-    return '\n\n<chat-mode>Auto Plan: same tools as Agent. Complex multi-step requests may auto-enter read-only plan mode before writes (ExitPlanMode to implement).</chat-mode>'
+    return '\n\n<chat-mode>Auto Plan: same tools as Agent. Complex multi-step requests may auto-enter read-only plan mode before writes (ExitPlanMode to implement). When drafting an implementation plan, call CreatePlan (writes docs/plans/plan-*.md and shows Build)—do not only paste plan markdown in chat.</chat-mode>'
   }
   if (mode === 'reflection') {
     return '\n\n<chat-mode>Reflection: think step-by-step before acting. State assumptions, options, and trade-offs. Prefer analysis unless the user clearly wants implementation.</chat-mode>'
@@ -43,7 +43,7 @@ export const chatModeSystemAddon = (mode: ChatModeId): string => {
     return '\n\n<chat-mode>rppit: The latest user message embeds the full /rppit command playbook (same as running /rppit). Follow that workflow strictly step by step; use built-in workflow commands under resources/builtin-commands when substeps reference ~/.cursor/commands.</chat-mode>'
   }
   if (mode === 'planning') {
-    return '\n\n<chat-mode>Planning: stay in plan mode until the user approves implementation. Explore read-only, then propose a concrete plan before writes.</chat-mode>'
+    return '\n\n<chat-mode>Planning: stay in plan mode until the user approves implementation. Explore read-only, then call CreatePlan with name, overview, and plan body (saves docs/plans/plan-*.md; user clicks Build to implement)—do not only paste plan markdown in chat.</chat-mode>'
   }
   if (mode === 'planning-only') {
     return '\n\n<chat-mode>Planning Only: read and plan only—no file writes, shell mutations, or sub-agent tasks. Deliver plans and clarifying questions.</chat-mode>'

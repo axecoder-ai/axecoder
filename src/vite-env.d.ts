@@ -8,13 +8,14 @@ declare module 'vue' {
   }
 }
 
-declare module '*.vue' {
-  import type { DefineComponent } from 'vue'
-  const component: DefineComponent<{}, {}, any>
-  export default component
+declare global {
+  interface Window {
+    ipcRenderer: import('electron').IpcRenderer
+    axecoder: import('./types/axecoder').AxeCoderFs
+    MonacoEnvironment?: {
+      getWorker?: (moduleId: string, label: string) => Worker
+    }
+  }
 }
 
-interface Window {
-  ipcRenderer: import('electron').IpcRenderer
-  axecoder: import('./types/axecoder').AxeCoderFs
-}
+export {}

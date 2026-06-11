@@ -83,7 +83,7 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
   obj('WebFetch', 'Fetch a URL and return readable text content. HTTPS only.', {
     url: { type: 'string' },
   }, ['url']),
-  obj('WebSearch', 'Search the web via Serper API (enable in Settings + API key).', {
+  obj('WebSearch', 'Search the web: Serper API (cloud) when key set, else Playwright (local browser).', {
     search_term: { type: 'string', description: 'Search query' },
     explanation: { type: 'string', description: 'Why this search is needed' },
   }, ['search_term']),
@@ -119,6 +119,28 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
       explanation: { type: 'string', description: 'Optional reason for switching mode' },
     },
     ['target_mode_id'],
+  ),
+  obj(
+    'CreatePlan',
+    'Create an implementation plan in plan mode. Writes docs/plans/plan-<slug>.md and shows Build in chat. User must click Build to start implementation.',
+    {
+      name: { type: 'string', description: 'Plan title / slug source' },
+      overview: { type: 'string', description: 'Short summary of the plan' },
+      plan: { type: 'string', description: 'Full plan markdown body' },
+      todos: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            content: { type: 'string' },
+          },
+          required: ['content'],
+        },
+      },
+      file_path: { type: 'string', description: 'Optional override path (default docs/plans/plan-<slug>.md)' },
+    },
+    ['name', 'overview', 'plan'],
   ),
   obj('Skill', 'Load and follow a skill by name from .cursor/skills.', {
     skill: { type: 'string' },

@@ -5,6 +5,7 @@ import { ALL_AGENT_TOOL_NAMES } from './agent-types'
 const ALIASES: Record<string, AgentToolName> = {
   AskQuestion: 'AskUserQuestion',
   Agent: 'Task',
+  create_plan: 'CreatePlan',
 }
 
 export const resolveAgentToolName = (raw: string): AgentToolName | undefined => {

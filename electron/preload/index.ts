@@ -628,6 +628,18 @@ contextBridge.exposeInMainWorld('axecoder', {
       pendingId,
       JSON.parse(JSON.stringify(answers)),
     ) as Promise<import('../../src/types/axecoder').AgentContinueResult>,
+  agentBuildPlan: (sessionId: string, pendingId: string) =>
+    ipcRenderer.invoke('agent:buildPlan', sessionId, pendingId) as Promise<
+      import('../../src/types/axecoder').AgentContinueResult
+    >,
+  agentDismissPlan: (sessionId: string, pendingId: string) =>
+    ipcRenderer.invoke('agent:dismissPlan', sessionId, pendingId) as Promise<
+      import('../../src/types/axecoder').AgentContinueResult
+    >,
+  agentComposePlanBuild: (projectRoot: string, planPath: string) =>
+    ipcRenderer.invoke('agent:composePlanBuild', cloneForIpc(projectRoot), planPath) as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
   onAgentProgress: (callback: (payload: import('../../src/types/axecoder').AgentProgressPayload) => void) => {
     const listener = (_: unknown, payload: import('../../src/types/axecoder').AgentProgressPayload) =>
       callback(payload)

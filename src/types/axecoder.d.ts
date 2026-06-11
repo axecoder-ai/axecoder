@@ -367,6 +367,25 @@ export type AgentPendingBash = {
   runInBackground?: boolean
 }
 
+export type AgentPendingPlan = {
+  id: string
+  name: string
+  overview: string
+  plan: string
+  filePath: string
+  todos?: { id: string; content: string }[]
+}
+
+export type PlanStepStatus = 'pending' | 'in_progress' | 'completed'
+
+export type PlanBuildTrack = {
+  id: string
+  plan: AgentPendingPlan
+  stepStatuses: PlanStepStatus[]
+  building: boolean
+  done: boolean
+}
+
 export type AgentToolLogEntry = {
   name: string
   summary: string
@@ -436,6 +455,7 @@ export type AgentSendResult =
       pending: AgentPendingWrite[]
       pendingBashes?: AgentPendingBash[]
       pendingAsks?: AgentPendingAskUser[]
+      pendingPlans?: AgentPendingPlan[]
       assistantText: string
       toolLog: AgentToolLogEntry[]
       assistantContent?: string
@@ -534,6 +554,10 @@ export type ChatMessage = {
   pendingAsks?: AgentPendingAskUser[]
   /** 待用户confirm执行的 Bash 命令 */
   pendingBashes?: AgentPendingBash[]
+  /** 待用户 Build 的实施计划 */
+  pendingPlans?: AgentPendingPlan[]
+  /** Build 后的计划步骤进度（保留卡片） */
+  planBuildTracks?: PlanBuildTrack[]
   agentSessionId?: string
   /** Agent @角色：该条 assistant 回复对应的 Users 成员 */
   speakerUserId?: string
@@ -1094,6 +1118,12 @@ export type AxeCoderFs = {
     pendingId: string,
     answers: Record<string, string | string[]>,
   ) => Promise<AgentContinueResult>
+  agentBuildPlan: (sessionId: string, pendingId: string) => Promise<AgentContinueResult>
+  agentDismissPlan: (sessionId: string, pendingId: string) => Promise<AgentContinueResult>
+  agentComposePlanBuild: (
+    projectRoot: string,
+    planPath: string,
+  ) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
   agentConfirmBash: (sessionId: string, pendingId: string) => Promise<AgentContinueResult>
   agentRejectBash: (
     sessionId: string,

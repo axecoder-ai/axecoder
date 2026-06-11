@@ -16,8 +16,10 @@ import type {
   AgentToolLogEntry,
   PendingAskUserPublic,
   PendingBashPublic,
+  PendingPlanPublic,
   PendingWritePublic,
 } from './agent-types'
+import { composePlanBuildUserMessage, userWantsCreatePlan } from './agent-create-plan'
 import {
   clearAgentCheckpoints,
   pushAgentCheckpoint,
@@ -30,6 +32,7 @@ import {
   listAgentSessions,
   pendingAskToPublic,
   pendingBashToPublic,
+  pendingPlanToPublic,
   pendingToPublic,
   putSession,
   type StoredAgentSession,
@@ -47,7 +50,7 @@ import { extractPullRequestFromOutput } from '../git-forge/git-operation-trackin
 import { buildGitForgeContext } from '../git-forge/detect-forge'
 import { runHooks } from './agent-hooks'
 import { clearOldToolResults, dropOrphanToolMessages } from './agent-frc'
-import { compactAgentMessages, shouldAutoCompact } from './agent-context-compact'
+import { compactAgentMessages, compactAgentMessagesWithLlm, shouldAutoCompact } from './agent-context-compact'
 import { getTokenBudgetSection } from './agent-token-budget'
 import { maybeInjectProactiveReminder } from './agent-proactive'
 import { ensureScratchpadDir } from './agent-scratchpad'
@@ -73,6 +76,7 @@ import { refreshCustomOutputStylesCache } from './agent-output-styles-custom'
 import type { AgentToolName } from './agent-types'
 import {
   applyChatModeToNewSession,
+  applySwitchModeToSession,
   chatModeSystemAddon,
   normalizeChatMode,
   type ChatModeId,
@@ -226,6 +230,7 @@ const finishPending = (
   pending: PendingWritePublic[],
   pendingBashes: PendingBashPublic[],
   pendingAsks: PendingAskUserPublic[],
+  pendingPlans: PendingPlanPublic[],
   assistantText: string,
   content?: string,
   reasoningContent?: string,
@@ -236,6 +241,7 @@ const finishPending = (
   pending,
   ...(pendingBashes.length ? { pendingBashes } : {}),
   ...(pendingAsks.length ? { pendingAsks } : {}),
+  ...(pendingPlans.length ? { pendingPlans } : {}),
   assistantText,
   toolLog: [...session.toolLog],
   ...replyMeta(session, content, reasoningContent),
@@ -245,12 +251,14 @@ const collectPendingPublic = (session: StoredAgentSession) => ({
   writes: [...session.pendingById.values()].map(pendingToPublic),
   bashes: [...session.pendingBashById.values()].map(pendingBashToPublic),
   asks: [...session.pendingAskById.values()].map(pendingAskToPublic),
+  plans: [...session.pendingPlanById.values()].map(pendingPlanToPublic),
 })
 
 const hasPendingInSession = (session: StoredAgentSession) =>
   session.pendingById.size > 0 ||
   session.pendingBashById.size > 0 ||
-  session.pendingAskById.size > 0
+  session.pendingAskById.size > 0 ||
+  session.pendingPlanById.size > 0
 
 const stripBudgetReminders = (messages: AgentLoopMessage[]) =>
   messages.filter(
@@ -268,7 +276,10 @@ const prepareSessionBeforeModel = async (sessionId: string, session: StoredAgent
   clearOldToolResults(session.messages, cfg.agentFrcKeepToolMessages ?? 8)
   const threshold = cfg.agentContextCompactThreshold ?? 120_000
   if (shouldAutoCompact(session.messages, threshold)) {
-    const compacted = compactAgentMessages(session.messages)
+    const compacted = await compactAgentMessagesWithLlm(session.messages, 24, {
+      modelId: session.modelId,
+      sessionId,
+    })
     session.messages = compacted.messages
     session.compactedOnce = true
   }
@@ -401,6 +412,7 @@ export const runAgentLoopUntilDoneOrPending = async (
       const pendingPublic: PendingWritePublic[] = []
       const pendingBashPublic: PendingBashPublic[] = []
       const pendingAskPublic: PendingAskUserPublic[] = []
+      const pendingPlanPublic: PendingPlanPublic[] = []
 
       session.ctx.planMode = session.planMode
 
@@ -682,6 +694,15 @@ export const runAgentLoopUntilDoneOrPending = async (
             name: tc.name,
             content: 'Pending user answers to structured questions.',
           })
+        } else if (run.kind === 'plan_pending') {
+          session.pendingPlanById.set(run.pendingPlan.id, run.pendingPlan)
+          pendingPlanPublic.push(pendingPlanToPublic(run.pendingPlan))
+          session.messages.push({
+            role: 'tool',
+            toolCallId: tc.id,
+            name: tc.name,
+            content: `Plan saved to ${run.pendingPlan.filePath}. Awaiting user Build or Dismiss.`,
+          })
         } else {
           session.messages.push({
             role: 'tool',
@@ -697,11 +718,17 @@ export const runAgentLoopUntilDoneOrPending = async (
       }
       session.planMode = session.ctx.planMode ?? session.planMode
 
-      if (pendingPublic.length || pendingBashPublic.length || pendingAskPublic.length) {
+      if (
+        pendingPublic.length ||
+        pendingBashPublic.length ||
+        pendingAskPublic.length ||
+        pendingPlanPublic.length
+      ) {
         const cfg = await getConfig()
         if (
           (cfg.agentAutoApplyWrites || session.ctx.workshopAutoApply) &&
-          !pendingAskPublic.length
+          !pendingAskPublic.length &&
+          !pendingPlanPublic.length
         ) {
           const applied = await applyAllPendingInSession(session)
           if (!applied.ok) return { ok: false, error: applied.error }
@@ -713,6 +740,7 @@ export const runAgentLoopUntilDoneOrPending = async (
           pendingPublic,
           pendingBashPublic,
           pendingAskPublic,
+          pendingPlanPublic,
           assistantText,
           res.content,
           res.reasoningContent,
@@ -848,6 +876,7 @@ export const startAgentTurn = async (
     pendingById: new Map(),
     pendingBashById: new Map(),
     pendingAskById: new Map(),
+    pendingPlanById: new Map(),
     turn: 0,
     planMode: false,
     chatMode: 'agent',
@@ -862,6 +891,15 @@ export const startAgentTurn = async (
     ...(resolvedAssignee ? { assigneeUserId: resolvedAssignee } : {}),
   }
   applyChatModeToNewSession(session, chatMode)
+
+  if (userWantsCreatePlan(lastUser)) {
+    session.planMode = true
+    session.ctx.planMode = true
+    const sys = messages.find((m) => m.role === 'system')
+    if (sys && sys.role === 'system') {
+      sys.content = `${sys.content}\n\n[create_plan]\nThe user asked to use CreatePlan. You MUST call the CreatePlan tool with name, overview, and plan (markdown body). Do not only reply with plan text in chat—the tool writes docs/plans/plan-<slug>.md and shows a Build button.`
+    }
+  }
 
   const bypass = cfg.agentPermissionMode === 'bypassPermissions'
   if (chatMode === 'auto-plan' && !session.planMode && !bypass && lastUser.trim()) {
@@ -960,9 +998,9 @@ export const confirmAgentWrite = async (
     toolMsg.content = `Applied: ${pending.summary}`
   }
 
-  const { writes, bashes, asks } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, '')
+  const { writes, bashes, asks, plans } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
   }
 
   return runAgentLoopUntilDoneOrPending(sessionId, session)
@@ -992,9 +1030,9 @@ export const confirmAgentBash = async (
   )
   if (logEntry) logEntry.ok = applied.logOk
 
-  const { writes, bashes, asks } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, '')
+  const { writes, bashes, asks, plans } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
   }
 
   return runAgentLoopUntilDoneOrPending(sessionId, session)
@@ -1018,9 +1056,9 @@ export const rejectAgentWrite = async (
     toolMsg.content = `Rejected by user: ${reason?.trim() || 'User rejected'}`
   }
 
-  const { writes, bashes, asks } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, '')
+  const { writes, bashes, asks, plans } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
   }
 
   return runAgentLoopUntilDoneOrPending(sessionId, session)
@@ -1044,9 +1082,9 @@ export const rejectAgentBash = async (
     toolMsg.content = `Rejected by user: ${reason?.trim() || 'User rejected'}`
   }
 
-  const { writes, bashes, asks } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, '')
+  const { writes, bashes, asks, plans } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
   }
 
   return runAgentLoopUntilDoneOrPending(sessionId, session)
@@ -1093,13 +1131,94 @@ export const answerAgentQuestions = async (
     toolMsg.content = JSON.stringify({ answers })
   }
 
-  const { writes, bashes, asks } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, '')
+  const { writes, bashes, asks, plans } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
   }
 
   return runAgentLoopUntilDoneOrPending(sessionId, session)
 }
+
+const injectPlanBuildAndContinue = async (
+  sessionId: string,
+  session: StoredAgentSession,
+  planRelPath: string,
+  toolCallId?: string,
+  pendingId?: string,
+): Promise<AgentContinueResult> => {
+  if (pendingId) session.pendingPlanById.delete(pendingId)
+  if (toolCallId) {
+    const toolMsg = session.messages.find(
+      (m) => m.role === 'tool' && m.toolCallId === toolCallId,
+    )
+    if (toolMsg && toolMsg.role === 'tool') {
+      toolMsg.content = `User accepted plan. Building from ${planRelPath}.`
+    }
+  }
+  session.planMode = false
+  session.ctx.planMode = false
+  applySwitchModeToSession(session, 'agent')
+  if (session.ctx.sessionId) {
+    emitAgentProgress({
+      sessionId: session.ctx.sessionId,
+      kind: 'chat_mode',
+      chatMode: 'agent',
+      planMode: false,
+    })
+  }
+  const composed = await composePlanBuildUserMessage(session.projectRoot, planRelPath)
+  if (!composed.ok) return { ok: false, error: composed.error }
+  session.messages.push({ role: 'user', content: composed.text })
+  return runAgentLoopUntilDoneOrPending(sessionId, session)
+}
+
+export const buildAgentPlan = async (
+  sessionId: string,
+  pendingId: string,
+): Promise<AgentContinueResult> => {
+  const session = getSession(sessionId)
+  if (!session) return { ok: false, error: t('errors.sessionExpired') }
+  const pending = session.pendingPlanById.get(pendingId)
+  if (!pending) return { ok: false, error: 'Pending plan not found' }
+  return injectPlanBuildAndContinue(
+    sessionId,
+    session,
+    pending.filePath,
+    pending.toolCallId,
+    pendingId,
+  )
+}
+
+export const dismissAgentPlan = async (
+  sessionId: string,
+  pendingId: string,
+): Promise<AgentContinueResult> => {
+  const session = getSession(sessionId)
+  if (!session) return { ok: false, error: t('errors.sessionExpired') }
+  const pending = session.pendingPlanById.get(pendingId)
+  if (!pending) return { ok: false, error: 'Pending plan not found' }
+
+  session.pendingPlanById.delete(pendingId)
+  const toolMsg = session.messages.find(
+    (m) => m.role === 'tool' && m.toolCallId === pending.toolCallId,
+  )
+  if (toolMsg && toolMsg.role === 'tool') {
+    toolMsg.content = 'User dismissed the plan.'
+  }
+
+  const { writes, bashes, asks, plans } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
+  }
+
+  return runAgentLoopUntilDoneOrPending(sessionId, session)
+}
+
+export const composePlanBuildMessage = async (
+  projectRoot: string,
+  planRelPath: string,
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> =>
+  composePlanBuildUserMessage(projectRoot, planRelPath)
 
 export const modelSupportsAgentTools = (model: ModelEntry | null | undefined) => !!model
 
@@ -1206,6 +1325,7 @@ export const runWorkshopRoleAgentTurn = async (
     pendingById: new Map(),
     pendingBashById: new Map(),
     pendingAskById: new Map(),
+    pendingPlanById: new Map(),
     turn: 0,
     planMode: false,
     chatMode: 'agent',

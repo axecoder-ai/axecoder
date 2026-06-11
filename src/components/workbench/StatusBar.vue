@@ -31,22 +31,22 @@ const refreshCodeGraphStatus = async () => {
   }
   const s = await window.axecoder.codeGraphStatus(root)
   if (!s.sqliteAvailable) {
-    cgLabel.value = 'CodeGraph 不可用'
+    cgLabel.value = 'CodeGraph unavailable'
     return
   }
   if (!s.engineAvailable) {
-    cgLabel.value = 'CodeGraph 引擎未就绪'
+    cgLabel.value = 'CodeGraph engine not ready'
     return
   }
   if (s.indexing) {
-    cgLabel.value = '代码索引中…'
+    cgLabel.value = 'Indexing…'
     return
   }
   if (s.initialized) {
-    cgLabel.value = '代码索引已就绪'
+    cgLabel.value = 'Code index ready'
     return
   }
-  cgLabel.value = '未索引'
+  cgLabel.value = 'Not indexed'
 }
 
 const startPoll = () => {
@@ -73,7 +73,7 @@ onUnmounted(() => {
 const onCodeGraphIndex = async () => {
   const root = props.projectRoot?.trim()
   if (!root || !window.axecoder?.codeGraphIndex) return
-  cgLabel.value = '代码索引中…'
+  cgLabel.value = 'Indexing…'
   await window.axecoder.codeGraphIndex(root)
   await refreshCodeGraphStatus()
 }
@@ -88,7 +88,7 @@ const onCodeGraphIndex = async () => {
         v-if="projectRoot && cgLabel"
         type="button"
         class="cg-btn"
-        :title="cgLabel === '代码索引已就绪' ? '重新同步代码索引' : '建立代码索引，供 Agent 理解项目结构'"
+        :title="cgLabel === 'Code index ready' ? 'Re-sync code index' : 'Build code index for Agent'"
         @click="onCodeGraphIndex"
       >
         {{ cgLabel }}

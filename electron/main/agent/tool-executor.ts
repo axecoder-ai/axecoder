@@ -6,8 +6,15 @@ import type {
   AskUserQuestionItem,
   PendingAskUserPublic,
   PendingBashPublic,
+  PendingPlanPublic,
   PendingWritePublic,
 } from './agent-types'
+import {
+  buildPlanMarkdown,
+  parseCreatePlanInput,
+  writePlanFile,
+} from './agent-create-plan'
+import { getSession } from './agent-session-store'
 import { PATH_OUTSIDE_PROJECT_ERROR, relativeInProject, resolvePathInProject } from './agent-path'
 import { applyStringReplace, patchToUnifiedDiff } from './edit-utils'
 import {
@@ -70,6 +77,10 @@ export type PendingAskUserInternal = PendingAskUserPublic & {
   toolCallId: string
 }
 
+export type PendingPlanInternal = PendingPlanPublic & {
+  toolCallId: string
+}
+
 export type PendingBashInternal = PendingBashPublic & {
   toolCallId: string
   apply: () => Promise<
@@ -82,6 +93,7 @@ export type ToolRunResult =
   | { kind: 'pending'; pending: PendingWriteInternal; log: AgentToolLogEntry }
   | { kind: 'bash_pending'; pendingBash: PendingBashInternal; log: AgentToolLogEntry }
   | { kind: 'ask_pending'; pendingAsk: PendingAskUserInternal; log: AgentToolLogEntry }
+  | { kind: 'plan_pending'; pendingPlan: PendingPlanInternal; log: AgentToolLogEntry }
 
 export type PendingWriteInternal = PendingWritePublic & {
   toolCallId: string
@@ -620,6 +632,48 @@ export const executeAgentTool = async (
         id,
         toolCallId: call.id,
         questions: parsed.questions,
+      },
+    }
+  }
+
+  if (name === 'CreatePlan') {
+    ctx.planMode = true
+    if (ctx.sessionId) {
+      const live = getSession(ctx.sessionId)
+      if (live) {
+        live.planMode = true
+        live.ctx.planMode = true
+      }
+    }
+    const parsed = parseCreatePlanInput(args)
+    if (!parsed.ok) {
+      return {
+        kind: 'immediate',
+        content: `Error: ${parsed.error}`,
+        log: { name, summary: 'CreatePlan', ok: false },
+      }
+    }
+    const markdown = buildPlanMarkdown(parsed.input)
+    const written = await writePlanFile(ctx.projectRoot, parsed.relPath, markdown)
+    if (!written.ok) {
+      return {
+        kind: 'immediate',
+        content: `Error: ${written.error}`,
+        log: { name, summary: 'CreatePlan write', ok: false },
+      }
+    }
+    const id = nextPendingId()
+    return {
+      kind: 'plan_pending',
+      log: { name, summary: `Plan ${parsed.input.name}`, ok: true },
+      pendingPlan: {
+        id,
+        toolCallId: call.id,
+        name: parsed.input.name,
+        overview: parsed.input.overview,
+        plan: parsed.input.plan,
+        filePath: written.relPath,
+        todos: parsed.input.todos,
       },
     }
   }
