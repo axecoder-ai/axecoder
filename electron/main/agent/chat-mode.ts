@@ -2,12 +2,14 @@ import type { AgentToolDef } from './agent-types'
 import { filterToolsForSubagent, getSessionActiveTools } from './agent-ext-executor'
 import { buildFullAgentTools } from './agent-tool-registry'
 import type { StoredAgentSession } from './agent-session-store'
+import { normalizeAutoPlan } from './agent-auto-plan'
 
 export type ChatModeId =
   | 'agent'
   | 'auto-plan'
   | 'reflection'
   | 'rppit'
+  | 'plan'
   | 'planning'
   | 'planning-only'
   | 'multi-agent'
@@ -21,6 +23,7 @@ const VALID = new Set<string>([
   'auto-plan',
   'reflection',
   'rppit',
+  'plan',
   'planning',
   'planning-only',
   'multi-agent',
@@ -29,12 +32,27 @@ const VALID = new Set<string>([
 export const normalizeChatMode = (v: unknown): ChatModeId => {
   if (typeof v !== 'string' || !VALID.has(v)) return DEFAULT_CHAT_MODE
   const mode = v as ChatModeId
+  if (mode === 'auto-plan') return 'agent'
+  if (mode === 'planning') return 'plan'
   return DISABLED.has(mode) ? DEFAULT_CHAT_MODE : mode
 }
 
+export const shouldTriggerAutoPlanOnTurn = (
+  chatMode: ChatModeId,
+  agentAutoPlan: unknown,
+  opts: { planMode: boolean; bypass: boolean; hasUserMessage: boolean },
+): boolean => {
+  if (!opts.hasUserMessage || opts.planMode || opts.bypass) return false
+  if (chatMode !== 'agent') return false
+  return normalizeAutoPlan(agentAutoPlan) === 'on'
+}
+
+const AGENT_MODE_ADDON =
+  '\n\n<chat-mode>Agent: read/write code and use tools. Complex multi-step requests may auto-enter read-only plan mode before writes (ExitPlanMode to implement; disable via settings or /auto-plan off). When drafting an implementation plan, call CreatePlan (writes docs/plans/plan-*.md and shows Build)—do not only paste plan markdown in chat.</chat-mode>'
+
 export const chatModeSystemAddon = (mode: ChatModeId): string => {
-  if (mode === 'auto-plan') {
-    return '\n\n<chat-mode>Auto Plan: same tools as Agent. Complex multi-step requests may auto-enter read-only plan mode before writes (ExitPlanMode to implement). When drafting an implementation plan, call CreatePlan (writes docs/plans/plan-*.md and shows Build)—do not only paste plan markdown in chat.</chat-mode>'
+  if (mode === 'agent' || mode === 'auto-plan') {
+    return AGENT_MODE_ADDON
   }
   if (mode === 'reflection') {
     return '\n\n<chat-mode>Reflection: collaboration runs in the Workshop panel with Developer↔Reviewer reflection loops (1–3 rounds). Do not use Task/Agent tools here; user messages trigger the reflection orchestrator.</chat-mode>'
@@ -42,8 +60,8 @@ export const chatModeSystemAddon = (mode: ChatModeId): string => {
   if (mode === 'rppit') {
     return '\n\n<chat-mode>rppit: The latest user message embeds the full /rppit command playbook (same as running /rppit). Follow that workflow strictly step by step; use built-in workflow commands under resources/builtin-commands when substeps reference ~/.cursor/commands.</chat-mode>'
   }
-  if (mode === 'planning') {
-    return '\n\n<chat-mode>Planning: stay in plan mode until the user approves implementation. Explore read-only, then call CreatePlan with name, overview, and plan body (saves docs/plans/plan-*.md; user clicks Build to implement)—do not only paste plan markdown in chat.</chat-mode>'
+  if (mode === 'plan' || mode === 'planning') {
+    return '\n\n<chat-mode>Plan: stay in plan mode until the user approves implementation. Explore read-only, then call CreatePlan with name, overview, and plan body (saves docs/plans/plan-*.md; user clicks Build to implement)—do not only paste plan markdown in chat.</chat-mode>'
   }
   if (mode === 'planning-only') {
     return '\n\n<chat-mode>Planning Only: read and plan only—no file writes, shell mutations, or sub-agent tasks. Deliver plans and clarifying questions.</chat-mode>'
@@ -60,24 +78,19 @@ export const applyChatModeToNewSession = (session: StoredAgentSession, mode: Cha
 }
 
 /** Cursor playbook + 扩展 ChatMode 子集；不含 rppit / multi-agent */
-export const SWITCH_MODE_TARGETS = new Set([
-  'agent',
-  'plan',
-  'planning',
-  'auto-plan',
-])
+export const SWITCH_MODE_TARGETS = new Set(['agent', 'plan', 'planning', 'auto-plan'])
 
 export const resolveSwitchModeTarget = (raw: string): ChatModeId | null => {
   const v = raw.trim()
-  if (v === 'plan') return 'planning'
-  if (v === 'agent') return 'agent'
-  if (SWITCH_MODE_TARGETS.has(v) && VALID.has(v)) return v as ChatModeId
+  if (v === 'plan' || v === 'planning') return 'plan'
+  if (v === 'agent' || v === 'auto-plan') return 'agent'
+  if (SWITCH_MODE_TARGETS.has(v) && VALID.has(v)) return normalizeChatMode(v)
   return null
 }
 
 const applyChatModeEffects = (session: StoredAgentSession, mode: ChatModeId) => {
   const allTools = buildFullAgentTools()
-  if (mode === 'planning' || mode === 'planning-only') {
+  if (mode === 'plan' || mode === 'planning' || mode === 'planning-only') {
     session.planMode = true
     session.ctx.planMode = true
   } else if (mode === 'agent' || mode === 'auto-plan' || mode === 'reflection') {
@@ -103,11 +116,12 @@ export const applySwitchModeToSession = (
   if (!chatMode) {
     return {
       ok: false,
-      error: `Unknown or unsupported target_mode_id "${targetModeId}". Use agent, plan, planning, or auto-plan.`,
+      error: `Unknown or unsupported target_mode_id "${targetModeId}". Use agent or plan.`,
     }
   }
   session.chatMode = chatMode
   applyChatModeEffects(session, chatMode)
-  const label = targetModeId.trim() === 'plan' ? 'plan (planning)' : chatMode
+  const trimmed = targetModeId.trim()
+  const label = trimmed === 'planning' ? 'plan' : trimmed === 'auto-plan' ? 'agent' : chatMode
   return { ok: true, chatMode, message: `Switched to ${label} mode.` }
 }

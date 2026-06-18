@@ -116,6 +116,7 @@ export type ChatModeId =
   | 'auto-plan'
   | 'reflection'
   | 'rppit'
+  | 'plan'
   | 'planning'
   | 'planning-only'
   | 'multi-agent'

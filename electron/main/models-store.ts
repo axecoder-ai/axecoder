@@ -73,6 +73,7 @@ export const saveModel = async (input: ModelSaveInput): Promise<ModelsFile> => {
     ...(fastApi ? { fastApiModelId: fastApi } : {}),
     baseUrl: input.baseUrl.trim().replace(/\/+$/, ''),
     enabled: input.enabled,
+    ...(input.supportsVision === true ? { supportsVision: true } : {}),
   }
   const idx = data.models.findIndex((m) => m.id === entry.id)
   if (idx >= 0) data.models[idx] = entry

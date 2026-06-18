@@ -29,8 +29,8 @@ describe('at-ref-parse', () => {
 describe('reasoning-effort', () => {
   it('normalizes levels', () => {
     expect(normalizeReasoningEffort('HIGH')).toBe('high')
-    expect(normalizeReasoningEffort('')).toBe('auto')
-    expect(normalizeReasoningEffort('nope')).toBe('auto')
+    expect(normalizeReasoningEffort('')).toBe('medium')
+    expect(normalizeReasoningEffort('nope')).toBe('medium')
   })
 
   it('maps api field', () => {

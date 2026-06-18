@@ -23,7 +23,7 @@ const UI_ONLY_COMMANDS: { name: string; description: string; aliases?: string[] 
   { name: 'permissions', description: 'Open Agent permissions settings' },
   { name: 'hooks', description: 'Show Agent hooks configuration help' },
   { name: 'mcp', description: 'List MCP servers from mcp.json' },
-  { name: 'auto-plan', description: 'Switch chat mode to Auto Plan or Agent' },
+  { name: 'auto-plan', description: 'Toggle Agent auto-plan on/off (/auto-plan on | off)' },
   { name: 'effort', description: 'Set reasoning effort (auto | low | medium | high | max)' },
   { name: 'plan', description: 'Plan mode help (EnterPlanMode / ExitPlanMode)' },
   { name: 'skills', description: 'List skills under .cursor/skills' },

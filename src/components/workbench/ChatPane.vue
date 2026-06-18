@@ -117,6 +117,7 @@ const props = defineProps<{
   hasOpenEditorTabs?: boolean
   agentsSidebarVisible: boolean
   agentAutoApplyWrites: boolean
+  agentAutoPlanOn?: boolean
   agentCompletionSoundEnabled?: boolean
   agentCompletionSoundPath?: string
   profileDisplayName?: string
@@ -135,6 +136,7 @@ const emit = defineEmits<{
   openFile: [path: string]
   planFileBuilt: [path: string]
   'update:agentAutoApplyWrites': [value: boolean]
+  'update:agentAutoPlanOn': [value: boolean]
 }>()
 
 type OpenChatTab = { id: string; kind: SessionKind }
@@ -1562,6 +1564,10 @@ const onAgentAutoApplyChange = async (checked: boolean) => {
   }
 }
 
+const onAgentAutoPlanToggle = (on: boolean) => {
+  emit('update:agentAutoPlanOn', on)
+}
+
 const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiChatMessage[]) => {
   const useSse = providerSupportsSseStream(model.provider)
   let streamId = ''
@@ -2366,7 +2372,9 @@ defineExpose({
         <ChatModePickerDropdown
           :active-mode-id="chatModeId"
           :has-session-messages="hasSessionMessagesForModeLock"
+          :agent-auto-plan-on="!!agentAutoPlanOn"
           @select="onChatModePick"
+          @toggle-auto-plan="onAgentAutoPlanToggle"
         />
       </template>
     </WorkshopChatSection>
@@ -2782,7 +2790,9 @@ defineExpose({
             <ChatModePickerDropdown
               :active-mode-id="chatModeId"
               :has-session-messages="hasSessionMessagesForModeLock"
+              :agent-auto-plan-on="!!agentAutoPlanOn"
               @select="onChatModePick"
+              @toggle-auto-plan="onAgentAutoPlanToggle"
             />
             <ModelPickerDropdown
               v-if="enabledModels.length"

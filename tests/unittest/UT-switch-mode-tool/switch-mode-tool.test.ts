@@ -39,8 +39,10 @@ const mkSession = (overrides: Partial<StoredAgentSession> = {}): StoredAgentSess
 
 describe('switch-mode-tool', () => {
   it('resolveSwitchModeTarget 解析 Cursor 别名 plan', () => {
-    expect(resolveSwitchModeTarget('plan')).toBe('planning')
+    expect(resolveSwitchModeTarget('plan')).toBe('plan')
+    expect(resolveSwitchModeTarget('planning')).toBe('plan')
     expect(resolveSwitchModeTarget('agent')).toBe('agent')
+    expect(resolveSwitchModeTarget('auto-plan')).toBe('agent')
     expect(resolveSwitchModeTarget('planning-only')).toBeNull()
     expect(resolveSwitchModeTarget('reflection')).toBeNull()
     expect(resolveSwitchModeTarget('rppit')).toBeNull()
@@ -57,12 +59,12 @@ describe('switch-mode-tool', () => {
     expect(session.chatMode).toBe('agent')
   })
 
-  it('applySwitchModeToSession plan 进入 planning + planMode', () => {
+  it('applySwitchModeToSession plan 进入 plan + planMode', () => {
     const session = mkSession()
     const res = applySwitchModeToSession(session, 'plan')
     expect(res.ok).toBe(true)
     expect(session.planMode).toBe(true)
-    expect(session.chatMode).toBe('planning')
+    expect(session.chatMode).toBe('plan')
   })
 
   it('applySwitchModeToSession 拒绝已禁用的 planning-only', () => {
@@ -82,7 +84,7 @@ describe('switch-mode-tool', () => {
     })
     expect(res?.log.ok).toBe(true)
     expect(session.planMode).toBe(true)
-    expect(session.chatMode).toBe('planning')
+    expect(session.chatMode).toBe('plan')
     expect(ctx.planMode).toBe(true)
   })
 

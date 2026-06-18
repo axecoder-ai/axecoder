@@ -12,7 +12,10 @@ import {
   openAiStreamAccumToMessage,
 } from '../openai-sse'
 import { parseOpenAiUsage } from '../parse-token-usage'
-import { reasoningEffortForApi } from '../../../../shared/reasoning-effort'
+import {
+  DEFAULT_REASONING_EFFORT,
+  reasoningEffortForApi,
+} from '../../../../shared/reasoning-effort'
 import { PROVIDER_CAPABILITIES } from '../../../../shared/ai/provider-capabilities'
 import type { AiProviderAdapter, PlainChatParams, ToolsChatParams } from '../provider-types'
 import { buildOpenAiChatUrl, chatOpenAi, type OpenAiStreamDelta } from '../providers/openai'
@@ -66,7 +69,7 @@ export const chatOpenAiWithTools = async (
   apiModelId?: string,
   reasoningEffort?: import('../../../../shared/reasoning-effort').ReasoningEffortLevel,
 ) => {
-  const effortApi = reasoningEffortForApi(reasoningEffort ?? 'auto')
+  const effortApi = reasoningEffortForApi(reasoningEffort ?? DEFAULT_REASONING_EFFORT)
   const url = buildOpenAiChatUrl(model.baseUrl)
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`
@@ -134,7 +137,7 @@ export const openAiAdapter: AiProviderAdapter = {
       apiKey,
       messages,
       onDelta,
-      reasoningEffortForApi(reasoningEffort ?? 'auto'),
+      reasoningEffortForApi(reasoningEffort ?? DEFAULT_REASONING_EFFORT),
     ),
   chatWithTools: async ({
     model,

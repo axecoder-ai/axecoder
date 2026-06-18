@@ -161,7 +161,7 @@ describe('create-plan-build-ui', () => {
       ]),
       turn: 0,
       planMode: true,
-      chatMode: 'planning',
+      chatMode: 'plan',
       revealedToolNames: new Set(),
       activeTools: [],
       proactiveEnabled: false,

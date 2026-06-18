@@ -77,9 +77,12 @@ const zhCN: MessageTree = {
       aiRateLimitRetryDelaySec: '限流重试等待（秒）',
       aiRateLimitRetryDelaySecHint:
         '429 限流重试前等待时间；若响应含 Retry-After 则优先采用。默认 60 秒，范围 5–300',
-      autoPlanClassifierModel: 'Auto Plan 分类模型（可选）',
+      autoPlanEnabled: 'Agent 自动规划',
+      autoPlanEnabledHint:
+        '复杂多步任务发送后自动进入只读规划（启发式 + 可选分类模型）。可用 /auto-plan off 关闭。',
+      autoPlanClassifierModel: '自动规划分类模型（可选）',
       autoPlanClassifierModelHint:
-        '聊天模式选 Auto Plan 时，borderline 任务（启发式 score 1–2）用便宜模型二次判定。留空则使用当前聊天模型的 fast 档。',
+        'borderline 任务（启发式 score 1–2）用便宜模型二次判定。留空则使用当前聊天模型的 fast 档。',
       loopGuard: '防呆（循环拦截）',
       loopGuardHint: '拦截重复写操作成功、同一工具错误反复失败时的空转循环。',
       loopGuardStormThreshold: '风暴阈值',

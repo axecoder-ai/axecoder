@@ -7,8 +7,9 @@ const props = withDefaults(
     active?: boolean
     disabled?: boolean
     title?: string
+    compact?: boolean
   }>(),
-  { disabled: false },
+  { disabled: false, compact: false },
 )
 
 const emit = defineEmits<{
@@ -42,7 +43,7 @@ const toggle = () => {
   <button
     type="button"
     class="ax-switch"
-    :class="{ 'ax-switch--on': lit }"
+    :class="{ 'ax-switch--on': lit, 'ax-switch--compact': compact }"
     :disabled="disabled"
     role="switch"
     :aria-checked="lit"
@@ -93,5 +94,21 @@ const toggle = () => {
 .ax-switch:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.ax-switch--compact {
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+}
+
+.ax-switch--compact::after {
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+}
+
+.ax-switch--compact.ax-switch--on::after {
+  left: 14px;
 }
 </style>

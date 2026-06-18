@@ -3,6 +3,7 @@ export type ChatModeId =
   | 'auto-plan'
   | 'reflection'
   | 'rppit'
+  | 'plan'
   | 'planning'
   | 'planning-only'
   | 'multi-agent'
@@ -17,13 +18,8 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
   {
     id: 'agent',
     label: 'Agent',
-    description: 'Default Agent: read/write code and use tools',
-  },
-  {
-    id: 'auto-plan',
-    label: 'Auto Plan',
     description:
-      'Like Agent, but complex tasks auto-enter read-only plan mode first (heuristic + cheap model)',
+      'Read/write code and use tools; complex tasks auto-enter read-only plan mode first (heuristic + cheap model; /auto-plan off to disable)',
   },
   {
     id: 'reflection',
@@ -37,8 +33,8 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
     description: 'Each message runs the /rppit playbook (proposals → plan → implement → review)',
   },
   {
-    id: 'planning',
-    label: 'Planning',
+    id: 'plan',
+    label: 'Plan',
     description: 'Plan first; file writes and shell need exiting plan mode',
   },
   {
@@ -50,6 +46,10 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
 
 export const DEFAULT_CHAT_MODE: ChatModeId = 'agent'
 
+export const isAgentAutoPlanOn = (v?: 'off' | 'on') => v !== 'off'
+
+export const agentAutoPlanSetting = (on: boolean): 'off' | 'on' => (on ? 'on' : 'off')
+
 /** 暂不在 UI / SwitchMode 中开放 */
 export const DISABLED_CHAT_MODES = new Set<ChatModeId>(['planning-only'])
 
@@ -60,18 +60,31 @@ export const isChatModeEnabled = (id: ChatModeId) => !DISABLED_CHAT_MODES.has(id
 
 const CHAT_MODE_STORAGE_KEY = 'axecoder.chatMode'
 
-export const chatModeLabel = (id: ChatModeId) =>
-  CHAT_MODE_OPTIONS.find((m) => m.id === id)?.label ?? 'Agent'
+export const chatModeLabel = (id: ChatModeId) => {
+  if (id === 'planning') return 'Plan'
+  if (id === 'auto-plan') return 'Agent'
+  return CHAT_MODE_OPTIONS.find((m) => m.id === id)?.label ?? 'Agent'
+}
+
+/** 旧版 localStorage / 会话里可能仍存 auto-plan */
+const LEGACY_CHAT_MODE_IDS = new Set<ChatModeId>(['auto-plan', 'planning'])
 
 export const isChatModeId = (v: unknown): v is ChatModeId =>
   typeof v === 'string' &&
-  (CHAT_MODE_OPTIONS.some((m) => m.id === v) || DISABLED_CHAT_MODES.has(v as ChatModeId))
+  (CHAT_MODE_OPTIONS.some((m) => m.id === v) ||
+    DISABLED_CHAT_MODES.has(v as ChatModeId) ||
+    LEGACY_CHAT_MODE_IDS.has(v as ChatModeId))
 
 export const loadStoredChatMode = (): ChatModeId => {
   try {
     const raw = localStorage.getItem(CHAT_MODE_STORAGE_KEY)
-    if (!isChatModeId(raw) || !isChatModeEnabled(raw)) return DEFAULT_CHAT_MODE
-    return raw
+    if (!isChatModeId(raw)) return DEFAULT_CHAT_MODE
+    let mode: ChatModeId = raw
+    if (raw === 'auto-plan') mode = 'agent'
+    else if (raw === 'planning') mode = 'plan'
+    if (!isChatModeEnabled(mode)) return DEFAULT_CHAT_MODE
+    if (mode !== raw) saveStoredChatMode(mode)
+    return mode
   } catch {
     return DEFAULT_CHAT_MODE
   }

@@ -1010,12 +1010,16 @@ onUnmounted(() => {
             @plan-file-built="onPlanFileBuilt"
             :agents-sidebar-visible="agentsSidebarVisible"
             :agent-auto-apply-writes="settings.agentAutoApplyWrites"
+            :agent-auto-plan-on="settings.agentAutoPlan !== 'off'"
             :agent-completion-sound-enabled="settings.agentCompletionSoundEnabled"
             :agent-completion-sound-path="settings.agentCompletionSoundPath"
             :profile-display-name="settings.profileDisplayName"
             :profile-avatar-path="settings.profileAvatarPath"
             @update:agent-auto-apply-writes="
               onSettingsSave({ agentAutoApplyWrites: $event })
+            "
+            @update:agent-auto-plan-on="
+              onSettingsSave({ agentAutoPlan: $event ? 'on' : 'off' })
             "
             @close="onChatPaneClose"
             @show-agents-sidebar="agentsSidebarVisible = true"

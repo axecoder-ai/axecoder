@@ -1,5 +1,8 @@
 import { AGENT_TOOLS } from '../../agent/agent-tool-defs'
-import { reasoningEffortForApi } from '../../../../shared/reasoning-effort'
+import {
+  DEFAULT_REASONING_EFFORT,
+  reasoningEffortForApi,
+} from '../../../../shared/reasoning-effort'
 import { PROVIDER_CAPABILITIES } from '../../../../shared/ai/provider-capabilities'
 import type { AiProviderAdapter } from '../provider-types'
 import { chatCodex, chatCodexWithTools } from '../providers/codex'
@@ -14,7 +17,7 @@ export const codexAdapter: AiProviderAdapter = {
       apiKey,
       messages,
       onDelta,
-      reasoningEffortForApi(reasoningEffort ?? 'auto'),
+      reasoningEffortForApi(reasoningEffort ?? DEFAULT_REASONING_EFFORT),
     ),
   chatWithTools: async ({
     model,
@@ -34,6 +37,6 @@ export const codexAdapter: AiProviderAdapter = {
       onDelta,
       tools,
       abortSignal,
-      reasoningEffortForApi(reasoningEffort ?? 'auto'),
+      reasoningEffortForApi(reasoningEffort ?? DEFAULT_REASONING_EFFORT),
     ),
 }

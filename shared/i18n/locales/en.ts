@@ -78,9 +78,12 @@ const en: MessageTree = {
       aiRateLimitRetryDelaySec: 'Rate-limit retry wait (seconds)',
       aiRateLimitRetryDelaySecHint:
         'Wait before retrying on 429. Uses Retry-After from the response when present. Default 60 s, range 5–300.',
-      autoPlanClassifierModel: 'Auto Plan classifier model (optional)',
+      autoPlanEnabled: 'Agent auto-plan',
+      autoPlanEnabledHint:
+        'Complex multi-step tasks auto-enter read-only plan mode (heuristic + optional classifier). Use /auto-plan off to disable.',
+      autoPlanClassifierModel: 'Auto-plan classifier model (optional)',
       autoPlanClassifierModelHint:
-        'When chat mode is Auto Plan, borderline tasks (heuristic score 1–2) use a cheap model. Empty = fast API tier of the active chat model.',
+        'Borderline tasks (heuristic score 1–2) use a cheap model. Empty = fast API tier of the active chat model.',
       loopGuard: 'Loop guard (anti-spin)',
       loopGuardHint:
         'Block repeated identical write successes and inject guidance after the same tool error repeats (storm breaker).',

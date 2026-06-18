@@ -113,7 +113,7 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
   obj('ExitPlanMode', 'Exit plan mode and resume normal agent execution.', {}, []),
   obj(
     'SwitchMode',
-    'Switch interaction mode. target_mode_id: agent | plan | planning | auto-plan. plan is a Cursor alias for planning.',
+    'Switch interaction mode. target_mode_id: agent | plan (planning and auto-plan are legacy aliases).',
     {
       target_mode_id: { type: 'string', description: 'Target mode id' },
       explanation: { type: 'string', description: 'Optional reason for switching mode' },

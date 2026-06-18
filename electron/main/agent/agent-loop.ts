@@ -79,6 +79,7 @@ import {
   applySwitchModeToSession,
   chatModeSystemAddon,
   normalizeChatMode,
+  shouldTriggerAutoPlanOnTurn,
   type ChatModeId,
 } from './chat-mode'
 import { applyRppitModeToLastUserMessage } from './rppit-command'
@@ -902,7 +903,13 @@ export const startAgentTurn = async (
   }
 
   const bypass = cfg.agentPermissionMode === 'bypassPermissions'
-  if (chatMode === 'auto-plan' && !session.planMode && !bypass && lastUser.trim()) {
+  if (
+    shouldTriggerAutoPlanOnTurn(chatMode, cfg.agentAutoPlan, {
+      planMode: session.planMode,
+      bypass,
+      hasUserMessage: !!lastUser.trim(),
+    })
+  ) {
     const autoPlan = await resolveShouldAutoPlan(lastUser, {
       chatModelId: modelId,
       classifierModelId: cfg.agentAutoPlanClassifierModelId,

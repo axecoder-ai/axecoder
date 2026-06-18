@@ -11,7 +11,7 @@ describe('canPickChatMode', () => {
 
   it('blocks leaving multi-agent when session has messages', () => {
     expect(canPickChatMode('multi-agent', 'agent', true)).toBe(true)
-    expect(canPickChatMode('multi-agent', 'planning', true)).toBe(true)
+    expect(canPickChatMode('multi-agent', 'plan', true)).toBe(true)
   })
 
   it('blocks entering multi-agent when session has messages', () => {
@@ -29,8 +29,8 @@ describe('canPickChatMode', () => {
   })
 
   it('allows switching between non-embedded modes with messages', () => {
-    expect(canPickChatMode('agent', 'planning', true)).toBe(true)
-    expect(canPickChatMode('planning', 'rppit', true)).toBe(true)
+    expect(canPickChatMode('agent', 'plan', true)).toBe(true)
+    expect(canPickChatMode('plan', 'rppit', true)).toBe(true)
   })
 
   it('allows leaving reflection to agent when session has messages', () => {

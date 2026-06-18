@@ -76,6 +76,31 @@ describe('models-store', () => {
     expect(after.activeModelId).toBe('')
   })
 
+  it('保存 supportsVision 开关', async () => {
+    await saveModel({
+      id: 'm1',
+      name: 'Vision',
+      provider: 'openai',
+      modelId: 'gpt-4o',
+      baseUrl: 'https://api.openai.com/v1',
+      enabled: true,
+      supportsVision: true,
+    })
+    const on = await getModelById('m1')
+    expect(on?.supportsVision).toBe(true)
+
+    await saveModel({
+      id: 'm1',
+      name: 'Vision',
+      provider: 'openai',
+      modelId: 'gpt-4o',
+      baseUrl: 'https://api.openai.com/v1',
+      enabled: true,
+    })
+    const off = await getModelById('m1')
+    expect(off?.supportsVision).toBeUndefined()
+  })
+
   it('setActiveModel 切换当前模型', async () => {
     await saveModel({
       id: 'm1',

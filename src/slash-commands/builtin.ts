@@ -82,18 +82,22 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
   },
   {
     name: 'auto-plan',
-    description: 'Switch chat mode to Auto Plan (or agent to leave)',
-    run: async (ctx, args) => {
+    description: 'Toggle Agent auto-plan on/off (settings.agentAutoPlan)',
+    run: async (_ctx, args) => {
       const mode = args.trim().toLowerCase()
-      if (mode === 'off' || mode === 'agent') {
-        ctx.setChatMode?.('agent')
-        return { ok: true, message: 'Switched chat mode to Agent.' }
+      if (mode !== 'on' && mode !== 'off') {
+        return {
+          ok: false,
+          message: 'Usage: /auto-plan on | off',
+        }
       }
-      ctx.setChatMode?.('auto-plan')
+      await window.axecoder.setSettings({ agentAutoPlan: mode })
       return {
         ok: true,
         message:
-          'Switched chat mode to Auto Plan. Complex tasks may auto-enter read-only plan mode first.',
+          mode === 'on'
+            ? 'Agent auto-plan enabled. Complex tasks may auto-enter read-only plan mode first.'
+            : 'Agent auto-plan disabled.',
       }
     },
   },
@@ -103,7 +107,7 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
     run: async (ctx, args) => {
       const raw = args.trim().toLowerCase()
       if (!raw) {
-        const cur = ctx.getChatEffort?.() ?? 'auto'
+        const cur = ctx.getChatEffort?.() ?? 'medium'
         return {
           ok: true,
           message: `Current effort: ${cur}. Levels: ${REASONING_EFFORT_LEVELS.join(', ')}`,

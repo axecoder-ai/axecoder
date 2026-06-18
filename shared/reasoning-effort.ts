@@ -1,13 +1,14 @@
 export const REASONING_EFFORT_LEVELS = ['auto', 'low', 'medium', 'high', 'max'] as const
 export type ReasoningEffortLevel = (typeof REASONING_EFFORT_LEVELS)[number]
 
-export const DEFAULT_REASONING_EFFORT: ReasoningEffortLevel = 'auto'
+export const DEFAULT_REASONING_EFFORT: ReasoningEffortLevel = 'medium'
 
 export const normalizeReasoningEffort = (raw: string | undefined | null): ReasoningEffortLevel => {
   const v = (raw ?? '').trim().toLowerCase()
-  if (!v || v === 'auto') return 'auto'
+  if (!v) return DEFAULT_REASONING_EFFORT
+  if (v === 'auto') return 'auto'
   if (REASONING_EFFORT_LEVELS.includes(v as ReasoningEffortLevel)) return v as ReasoningEffortLevel
-  return 'auto'
+  return DEFAULT_REASONING_EFFORT
 }
 
 /** auto 不传 API；其余映射为 reasoning_effort */

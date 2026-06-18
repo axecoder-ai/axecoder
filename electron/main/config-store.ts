@@ -27,7 +27,7 @@ const defaults: AppConfig = {
   agentFrcKeepToolMessages: 8,
   agentTokenBudget: 0,
   agentProactiveEnabled: false,
-  agentAutoPlan: 'off',
+  agentAutoPlan: 'on',
   agentAutoPlanClassifierModelId: '',
   agentHooksEnabled: true,
   agentModelTierRoutingEnabled: true,

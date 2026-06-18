@@ -73,6 +73,10 @@ const onAgentOsSandbox = (v: boolean) => {
   emit('save', { agentOsSandboxEnabled: v })
 }
 
+const onAgentAutoPlan = (v: boolean) => {
+  emit('save', { agentAutoPlan: v ? 'on' : 'off' })
+}
+
 const onAutoPlanClassifierModel = (e: Event) => {
   const v = (e.target as HTMLInputElement).value.trim()
   emit('save', { agentAutoPlanClassifierModelId: v })
@@ -260,6 +264,18 @@ const clearCompletionSound = () => {
             @change="onWebSearchApiKey"
           />
           <p class="pref-hint pref-hint--inline">{{ t('settings.agent.webSearchCloudHint') }}</p>
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.autoPlanEnabled') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.autoPlanEnabledHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <SwitchToggle
+            :model-value="settings.agentAutoPlan !== 'off'"
+            @update:model-value="onAgentAutoPlan"
+          />
         </div>
       </div>
       <div class="pref-item pref-item--stack">
