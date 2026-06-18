@@ -120,6 +120,7 @@ export type ChatModeId =
   | 'planning'
   | 'planning-only'
   | 'multi-agent'
+  | 'software-company'
 
 export type ModelProvider = 'openai' | 'ollama' | 'anthropic' | 'codex'
 
@@ -206,6 +207,7 @@ export type UserEntry = {
     | 'architect'
     | 'planner'
     | 'developer'
+    | 'qa_engineer'
     | 'reviewer'
 }
 
@@ -483,10 +485,30 @@ export type WorkshopPhase = 'idle' | 'planning' | 'running' | 'waiting_user' | '
 
 export type WorkshopMessageKind = 'chat' | 'reasoning'
 
+export type SopPipelinePhase =
+  | 'idle'
+  | 'requirement'
+  | 'prd'
+  | 'design'
+  | 'tasks'
+  | 'implement'
+  | 'qa'
+  | 'done'
+
+export type SopActionType =
+  | 'UserRequirement'
+  | 'WritePRD'
+  | 'WriteDesign'
+  | 'WriteTasks'
+  | 'WriteCode'
+  | 'RunQA'
+  | 'DeliverSummary'
+
 export type WorkshopMessage = {
   id: string
   roleId: WorkshopRoleId
   speakerUserId?: string
+  causeBy?: SopActionType
   text: string
   relatedFiles?: string[]
   imageRefs?: ChatImageRef[]
@@ -513,6 +535,18 @@ export type WorkshopSession = WorkshopSessionMeta & {
   mountedFiles: string[]
   stepPlan?: WorkshopStep[]
   currentStepIndex?: number
+  sopPhase?: SopPipelinePhase
+  sopSlug?: string
+  sopPoolMessages?: {
+    id: string
+    causeBy: SopActionType
+    phase: SopPipelinePhase
+    speakerUserId?: string
+    content: string
+    artifactPath?: string
+    createdAt: number
+  }[]
+  pendingAsks?: AgentPendingAskUser[]
 }
 
 export type WorkshopProgressPayload = {
@@ -1220,6 +1254,7 @@ export type AxeCoderFs = {
     workshopId: string,
     answer: string,
   ) => Promise<WorkshopRunResult>
+  workshopStop: (workshopId: string) => Promise<{ ok: true; stopped: number } | { ok: false; error: string }>
   onWorkshopProgress: (callback: (payload: WorkshopProgressPayload) => void) => () => void
 }
 

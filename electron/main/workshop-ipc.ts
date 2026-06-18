@@ -23,8 +23,11 @@ import {
   scriptedMemberSpeaker,
   scriptedRouterLlm,
 } from './workshop/workshop-turn-orchestrator'
+import { sendSopPipelineMessage } from './sop/sop-pipeline-engine'
 import { modelSupportsVision } from '../../shared/ai/vision'
 import { visionUnsupportedError } from './ai/ai-vision-guard'
+import { stopAgentTurn } from './agent/agent-loop'
+import { listAgentSessions } from './agent/agent-session-store'
 
 export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) => {
   ipcMain.handle('workshop:getSessions', async (_, projectRoot: string) =>
@@ -42,6 +45,20 @@ export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) 
   ipcMain.handle('workshop:deleteSession', async (_, projectRoot: string, workshopId: string) =>
     deleteWorkshopSession(typeof projectRoot === 'string' ? projectRoot : '', workshopId),
   )
+
+  ipcMain.handle('workshop:stop', async (_, workshopId: string) => {
+    const wid = typeof workshopId === 'string' ? workshopId.trim() : ''
+    if (!wid) return { ok: false as const, error: 'Invalid workshop id' }
+    const prefix = `workshop-${wid}-`
+    let stopped = 0
+    for (const { id } of listAgentSessions()) {
+      if (id.startsWith(prefix)) {
+        stopAgentTurn(id)
+        stopped++
+      }
+    }
+    return { ok: true as const, stopped }
+  })
 
   const runSend = async (
     root: string,
@@ -133,7 +150,12 @@ export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) 
             onProgress,
             sendOptions,
           )
-        : await sendWorkshopMessage(session, text, speaker, routerLlm, onProgress, sendOptions)
+        : orchestrationChatMode === 'software-company'
+          ? await sendSopPipelineMessage(session, text, speaker, onProgress, {
+              ...sendOptions,
+              projectRoot: root,
+            })
+          : await sendWorkshopMessage(session, text, speaker, routerLlm, onProgress, sendOptions)
     if (!res.ok) return res
     res.session.pendingUserImages = undefined
     const saved = await saveWorkshopSession(root, res.session)

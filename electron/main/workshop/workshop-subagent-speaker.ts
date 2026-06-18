@@ -3,6 +3,7 @@ import { modelTaskKindForWorkshopRole, resolveModelIdForTask } from '../ai/model
 import { buildSubAgentToolList } from '../agent/agent-tool-registry'
 import { buildWorkshopStreamId } from './workshop-stream'
 import { enrichRoleSpeakInputWithSkills } from './workshop-user-skills'
+import { sopFollowUpPromptBlock, sopPhasePromptBlock, sopResearchAuditPromptBlock } from '../sop/sop-prompts'
 import {
   resolveWorkshopReplyLanguage,
   workshopLanguageInstruction,
@@ -13,14 +14,34 @@ import type { RoleSpeaker, RoleSpeakInput, RoleSpeakOutput } from './workshop-ty
 const PATH_IN_TEXT =
   /(?:^|[\s'"`，。（(])(\.{0,2}\/?[\w@./-]+(?:\.[a-zA-Z0-9]{1,6})?|zhongzhi[\w/.-]*)/g
 
+const PATH_ROOT =
+  /^(?:\.\.?|src|electron|tests|docs|shared|resources|skills|scripts|public|build|\.cursor|node_modules)$/
+
+/** 过滤误匹配的技术名词、编号等 */
+const looksLikeFilePath = (raw: string): boolean => {
+  const p = raw.replace(/^@/, '').trim()
+  if (!p || p.length < 3) return false
+  if (/^\d+\.?$/.test(p)) return false
+  if (/^(https?|npm):/i.test(p)) return false
+  if (p.startsWith('zhongzhi')) return true
+  if (/\.[a-zA-Z][\w]{0,7}$/.test(p)) return true
+  if (!p.includes('/')) return false
+  const parts = p.split('/').filter(Boolean)
+  if (parts.length < 2) return false
+  if (parts.length === 2 && parts.every((seg) => /^[A-Z]{1,5}$/.test(seg))) return false
+  const last = parts[parts.length - 1]
+  if (/\.[a-zA-Z][\w]{0,7}$/.test(last)) return true
+  if (PATH_ROOT.test(parts[0])) return true
+  return parts.every((seg) => /^[\w@.-]+$/.test(seg) && seg.length > 1)
+}
+
 export const extractRelatedFiles = (text: string): string[] => {
   const found = new Set<string>()
   let m: RegExpExecArray | null
   const re = new RegExp(PATH_IN_TEXT.source, PATH_IN_TEXT.flags)
   while ((m = re.exec(text))) {
     const p = m[1]?.replace(/^@/, '').trim()
-    if (!p || p.length < 2) continue
-    if (/^(https?|npm|node_modules)/i.test(p)) continue
+    if (!p || !looksLikeFilePath(p)) continue
     found.add(p)
   }
   return [...found].slice(0, 12)
@@ -44,9 +65,18 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput, replyLanguage?: strin
       .join('\n')
   }
   if (input.speakMode === 'member' && input.assigneeUser) {
+    const sopBlock = sopPhasePromptBlock(input.sopPhase, input.poolContext)
+    const followUpBlock = input.sopPhase === 'done' ? sopFollowUpPromptBlock() : ''
+    const auditBlock =
+      input.sopPhase === 'done' && input.assigneeUser.builtinRole === 'researcher'
+        ? sopResearchAuditPromptBlock()
+        : ''
     return [
       `[Collab Workshop · ${name} (${input.assigneeUser.role}) · group message]`,
       langLine,
+      sopBlock,
+      followUpBlock,
+      auditBlock,
       'Same tool capabilities as Chat Agent mode. Use tools on real code before delivering.',
       'Answer the user request substantively; list changed/touched paths when applicable.',
       input.skillPromptBlock ?? '',

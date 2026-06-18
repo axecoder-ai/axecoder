@@ -7,6 +7,7 @@ export type ChatModeId =
   | 'planning'
   | 'planning-only'
   | 'multi-agent'
+  | 'software-company'
 
 export type ChatModeOption = {
   id: ChatModeId
@@ -42,6 +43,11 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
     label: 'Multi-Agent',
     description: 'Collab workshop in this chat: roles discuss in turn',
   },
+  {
+    id: 'software-company',
+    label: 'Software Co.',
+    description: 'MetaGPT-style SOP: PRD → design → tasks → code → QA',
+  },
 ]
 
 export const DEFAULT_CHAT_MODE: ChatModeId = 'agent'
@@ -54,7 +60,7 @@ export const agentAutoPlanSetting = (on: boolean): 'off' | 'on' => (on ? 'on' : 
 export const DISABLED_CHAT_MODES = new Set<ChatModeId>(['planning-only'])
 
 export const isWorkshopEmbeddedChatMode = (id: ChatModeId) =>
-  id === 'multi-agent' || id === 'reflection'
+  id === 'multi-agent' || id === 'reflection' || id === 'software-company'
 
 export const isChatModeEnabled = (id: ChatModeId) => !DISABLED_CHAT_MODES.has(id)
 

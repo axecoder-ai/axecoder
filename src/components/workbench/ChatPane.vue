@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import MarkdownIt from 'markdown-it'
 import type {
   AgentContinueResult,
+  AgentPendingAskUser,
   AgentPendingPlan,
   AgentSendResult,
   AgentToolLogEntry,
@@ -26,7 +27,9 @@ import ChatPlanCard from './ChatPlanCard.vue'
 import ChatBashCard from './ChatBashCard.vue'
 import BackgroundTaskCard from './BackgroundTaskCard.vue'
 import AgentProgressStream from './AgentProgressStream.vue'
+import FooterTpsBadge from './FooterTpsBadge.vue'
 import { isUnderProject, relativeToProject, type ChatFileRef } from '../../utils/chat-file-context'
+import { formatWorkshopAskAnswers } from '../../utils/workshop-ask'
 import {
   applyProgressPayload,
   CHAT_IDLE_HINTS,
@@ -91,18 +94,7 @@ import {
 const md = new MarkdownIt()
 const agentStore = useAgentStore()
 
-const liveTps = ref(0)
-let offAiMetrics: (() => void) | undefined
-
-const showTpsLive = computed(
-  () => agentProgressActive.value || loading.value || liveTps.value > 0.05,
-)
-
-const formattedLiveTps = computed(() => {
-  const v = liveTps.value
-  if (v <= 0) return '0'
-  return v < 10 ? v.toFixed(1) : String(Math.round(v))
-})
+const showTpsLive = computed(() => agentProgressActive.value || loading.value)
 
 const workshopSectionRef = ref<InstanceType<typeof WorkshopChatSection> | null>(null)
 
@@ -157,7 +149,9 @@ const isMultiAgentInAgentChat = computed(
 const isWorkshopEmbeddedInAgentChat = computed(
   () =>
     activeTabKind.value === 'agent' &&
-    (chatModeId.value === 'multi-agent' || chatModeId.value === 'reflection'),
+    (chatModeId.value === 'multi-agent' ||
+      chatModeId.value === 'reflection' ||
+      chatModeId.value === 'software-company'),
 )
 const showWorkshopPanel = computed(
   () => isWorkshopMode.value || isWorkshopEmbeddedInAgentChat.value,
@@ -166,6 +160,12 @@ const showAgentComposer = computed(
   () => hasProject.value && (!showWorkshopPanel.value || isWorkshopEmbeddedInAgentChat.value),
 )
 const workshopLoading = computed(() => !!workshopSectionRef.value?.loading)
+const workshopPendingQuestion = computed(
+  () => workshopSectionRef.value?.pendingQuestion ?? '',
+)
+const workshopPendingAsks = computed(
+  () => workshopSectionRef.value?.pendingAsks ?? [],
+)
 
 const wsMetas = ref<WorkshopSessionMeta[]>([])
 const wsTitleById = ref<Record<string, string>>({})
@@ -293,8 +293,11 @@ const syncMultiAgentWorkshop = async () => {
   await syncMultiAgentAgentSessionTitle()
 }
 
-const embeddedWorkshopTitlePlaceholder = () =>
-  chatModeId.value === 'reflection' ? 'Reflection' : 'Multi-Agent'
+const embeddedWorkshopTitlePlaceholder = () => {
+  if (chatModeId.value === 'reflection') return 'Reflection'
+  if (chatModeId.value === 'software-company') return 'Software Co.'
+  return 'Multi-Agent'
+}
 const AGENT_TITLE_PLACEHOLDERS = new Set([
   'New Agent',
   'New chat',
@@ -446,7 +449,9 @@ const workshopMessageCount = ref(0)
 const hasSessionMessagesForModeLock = computed(() => {
   if ((activeSession.value?.messages.length ?? 0) > 0) return true
   if (
-    (chatModeId.value === 'multi-agent' || chatModeId.value === 'reflection') &&
+    (chatModeId.value === 'multi-agent' ||
+      chatModeId.value === 'reflection' ||
+      chatModeId.value === 'software-company') &&
     workshopMessageCount.value > 0
   )
     return true
@@ -457,7 +462,7 @@ const onChatModePick = (id: ChatModeId) => {
   if (!canPickChatMode(chatModeId.value, id, hasSessionMessagesForModeLock.value)) return
   chatModeId.value = id
   saveStoredChatMode(id)
-  if (id !== 'multi-agent' && id !== 'reflection') {
+  if (id !== 'multi-agent' && id !== 'reflection' && id !== 'software-company') {
     lastMultiAgentSyncKey = ''
     return
   }
@@ -1052,14 +1057,20 @@ const progressAssigneeUser = computed(() => {
   return id ? speakerUser(id) : undefined
 })
 
-const showAgentStop = computed(
-  () =>
+const showAgentStop = computed(() => {
+  if (isWorkshopEmbeddedInAgentChat.value && workshopLoading.value) return true
+  return (
     agentMode.value &&
     (loading.value || pendingBusy.value) &&
-    !!runningAgentSessionId.value,
-)
+    !!runningAgentSessionId.value
+  )
+})
 
 const stopAgentRun = async () => {
+  if (isWorkshopEmbeddedInAgentChat.value && workshopLoading.value) {
+    await workshopSectionRef.value?.stopRun()
+    return
+  }
   const sid = runningAgentSessionId.value
   if (!sid) return
   await window.axecoder.agentStop(sid)
@@ -1227,6 +1238,10 @@ const onAnswerPending = async (
   answers: Record<string, string | string[]>,
 ) => {
   if (!msg.agentSessionId || pendingBusy.value) return
+  if (msg.pendingAsks?.length) {
+    const next = msg.pendingAsks.filter((p) => p.id !== pendingId)
+    msg.pendingAsks = next.length ? next : undefined
+  }
   pendingBusy.value = true
   bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
   try {
@@ -1646,6 +1661,25 @@ const ensureChatSession = async (): Promise<boolean> => {
     await syncMultiAgentWorkshop()
   }
   return true
+}
+
+const onWorkshopAnswerAsk = async (
+  pendingId: string,
+  answers: Record<string, string | string[]>,
+) => {
+  const pending = workshopPendingAsks.value.find((p) => p.id === pendingId)
+  if (!pending || workshopLoading.value) return
+  const text = formatWorkshopAskAnswers(pending, answers)
+  if (!text.trim()) return
+  if (!(await ensureChatSession())) return
+  const modelId = modelsFile.value.activeModelId
+  if (!modelId) return
+  await workshopSectionRef.value?.sendWithPayload({
+    text,
+    apiText: text,
+    displayText: text,
+    modelId,
+  })
 }
 
 const send = async () => {
@@ -2183,7 +2217,9 @@ watch(
   (mode, prev) => {
     void loadMentionUsers()
     if (
-      (mode === 'multi-agent' || mode === 'reflection') &&
+      (mode === 'multi-agent' ||
+        mode === 'reflection' ||
+        mode === 'software-company') &&
       mode !== prev
     )
       void syncMultiAgentWorkshop()
@@ -2205,27 +2241,20 @@ watch(workshopMessageCount, (n, prev) => {
   void syncMultiAgentAgentSessionTitle()
 })
 
-const syncLiveTps = async () => {
-  const snap = await window.axecoder.getAiMetricsSnapshot(
-    agentMode.value ? { source: 'agent' } : undefined,
-  )
-  liveTps.value = snap.realtime.kpis.tps
-}
-
 onMounted(async () => {
   void loadModels()
   await load()
   void loadWsMetas()
-  if (chatModeId.value === 'multi-agent' || chatModeId.value === 'reflection') {
+  if (
+    chatModeId.value === 'multi-agent' ||
+    chatModeId.value === 'reflection' ||
+    chatModeId.value === 'software-company'
+  ) {
     await syncMultiAgentWorkshop()
     await loadMentionUsers()
   }
   void refreshSlashCommandRegistry(props.projectRoot ?? '')
   void loadMentionUsers()
-  void syncLiveTps()
-  offAiMetrics = window.axecoder.onAiMetricsUpdate(() => {
-    void syncLiveTps()
-  })
 })
 
 watch(
@@ -2236,8 +2265,6 @@ watch(
 )
 
 onUnmounted(() => {
-  offAiMetrics?.()
-  offAiMetrics = undefined
   clearProgressUi()
 })
 
@@ -2680,6 +2707,19 @@ defineExpose({
     </div>
     </div>
     <div v-if="showAgentComposer" class="chat-input-area">
+      <div v-if="workshopPendingAsks.length" class="workshop-clarify-hint">
+        <ChatAskUserCard
+          v-for="pa in workshopPendingAsks"
+          :key="pa.id"
+          :pending="pa"
+          :busy="workshopLoading"
+          @submit="(answers) => onWorkshopAnswerAsk(pa.id, answers)"
+        />
+      </div>
+      <div v-else-if="workshopPendingQuestion" class="workshop-clarify-hint" role="status">
+        <span class="workshop-clarify-hint-label">待你回答</span>
+        <p>{{ workshopPendingQuestion }}</p>
+      </div>
       <SlashCommandPicker
         ref="slashPickerRef"
         :input-text="input"
@@ -2825,16 +2865,7 @@ defineExpose({
             </button>
           </div>
           <div class="footer-right">
-            <div
-              v-if="agentMode"
-              class="footer-tps"
-              :class="{ live: showTpsLive }"
-              title="实时输出 Token 速率（最近 60s）"
-            >
-              <span class="footer-tps-dot" aria-hidden="true" />
-              <span class="footer-tps-num">{{ formattedLiveTps }}</span>
-              <span class="footer-tps-label">TPS</span>
-            </div>
+            <FooterTpsBadge v-if="agentMode" :live="showTpsLive" />
             <label
               v-if="agentMode"
               class="auto-apply-toggle"
@@ -3478,6 +3509,27 @@ defineExpose({
   color: var(--wc-text-muted);
 }
 
+.workshop-clarify-hint {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--wc-border);
+  background: var(--wc-muted-surface);
+}
+.workshop-clarify-hint-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wc-accent, #6eb6ff);
+  margin-bottom: 4px;
+}
+.workshop-clarify-hint p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--wc-text);
+}
+
 .chat-input-area {
   padding: 10px 12px 12px;
   flex-shrink: 0;
@@ -3734,70 +3786,6 @@ defineExpose({
 .footer-plan-build-btn.built {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-.footer-tps {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--wc-text-dim, rgba(255, 255, 255, 0.45));
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  flex-shrink: 0;
-  user-select: none;
-  transition:
-    color 0.2s,
-    border-color 0.2s,
-    background 0.2s;
-}
-
-.footer-tps.live {
-  color: #86efac;
-  border-color: rgba(34, 197, 94, 0.28);
-  background: rgba(34, 197, 94, 0.1);
-  box-shadow: 0 0 12px rgba(34, 197, 94, 0.12);
-}
-
-.footer-tps-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.45;
-}
-
-.footer-tps.live .footer-tps-dot {
-  opacity: 1;
-  animation: footer-tps-pulse 1.4s ease-in-out infinite;
-}
-
-.footer-tps-num {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  min-width: 1.5em;
-  text-align: right;
-}
-
-.footer-tps-label {
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  opacity: 0.85;
-}
-
-@keyframes footer-tps-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.35);
-    opacity: 0.55;
-  }
 }
 
 .icon-btn {

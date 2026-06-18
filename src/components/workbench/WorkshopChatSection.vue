@@ -9,6 +9,7 @@ import type {
   WorkshopSession,
 } from '../../types/axecoder'
 import WorkshopMessageItem from './WorkshopMessageItem.vue'
+import WorkshopSopProgress from './WorkshopSopProgress.vue'
 import WorkbenchChatInput from './WorkbenchChatInput.vue'
 import { applyProgressPayload, type AgentProgressStep } from '../../utils/agent-progress'
 import { parseWorkshopStreamRole } from '../../utils/workshop-stream'
@@ -61,9 +62,13 @@ const emitWorkshopActive = (id: string) => {
   if (!props.embeddedInAgentChat) emit('activeChange', id)
 }
 
-const embeddedDefaultTitle = computed(() =>
-  props.orchestrationChatMode === 'reflection' ? 'Reflection' : 'Multi-Agent',
-)
+const embeddedDefaultTitle = computed(() => {
+  if (props.orchestrationChatMode === 'reflection') return 'Reflection'
+  if (props.orchestrationChatMode === 'software-company') return 'Software Co.'
+  return 'Multi-Agent'
+})
+
+const showSopProgress = computed(() => props.orchestrationChatMode === 'software-company')
 
 const kind = ref<'workshop'>('workshop')
 const { sendWorkshop, loadWorkshop } = useWorkbenchSession(
@@ -90,6 +95,7 @@ const activeModel = computed(() =>
   enabledModels.value.find((m) => m.id === modelId.value),
 )
 const loading = ref(false)
+const runningAgentSessionId = ref('')
 const thinkingRole = ref<WorkshopProgressPayload['roleId'] | null>(null)
 const thinkingSpeakerUserId = ref<string | null>(null)
 const streamText = ref('')
@@ -113,6 +119,19 @@ const liveTurnState = createWorkshopLiveTurnState()
 
 const hasProject = computed(() => !!props.projectRoot?.trim())
 const pendingQuestion = computed(() => active.value?.pendingQuestion ?? '')
+const locallyDismissedAskIds = ref(new Set<string>())
+const pendingAsks = computed(() =>
+  (active.value?.pendingAsks ?? []).filter((a) => !locallyDismissedAskIds.value.has(a.id)),
+)
+const dismissPendingAsks = (...ids: string[]) => {
+  const targets = ids.length ? ids : (active.value?.pendingAsks ?? []).map((a) => a.id)
+  if (!targets.length) return
+  for (const id of targets) locallyDismissedAskIds.value.add(id)
+  if (active.value?.pendingAsks?.length) {
+    const next = active.value.pendingAsks.filter((a) => !locallyDismissedAskIds.value.has(a.id))
+    active.value = { ...active.value, pendingAsks: next.length ? next : undefined }
+  }
+}
 const messages = computed(() => active.value?.messages.filter((m) => !m.hidden) ?? [])
 const liveRoleId = computed((): WorkshopRoleId | null => {
   const think = thinkingRole.value
@@ -214,6 +233,7 @@ const bindWorkshopAgentProgress = () => {
     if (!prefix || !payload.sessionId.startsWith(prefix)) return
     // 二次检查：确保当前 active.value.id 没有变化
     if (!active.value || active.value.id !== currentWorkshopId) return
+    if (payload.sessionId) runningAgentSessionId.value = payload.sessionId
     const roleKey = active.value
       ? parseWorkshopStreamRole(payload.sessionId, active.value.id)
       : null
@@ -248,7 +268,18 @@ const bindWorkshopAgentProgress = () => {
 
 const clearProgressUi = () => {
   unbindWorkshopAgentProgress()
+  runningAgentSessionId.value = ''
   clearStreamUi()
+}
+
+const stopRun = async () => {
+  const sid = runningAgentSessionId.value
+  if (sid) await window.axecoder.agentStop(sid)
+  const wid = active.value?.id
+  if (wid) await window.axecoder.workshopStop(wid)
+  loading.value = false
+  thinkingRole.value = null
+  clearProgressUi()
 }
 
 const loadWorkshopUsers = async () => {
@@ -500,6 +531,7 @@ const sendPayload = async (opts: {
   const text = opts.text.trim()
   const imageRefs = opts.imageRefs ?? []
   if (!text && !imageRefs.length) return { ok: false, error: 'Empty message' }
+  if (active.value?.pendingAsks?.length) dismissPendingAsks()
   const useModelId = opts.modelIdOverride?.trim() || modelId.value
   if (!useModelId) {
     pushLocalSystemMessage('请先在设置中启用模型，或在输入框底部选择可用模型。')
@@ -625,6 +657,7 @@ const hydrateWorkshopImagePreviews = async (messages: WorkshopMessage[]) => {
 }
 
 const selectSession = async (id: string) => {
+  locallyDismissedAskIds.value = new Set()
   const session = await loadWorkshop(id)
   if (session) await hydrateWorkshopImagePreviews(session.messages)
   active.value = session
@@ -635,6 +668,7 @@ const selectSession = async (id: string) => {
 
 const openForAgentChat = async (agentChatId: string) => {
   if (!agentChatId.trim()) return
+  locallyDismissedAskIds.value = new Set()
   await loadModels()
   const id = workshopIdForAgentChat(agentChatId)
   const session = await loadWorkshop(id)
@@ -666,6 +700,7 @@ const openForAgentChat = async (agentChatId: string) => {
 }
 
 const newSession = () => {
+  locallyDismissedAskIds.value = new Set()
   const id = newLocalWorkshopId()
   const now = Date.now()
   active.value = {
@@ -771,11 +806,16 @@ defineExpose({
   activeTitle,
   activeMessageCount,
   loading,
+  runningAgentSessionId,
+  stopRun,
+  pendingQuestion,
+  pendingAsks,
 })
 </script>
 
 <template>
   <div class="workshop-chat-section">
+    <WorkshopSopProgress v-if="showSopProgress && active" :phase="active.sopPhase" />
     <div v-if="!hasProject" class="workshop-empty">Open a project first</div>
     <div v-else ref="listEl" class="message-list" @scroll="onScrollContainer">
       <div v-if="showEmptyHint" class="workshop-empty-hint">
@@ -822,6 +862,14 @@ defineExpose({
     <div v-if="hasProject && !embeddedInAgentChat" class="composer">
       <template v-if="pendingQuestion">
         <p class="clarify-prompt">{{ pendingQuestion }}</p>
+        <div v-if="loading" class="composer-running">
+          <p class="composer-hint">Collaboration in progress…</p>
+          <button type="button" class="stop-btn" title="Stop" @click="() => void stopRun()">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
         <WorkbenchChatInput
           v-model="answerInput"
           :project-root="projectRoot"
@@ -845,7 +893,14 @@ defineExpose({
         </WorkbenchChatInput>
       </template>
       <template v-else>
-      <p v-if="loading" class="composer-hint">Collaboration in progress…</p>
+      <div v-if="loading" class="composer-running">
+        <p class="composer-hint">Collaboration in progress…</p>
+        <button type="button" class="stop-btn" title="Stop" @click="() => void stopRun()">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
       <WorkbenchChatInput
         v-model="briefInput"
         :project-root="projectRoot"
@@ -903,6 +958,31 @@ defineExpose({
   color: var(--wc-text-muted);
   margin: 0;
   padding: 8px 0;
+}
+.composer-running {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.composer-running .composer-hint {
+  padding: 0;
+}
+.stop-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: #c45c5c;
+  color: #fff;
+  transition: background 0.15s;
+}
+.stop-btn:hover {
+  background: #a84848;
 }
 .workshop-empty {
   padding: 24px;

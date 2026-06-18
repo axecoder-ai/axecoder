@@ -13,6 +13,7 @@ export type ChatModeId =
   | 'planning'
   | 'planning-only'
   | 'multi-agent'
+  | 'software-company'
 
 export const DEFAULT_CHAT_MODE: ChatModeId = 'agent'
 
@@ -27,6 +28,7 @@ const VALID = new Set<string>([
   'planning',
   'planning-only',
   'multi-agent',
+  'software-company',
 ])
 
 export const normalizeChatMode = (v: unknown): ChatModeId => {
@@ -69,6 +71,9 @@ export const chatModeSystemAddon = (mode: ChatModeId): string => {
   if (mode === 'multi-agent') {
     return '\n\n<chat-mode>Multi-Agent: collaboration runs in the Workshop multi-role panel in this chat. Do not use Task/Agent/Coordinator tools here.</chat-mode>'
   }
+  if (mode === 'software-company') {
+    return '\n\n<chat-mode>Software Company: MetaGPT-style SOP pipeline (PRD → Design → Tasks → Code → QA) in the Workshop panel. One-line requirement starts the fixed assembly line. Do not use Task/Agent/Coordinator tools here.</chat-mode>'
+  }
   return ''
 }
 
@@ -101,7 +106,7 @@ const applyChatModeEffects = (session: StoredAgentSession, mode: ChatModeId) => 
     session.activeTools = filterToolsForSubagent(allTools, 'explore') as AgentToolDef[]
     return
   }
-  if (mode === 'multi-agent') {
+  if (mode === 'multi-agent' || mode === 'software-company') {
     session.activeTools = getSessionActiveTools(allTools, session.revealedToolNames)
     return
   }

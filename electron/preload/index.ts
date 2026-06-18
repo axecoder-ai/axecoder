@@ -790,6 +790,10 @@ contextBridge.exposeInMainWorld('axecoder', {
       cloneForIpc(workshopId),
       cloneForIpc(answer),
     ) as Promise<import('../../src/types/axecoder').WorkshopRunResult>,
+  workshopStop: (workshopId: string) =>
+    ipcRenderer.invoke('workshop:stop', cloneForIpc(workshopId)) as Promise<
+      { ok: true; stopped: number } | { ok: false; error: string }
+    >,
   onWorkshopProgress: (callback: (payload: import('../../src/types/axecoder').WorkshopProgressPayload) => void) => {
     const listener = (
       _: unknown,

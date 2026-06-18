@@ -18,6 +18,8 @@ export type WorkshopMessage = {
   roleId: WorkshopRoleId
   /** 实际发言人（users.json id），用于步骤执行人展示 */
   speakerUserId?: string
+  /** SOP / Message Pool：本条消息由哪个 Action 产生 */
+  causeBy?: import('../sop/sop-types').SopActionType
   text: string
   relatedFiles?: string[]
   imageRefs?: import('../chat-attachments').ChatImageRef[]
@@ -49,6 +51,14 @@ export type WorkshopSession = WorkshopSessionMeta & {
   currentStepIndex?: number
   /** 本轮用户消息附带的图片（发往 LLM 后由 orchestrator 清空） */
   pendingUserImages?: import('../models-types').AiChatImagePart[]
+  /** software-company SOP 当前阶段 */
+  sopPhase?: import('../sop/sop-types').SopPipelinePhase
+  /** SOP 交付物 slug（docs/deliverables/{slug}/） */
+  sopSlug?: string
+  /** 序列化的 Message Pool */
+  sopPoolMessages?: import('../sop/sop-types').SopPoolMessage[]
+  /** AskUserQuestion 结构化选项（优先于 pendingQuestion 纯文本） */
+  pendingAsks?: import('../agent/agent-types').PendingAskUserPublic[]
 }
 
 export type WorkshopProgressPayload = {
@@ -80,6 +90,11 @@ export type RoleSpeakInput = {
   forcePlanJson?: boolean
   /** Member绑定的 Skill / 命令正文块（由 speaker 层解析后填入） */
   skillPromptBlock?: string
+  /** software-company SOP 当前阶段 */
+  sopPhase?: import('../sop/sop-types').SopPipelinePhase
+  sopAction?: import('../sop/sop-types').SopActionType
+  /** Message Pool 订阅上下文 */
+  poolContext?: string
 }
 
 export type RoleSpeakOutput = {
@@ -90,6 +105,7 @@ export type RoleSpeakOutput = {
   reasoningContent?: string
   needsUser?: boolean
   userQuestion?: string
+  pendingAsks?: import('../agent/agent-types').PendingAskUserPublic[]
   relatedFiles?: string[]
 }
 

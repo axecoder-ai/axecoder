@@ -323,6 +323,16 @@ const en: MessageTree = {
     running: 'Running…',
     update: 'Update: {field}',
     agentHint: 'Same tools as main Chat Agent (Read/Write/Grep…) with streaming progress',
+    sopProgress: 'SOP pipeline progress',
+    sopPhase: {
+      requirement: 'Req',
+      prd: 'PRD',
+      design: 'Design',
+      tasks: 'Tasks',
+      implement: 'Code',
+      qa: 'QA',
+      done: 'Done',
+    },
   },
   extensions: {
     title: 'Extensions',

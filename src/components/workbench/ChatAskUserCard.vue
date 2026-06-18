@@ -2,6 +2,9 @@
 import { computed, ref } from 'vue'
 import type { AgentPendingAskUser } from '../../types/axecoder'
 
+/** UI 内置「其他」选项 id（不必由模型提供） */
+const ASK_OTHER_OPTION_ID = '__other__'
+
 const props = defineProps<{
   pending: AgentPendingAskUser
   busy?: boolean
@@ -13,13 +16,20 @@ const emit = defineEmits<{
 
 const single = ref<Record<string, string>>({})
 const multi = ref<Record<string, string[]>>({})
+const otherText = ref<Record<string, string>>({})
+const submitted = ref(false)
+
+const isOther = (questionId: string) => single.value[questionId] === ASK_OTHER_OPTION_ID
 
 const canSubmit = computed(() =>
   props.pending.questions.every((q) => {
     if (q.allow_multiple) {
       return (multi.value[q.id]?.length ?? 0) > 0
     }
-    return !!single.value[q.id]
+    const picked = single.value[q.id]
+    if (!picked) return false
+    if (picked === ASK_OTHER_OPTION_ID) return (otherText.value[q.id]?.trim().length ?? 0) > 0
+    return true
   }),
 )
 
@@ -37,17 +47,20 @@ const onSubmit = () => {
   for (const q of props.pending.questions) {
     if (q.allow_multiple) {
       answers[q.id] = [...(multi.value[q.id] ?? [])]
+    } else if (single.value[q.id] === ASK_OTHER_OPTION_ID) {
+      answers[q.id] = otherText.value[q.id]?.trim() ?? ''
     } else {
       answers[q.id] = single.value[q.id] ?? ''
     }
   }
+  submitted.value = true
   emit('submit', answers)
 }
 </script>
 
 <template>
-  <div class="ask-card">
-    <div class="ask-head">Your input needed</div>
+  <div v-if="!submitted" class="ask-card">
+    <div class="ask-head">待你确认</div>
     <div v-for="q in pending.questions" :key="q.id" class="ask-block">
       <p class="ask-prompt">{{ q.prompt }}</p>
       <div v-if="q.allow_multiple" class="ask-options">
@@ -72,11 +85,29 @@ const onSubmit = () => {
           />
           <span>{{ opt.label }}</span>
         </label>
+        <label class="ask-option">
+          <input
+            v-model="single[q.id]"
+            type="radio"
+            :name="`ask-${pending.id}-${q.id}`"
+            :value="ASK_OTHER_OPTION_ID"
+            :disabled="busy"
+          />
+          <span>其他（自行填写）</span>
+        </label>
+        <textarea
+          v-if="isOther(q.id)"
+          v-model="otherText[q.id]"
+          class="ask-other-input"
+          rows="3"
+          :disabled="busy"
+          placeholder="请输入你的方案或补充说明…"
+        />
       </div>
     </div>
     <div class="ask-actions">
       <button type="button" class="btn-submit" :disabled="busy || !canSubmit" @click="onSubmit">
-        Submit
+        提交
       </button>
     </div>
   </div>
@@ -127,6 +158,20 @@ const onSubmit = () => {
   font-size: 12px;
   color: var(--wc-text);
   cursor: pointer;
+}
+
+.ask-other-input {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  border-radius: 6px;
+  border: 1px solid var(--wc-border);
+  background: var(--wc-muted-surface);
+  color: var(--wc-text);
+  resize: vertical;
+  font-family: inherit;
 }
 
 .ask-actions {

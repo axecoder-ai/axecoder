@@ -63,6 +63,14 @@ export const BUILTIN_WORKFLOW_ROLES: BuiltinWorkflowRoleDef[] = [
     skillSlugs: ['implement'],
   },
   {
+    id: 'builtin-qa-engineer',
+    builtinRole: 'qa_engineer',
+    displayName: 'QA Engineer',
+    role: 'QA Engineer',
+    expertise: 'Unit tests, regression, bug fixes',
+    skillSlugs: ['code-review'],
+  },
+  {
     id: 'builtin-reviewer',
     builtinRole: 'reviewer',
     displayName: 'Reviewer',

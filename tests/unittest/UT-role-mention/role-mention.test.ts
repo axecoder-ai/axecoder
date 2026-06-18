@@ -4,6 +4,7 @@ import {
   buildRoleCommandPromptText,
   effectiveUserSkillSlugs,
   filterUsersForMention,
+  formatRoleMentionInput,
   parseCommittedRoleMention,
   resolveRoleCommandSlug,
   roleMentionPickerQuery,
@@ -97,6 +98,13 @@ describe('role-mention', () => {
     const m = parseCommittedRoleMention('@Lois·Lane 写到 research/', [lois])
     expect(m?.userId).toBe('builtin-researcher')
     expect(m?.args).toBe('写到 research/')
+  })
+
+  it('formatRoleMentionInput 保留 args 末尾空格', () => {
+    expect(formatRoleMentionInput('Chloe Sullivan', '/implement run.sh serv ')).toBe(
+      '@Chloe Sullivan /implement run.sh serv ',
+    )
+    expect(formatRoleMentionInput('Developer')).toBe('@Developer ')
   })
 
   it('hasMultipleRoleMentions 拒绝一条消息 @ 多个角色', () => {

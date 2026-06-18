@@ -104,7 +104,7 @@ export const filterUsersForMention = (users: UserEntry[], query: string): UserEn
 }
 
 export const formatRoleMentionInput = (displayName: string, args = '') =>
-  args.trim() ? `@${displayName} ${args.trim()}` : `@${displayName} `
+  args.length > 0 ? `@${displayName} ${args}` : `@${displayName} `
 
 /** 一条消息里是否 @ 了多个角色（args 里第二个有效 @ 也算） */
 export const hasMultipleRoleMentions = (text: string, users: UserEntry[]): boolean => {

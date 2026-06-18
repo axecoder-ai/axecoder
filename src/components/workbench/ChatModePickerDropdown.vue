@@ -206,6 +206,16 @@ onUnmounted(() => {
                     d="M2.5 13c0-1.8 1.3-3 3-3s3 1.2 3 3M7.5 13c0-1.8 1.3-3 3-3s3 1.2 3 3"
                   />
                 </svg>
+                <!-- Software Co. -->
+                <svg v-else-if="m.id === 'software-company'" viewBox="0 0 16 16" width="14" height="14">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.2"
+                    stroke-linejoin="round"
+                    d="M4 13V7l4-2.5L12 7v6M4 13h8M6.5 13V10h1v3M8.5 13V10h1v3"
+                  />
+                </svg>
               </span>
               <span class="mode-name">{{ m.label }}</span>
               <svg
@@ -259,6 +269,15 @@ onUnmounted(() => {
           <circle cx="5.5" cy="6" r="2.25" fill="none" stroke="currentColor" stroke-width="1.2" />
           <circle cx="10.5" cy="6" r="2.25" fill="none" stroke="currentColor" stroke-width="1.2" />
           <path fill="none" stroke="currentColor" stroke-width="1.2" d="M2.5 13c0-1.8 1.3-3 3-3s3 1.2 3 3M7.5 13c0-1.8 1.3-3 3-3s3 1.2 3 3" />
+        </svg>
+        <svg v-else-if="activeModeId === 'software-company'" viewBox="0 0 16 16" width="14" height="14">
+          <path
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linejoin="round"
+            d="M4 13V7l4-2.5L12 7v6M4 13h8M6.5 13V10h1v3M8.5 13V10h1v3"
+          />
         </svg>
       </span>
       <span class="trigger-label">{{ triggerLabel }}</span>

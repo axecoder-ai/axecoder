@@ -5,6 +5,7 @@ export type BuiltinUserRole =
   | 'architect'
   | 'planner'
   | 'developer'
+  | 'qa_engineer'
   | 'reviewer'
 
 export type UserEntry = {

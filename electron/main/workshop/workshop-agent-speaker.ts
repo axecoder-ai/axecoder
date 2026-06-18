@@ -55,16 +55,17 @@ export const buildAgentRoleSpeaker = (
     if ('needsUser' in res && res.needsUser) {
       return {
         summary: display.summary,
-        planSource: display.planSource,
+        planSource: enriched.sopPhase ? res.report.trim() : display.planSource,
         needsUser: true,
         userQuestion: res.userQuestion,
+        pendingAsks: res.pendingAsks,
         relatedFiles: clarify.relatedFiles,
         reasoningContent,
       }
     }
     return {
       summary: display.summary,
-      planSource: display.planSource,
+      planSource: enriched.sopPhase ? res.report.trim() : display.planSource,
       relatedFiles: clarify.relatedFiles,
       needsUser: clarify.needsUser,
       userQuestion: clarify.userQuestion,

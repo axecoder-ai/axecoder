@@ -594,7 +594,7 @@ const filteredActivityLog = computed(() => {
 const scrollActivityToBottom = () => {
   const el = activityLogEl.value
   if (!el) return
-  el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  el.scrollTop = el.scrollHeight
 }
 
 const onDetach = () => {
@@ -631,10 +631,11 @@ watch([filterModelId, filterSource, filterProvider, filterTimeRange], () => {
 })
 
 watch(
-  () => filteredActivityLog.value.length,
+  () => filteredActivityLog.value.at(-1)?.id,
   () => {
-    void nextTick().then(scrollActivityToBottom)
+    scrollActivityToBottom()
   },
+  { flush: 'post' },
 )
 
 onMounted(async () => {
@@ -1076,7 +1077,6 @@ onUnmounted(() => {
   flex: 1;
   min-height: 56px;
   overflow: auto;
-  scroll-behavior: smooth;
   background: var(--wc-bg-dark);
   border: 1px solid var(--wc-border);
   border-radius: 4px;

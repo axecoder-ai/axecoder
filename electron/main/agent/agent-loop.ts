@@ -1231,7 +1231,14 @@ export const modelSupportsAgentTools = (model: ModelEntry | null | undefined) =>
 
 export type WorkshopAgentTurnResult =
   | { ok: true; report: string; reasoningContent?: string }
-  | { ok: true; report: string; needsUser: true; userQuestion: string; reasoningContent?: string }
+  | {
+      ok: true
+      report: string
+      needsUser: true
+      userQuestion: string
+      pendingAsks?: PendingAskUserPublic[]
+      reasoningContent?: string
+    }
   | { ok: false; error: string }
 
 const collectWorkshopTurnReasoning = (session: StoredAgentSession): string => {
@@ -1370,7 +1377,14 @@ export const runWorkshopRoleAgentTurn = async (
         .flatMap((a) => a.questions.map((qq) => qq.prompt))
         .filter(Boolean)
         .join('；') || 'Please add requirement details?'
-    return { ok: true, report, needsUser: true, userQuestion: q.slice(0, 300), ...reasoningMeta }
+    return {
+      ok: true,
+      report,
+      needsUser: true,
+      userQuestion: q.slice(0, 300),
+      pendingAsks: asks.map((a) => ({ id: a.id, questions: a.questions })),
+      ...reasoningMeta,
+    }
   }
 
   const live = getSession(sid)

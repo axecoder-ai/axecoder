@@ -18,6 +18,13 @@ describe('workshop-subagent-speaker', () => {
     expect(files.some((f) => f.includes('handler'))).toBe(true)
   })
 
+  it('extractRelatedFiles 忽略技术名词与列表编号', () => {
+    const files = extractRelatedFiles(
+      'Redis MVP 1. Vue MySQL demo 2. PV/UV 3. User 已写入 src/api/handler.ts',
+    )
+    expect(files).toEqual(['src/api/handler.ts'])
+  })
+
   it('buildRoleTaskPrompt 注入回复语言', () => {
     const p = buildRoleTaskPrompt(
       {

@@ -317,6 +317,16 @@ const zhCN: MessageTree = {
     running: '执行中…',
     update: '更新：{field}',
     agentHint: '与主 Chat Agent 相同：Read/Write/Grep 等工具 + 流式进度',
+    sopProgress: 'SOP 流水线进度',
+    sopPhase: {
+      requirement: '需求',
+      prd: 'PRD',
+      design: '设计',
+      tasks: '任务',
+      implement: '开发',
+      qa: 'QA',
+      done: '交付',
+    },
   },
   extensions: {
     title: '扩展',

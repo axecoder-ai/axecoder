@@ -14,9 +14,10 @@ export const findUserById = (users: UserEntry[], userId: string): UserEntry | un
 /** Map users.json role text to Workshop UI color (display) */
 export const inferWorkshopRoleId = (user: UserEntry): Exclude<WorkshopRoleId, 'system' | 'user'> => {
   if (isManager(user)) return 'manager'
+  if (user.builtinRole === 'qa_engineer') return 'tester'
   const r = user.role.toLowerCase()
-  if (r.includes('Frontend')) return 'frontend'
-  if (r.includes('QA')) return 'tester'
+  if (r.includes('frontend')) return 'frontend'
+  if (r.includes('qa')) return 'tester'
   if (r.includes('Backend') || r.includes('architecture')) return 'backend'
   return 'backend'
 }
