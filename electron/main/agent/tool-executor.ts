@@ -69,6 +69,8 @@ export type AgentContext = {
   checkpointFiles?: Record<string, string>
   /** Workshop 角色回合：Write/Bash 自动 apply，与 Chat 开 Auto Run 等价 */
   workshopAutoApply?: boolean
+  /** Draw.IO 模式：关联的 Workshop 会话 id */
+  drawIoWorkshopId?: string
   /** 本轮主 Agent 启动的后台 Task id（assistant 落盘前汇总） */
   backgroundTaskIds?: string[]
 }

@@ -7,6 +7,7 @@ import {
   BUILTIN_WORKFLOW_ROLES,
   seedBuiltinWorkflowUser,
 } from '../../../electron/main/builtin-workflow-roles'
+import { artifactBodyForGate } from '../../../electron/main/sop/sop-artifact'
 import {
   projectHasApplicationSource,
   shouldTriggerSopCodeRecovery,
@@ -53,6 +54,20 @@ describe('validateSopGate', () => {
     expect(validateSopGate('qa', 'All tests pass.\ngo test ok  3 passed').ok).toBe(true)
   })
 
+  it('design markdown 不因无效 json 块被拒', () => {
+    const body = [
+      '说明',
+      '```json',
+      '{ broken',
+      '```',
+      '# 系统设计',
+      '## 文件列表',
+      '- internal/store/mongo.go',
+    ].join('\n')
+    const gateBody = artifactBodyForGate(body, body, body)
+    expect(validateSopGate('design', gateBody).ok).toBe(true)
+  })
+
   it('仅有 tests 时判定缺应用源码', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sop-src-'))
     await fs.mkdir(path.join(dir, 'tests'), { recursive: true })
@@ -85,13 +100,15 @@ describe('sendSopPipelineMessage', () => {
   it('scripted：一行需求跑通 SOP 至 done 并落盘 artifact', async () => {
     await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true })
     await fs.writeFile(path.join(projectRoot, 'src/todo.ts'), 'export {}', 'utf-8')
+    await fs.writeFile(path.join(projectRoot, 'src/todo-api.ts'), 'export {}', 'utf-8')
     const session = newWorkshopSession(projectRoot, '', 'm1')
+    const mockTests = async () => ({ ok: true, output: 'ok  3 passed' })
     const res = await sendSopPipelineMessage(
       session,
       '实现 Todo 应用',
       scriptedSopSpeaker(),
       undefined,
-      { projectRoot },
+      { projectRoot, runTests: mockTests },
     )
     expect(res.ok).toBe(true)
     if (!res.ok) return
@@ -113,12 +130,15 @@ describe('sendSopPipelineMessage', () => {
   it('done 后用户追问走 Tech Lead member 回复', async () => {
     await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true })
     await fs.writeFile(path.join(projectRoot, 'src/todo.ts'), 'export {}', 'utf-8')
+    await fs.writeFile(path.join(projectRoot, 'src/todo-api.ts'), 'export {}', 'utf-8')
     const session = newWorkshopSession(projectRoot, '', 'm1')
     const speaker = scriptedSopSpeaker({
       done: '代码在 src/todo.ts，已实现 Todo 模块。',
     })
+    const mockTests = async () => ({ ok: true, output: 'ok  3 passed' })
     const first = await sendSopPipelineMessage(session, '实现 Todo 应用', speaker, undefined, {
       projectRoot,
+      runTests: mockTests,
     })
     expect(first.ok).toBe(true)
     if (!first.ok) return
@@ -156,7 +176,7 @@ describe('sendSopPipelineMessage', () => {
       '代码写了吗？在哪里？',
       scriptedSopSpeaker(),
       undefined,
-      { projectRoot },
+      { projectRoot, runTests: async () => ({ ok: true, output: 'ok  1 passed' }) },
     )
     expect(res.ok).toBe(true)
     if (!res.ok) return

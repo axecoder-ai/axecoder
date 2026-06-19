@@ -3,6 +3,7 @@ export type BuiltinUserRole =
   | 'product_analyst'
   | 'researcher'
   | 'architect'
+  | 'project_manager'
   | 'planner'
   | 'developer'
   | 'qa_engineer'

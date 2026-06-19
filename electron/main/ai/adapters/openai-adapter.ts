@@ -1,6 +1,6 @@
 import type { AgentLoopMessage, AgentToolCall, AgentToolDef } from '../../agent/agent-types'
 import type { AiTokenUsage, ModelEntry } from '../../models-types'
-import { resolveAgentToolName } from '../../agent/agent-tool-aliases'
+import { resolveAgentToolName, normalizeAgentToolCall } from '../../agent/agent-tool-aliases'
 import { AGENT_TOOLS } from '../../agent/agent-tool-defs'
 import { fetchAiWithRetry, formatAiRequestFailedError } from '../ai-request-retry'
 import { AI_REQUEST_TIMEOUT_MS, formatAiFetchError } from '../request-timeout'
@@ -44,11 +44,13 @@ const parseOpenAiToolCalls = (message: Record<string, unknown>): AgentToolCall[]
     } catch {
       args = {}
     }
-    out.push({
-      id: String(row.id ?? ''),
-      name: (resolveAgentToolName(fn.name) ?? fn.name) as AgentToolCall['name'],
-      arguments: args,
-    })
+    out.push(
+      normalizeAgentToolCall({
+        id: String(row.id ?? ''),
+        name: (resolveAgentToolName(fn.name) ?? fn.name) as AgentToolCall['name'],
+        arguments: args,
+      }),
+    )
   }
   return out
 }

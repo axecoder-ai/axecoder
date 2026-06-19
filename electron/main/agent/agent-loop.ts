@@ -7,6 +7,7 @@ import { resolveApiModelIdForTask } from '../ai/api-model-resolve'
 import { t } from '../i18n'
 import { normalizeReasoningEffort } from '../../../shared/reasoning-effort'
 import { AGENT_TOOLS, buildAgentSystemPrompt, buildFullAgentTools } from './agent-tool-defs'
+import { filterToolsForSopRole } from '../sop/sop-role-tools'
 import { getSessionActiveTools } from './agent-ext-executor'
 import type { AgentToolCall, AgentToolDef } from './agent-types'
 import type {
@@ -49,7 +50,7 @@ import { isReadOnlyBashCommand } from './agent-bash-readonly'
 import { extractPullRequestFromOutput } from '../git-forge/git-operation-tracking'
 import { buildGitForgeContext } from '../git-forge/detect-forge'
 import { runHooks } from './agent-hooks'
-import { clearOldToolResults, dropOrphanToolMessages } from './agent-frc'
+import { clearOldToolResults, dropOrphanToolMessages, capToolMessageContent } from './agent-frc'
 import { compactAgentMessages, compactAgentMessagesWithLlm, shouldAutoCompact } from './agent-context-compact'
 import { getTokenBudgetSection } from './agent-token-budget'
 import { maybeInjectProactiveReminder } from './agent-proactive'
@@ -82,7 +83,6 @@ import {
   shouldTriggerAutoPlanOnTurn,
   type ChatModeId,
 } from './chat-mode'
-import { applyRppitModeToLastUserMessage } from './rppit-command'
 import { applyAgentRolePersonaToMessages } from './agent-role-persona'
 
 export { compactAgentMessages } from './agent-context-compact'
@@ -274,10 +274,12 @@ const stripContextInjectReminders = (messages: AgentLoopMessage[]) =>
 
 const prepareSessionBeforeModel = async (sessionId: string, session: StoredAgentSession) => {
   const cfg = await getConfig()
-  clearOldToolResults(session.messages, cfg.agentFrcKeepToolMessages ?? 8)
-  const threshold = cfg.agentContextCompactThreshold ?? 120_000
+  const isWorkshop = sessionId.startsWith('workshop-')
+  const keepTools = isWorkshop ? 4 : (cfg.agentFrcKeepToolMessages ?? 8)
+  clearOldToolResults(session.messages, keepTools)
+  const threshold = isWorkshop ? 60_000 : (cfg.agentContextCompactThreshold ?? 120_000)
   if (shouldAutoCompact(session.messages, threshold)) {
-    const compacted = await compactAgentMessagesWithLlm(session.messages, 24, {
+    const compacted = await compactAgentMessagesWithLlm(session.messages, isWorkshop ? 12 : 24, {
       modelId: session.modelId,
       sessionId,
     })
@@ -709,7 +711,7 @@ export const runAgentLoopUntilDoneOrPending = async (
             role: 'tool',
             toolCallId: tc.id,
             name: tc.name,
-            content: guardedContent ?? run.content,
+            content: capToolMessageContent(guardedContent ?? run.content),
           })
         }
       }
@@ -843,14 +845,6 @@ export const startAgentTurn = async (
         content: m.content ?? '',
         ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
       })
-    }
-  }
-
-  if (chatMode === 'rppit') {
-    const rppitApplied = await applyRppitModeToLastUserMessage(messages)
-    if (!rppitApplied.ok) {
-      messages[0]!.content +=
-        `\n\n<chat-mode>rppit mode active but playbook missing: ${rppitApplied.error}</chat-mode>`
     }
   }
 
@@ -1255,6 +1249,63 @@ const collectWorkshopTurnReasoning = (session: StoredAgentSession): string => {
 export type WorkshopAgentTurnOptions = {
   speakMode?: 'plan' | 'execute' | 'verify' | 'member' | 'manager_chat'
   userImages?: import('../models-types').AiChatImagePart[]
+  /** SOP implement：多 task 间复用 session 保留调试记忆 */
+  reuseSession?: boolean
+  sopBuiltinRole?: import('../users-types').BuiltinUserRole
+}
+
+const finishWorkshopTurn = async (
+  sid: string,
+  result: Awaited<ReturnType<typeof runAgentLoopUntilDoneOrPending>>,
+  options?: WorkshopAgentTurnOptions,
+): Promise<WorkshopAgentTurnResult> => {
+  if (!result.ok) return { ok: false, error: result.error }
+
+  const report = (result.assistantText || '').trim() || '(no conclusion)'
+  const liveBeforeTeardown = getSession(sid)
+  const reasoningContent = liveBeforeTeardown
+    ? collectWorkshopTurnReasoning(liveBeforeTeardown)
+    : ''
+  const reasoningMeta = reasoningContent ? { reasoningContent } : {}
+  const keep = options?.reuseSession === true
+
+  if (result.status === 'done') {
+    if (!keep) deleteSession(sid)
+    return { ok: true, report, ...reasoningMeta }
+  }
+
+  const asks = result.pendingAsks ?? []
+  if (asks.length) {
+    if (!keep) deleteSession(sid)
+    const q =
+      asks
+        .flatMap((a) => a.questions.map((qq) => qq.prompt))
+        .filter(Boolean)
+        .join('；') || 'Please add requirement details?'
+    return {
+      ok: true,
+      report,
+      needsUser: true,
+      userQuestion: q.slice(0, 300),
+      pendingAsks: asks.map((a) => ({ id: a.id, questions: a.questions })),
+      ...reasoningMeta,
+    }
+  }
+
+  const live = getSession(sid)
+  if (live && (live.pendingById.size || live.pendingBashById.size)) {
+    const applied = await applyAllPendingInSession(live)
+    if (!keep) deleteSession(sid)
+    if (!applied.ok) return { ok: false, error: applied.error }
+    return {
+      ok: true,
+      report: `${report}\n\n(file/command changes auto-applied)`.trim(),
+      ...reasoningMeta,
+    }
+  }
+
+  if (!keep) deleteSession(sid)
+  return { ok: true, report, ...reasoningMeta }
 }
 
 export const runWorkshopRoleAgentTurn = async (
@@ -1280,7 +1331,10 @@ export const runWorkshopRoleAgentTurn = async (
   const cfg = await getConfig()
   const revealedToolNames = new Set<AgentToolName>()
   const allTools = buildFullAgentTools()
-  const activeTools = getSessionActiveTools(allTools, revealedToolNames)
+  const activeTools = filterToolsForSopRole(
+    getSessionActiveTools(allTools, revealedToolNames),
+    options?.sopBuiltinRole,
+  )
   const scratchpadDir = await ensureScratchpadDir(sid)
 
   const ctx: AgentContext = {
@@ -1311,6 +1365,21 @@ export const runWorkshopRoleAgentTurn = async (
         ].join('\n')
       : [`[Collab Workshop · ${roleName}]`, 'Same tool capabilities as Chat Agent mode.', ''].join('\n')
 
+  const userMsg: AgentLoopMessage = {
+    role: 'user',
+    content: `${roleLead}${prompt}`,
+    ...(options?.userImages?.length ? { images: options.userImages } : {}),
+  }
+
+  const existing = options?.reuseSession ? getSession(sid) : undefined
+  if (existing) {
+    existing.messages.push(userMsg)
+    existing.activeTools = activeTools
+    putSession(sid, existing)
+    const result = await runAgentLoopUntilDoneOrPending(sid, existing)
+    return finishWorkshopTurn(sid, result, options)
+  }
+
   const messages: AgentLoopMessage[] = [
     {
       role: 'system',
@@ -1323,11 +1392,7 @@ export const runWorkshopRoleAgentTurn = async (
           agentFrcKeepToolMessages: cfg.agentFrcKeepToolMessages ?? 8,
         })) + chatModeSystemAddon('agent'),
     },
-    {
-      role: 'user',
-      content: `${roleLead}${prompt}`,
-      ...(options?.userImages?.length ? { images: options.userImages } : {}),
-    },
+    userMsg,
   ]
 
   const session: StoredAgentSession = {
@@ -1355,52 +1420,7 @@ export const runWorkshopRoleAgentTurn = async (
 
   putSession(sid, session)
   const result = await runAgentLoopUntilDoneOrPending(sid, session)
-  if (!result.ok) return { ok: false, error: result.error }
-
-  const report = (result.assistantText || '').trim() || '(no conclusion)'
-  const liveBeforeTeardown = getSession(sid)
-  const reasoningContent = liveBeforeTeardown
-    ? collectWorkshopTurnReasoning(liveBeforeTeardown)
-    : ''
-  const reasoningMeta = reasoningContent ? { reasoningContent } : {}
-
-  if (result.status === 'done') {
-    deleteSession(sid)
-    return { ok: true, report, ...reasoningMeta }
-  }
-
-  const asks = result.pendingAsks ?? []
-  if (asks.length) {
-    deleteSession(sid)
-    const q =
-      asks
-        .flatMap((a) => a.questions.map((qq) => qq.prompt))
-        .filter(Boolean)
-        .join('；') || 'Please add requirement details?'
-    return {
-      ok: true,
-      report,
-      needsUser: true,
-      userQuestion: q.slice(0, 300),
-      pendingAsks: asks.map((a) => ({ id: a.id, questions: a.questions })),
-      ...reasoningMeta,
-    }
-  }
-
-  const live = getSession(sid)
-  if (live && (live.pendingById.size || live.pendingBashById.size)) {
-    const applied = await applyAllPendingInSession(live)
-    deleteSession(sid)
-    if (!applied.ok) return { ok: false, error: applied.error }
-    return {
-      ok: true,
-      report: `${report}\n\n(file/command changes auto-applied)`.trim(),
-      ...reasoningMeta,
-    }
-  }
-
-  deleteSession(sid)
-  return { ok: true, report, ...reasoningMeta }
+  return finishWorkshopTurn(sid, result, options)
 }
 
 export { listAgentSessions, rewindAgentCheckpoint }

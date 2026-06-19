@@ -13,13 +13,15 @@ const SOP_ARTIFACT_HINTS: Partial<Record<SopPipelinePhase, string>> = {
   design: [
     '[Software Company SOP · WriteDesign]',
     'Produce system design from upstream PRD.',
-    'End with ```json: { "title", "fileList": [], "dataStructures": [], "apis": [{ "name", "description" }] }',
-    'Or markdown with ## 文件列表.',
+    'End with ```json: { "title", "fileList": [], "dataStructures": [], "apis": [{ "name", "description" }], "sequenceDiagram": "mermaid or text flow" }',
+    'Or markdown with ## 文件列表 and ## Sequence.',
   ].join('\n'),
   tasks: [
-    '[Software Company SOP · WriteTasks]',
-    'Break design into tasks. End with ```json:',
+    '[Software Company SOP · WriteTasks · Project Manager]',
+    'Break design (or user requirement for incremental) into ordered tasks with deps.',
+    'End with ```json:',
     '{ "title": "...", "tasks": [{ "id": "t1", "title": "...", "assignee": "developer", "deps": [] }] }',
+    'Each task must be small enough for one Engineer iteration.',
   ].join('\n'),
   implement: [
     '[Software Company SOP · WriteCode]',

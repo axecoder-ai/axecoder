@@ -18,7 +18,7 @@ export const extractClarifyQuestion = (text: string): string | null => {
   return null
 }
 
-/** 闸门校验用：优先完整 report，再尝试 JSON 块 */
+/** 闸门校验用：仅当 ```json 块可解析为对象时才优先用块，否则保留全文供 markdown 闸门 */
 export const artifactBodyForGate = (
   summary: string,
   reasoningContent?: string,
@@ -26,6 +26,13 @@ export const artifactBodyForGate = (
 ): string => {
   const full = (reasoningContent || planSource || summary).trim()
   const block = extractJsonBlock(full)
-  if (block) return block
+  if (block) {
+    try {
+      const data = JSON.parse(block) as unknown
+      if (data && typeof data === 'object' && !Array.isArray(data)) return block
+    } catch {
+      /* 无效 JSON 块：保留全文（含系统设计 markdown 等） */
+    }
+  }
   return full || summary.trim()
 }

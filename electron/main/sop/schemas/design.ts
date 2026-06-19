@@ -3,6 +3,8 @@ export type SopDesign = {
   fileList: string[]
   dataStructures?: string[]
   apis?: { name: string; description: string }[]
+  /** MetaGPT 式时序/交互说明（mermaid 或文字） */
+  sequenceDiagram?: string
 }
 
 export const parseDesignJson = (
@@ -34,6 +36,9 @@ export const designToMarkdown = (design: SopDesign): string => {
   }
   if (design.apis?.length) {
     lines.push('', '## APIs', ...design.apis.map((a) => `- **${a.name}**: ${a.description}`))
+  }
+  if (design.sequenceDiagram?.trim()) {
+    lines.push('', '## Sequence', design.sequenceDiagram.trim())
   }
   return lines.join('\n')
 }

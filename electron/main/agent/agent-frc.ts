@@ -3,6 +3,18 @@ import type { AgentLoopMessage } from './agent-types'
 const CLEARED_PLACEHOLDER =
   '[Previous tool result cleared to save context. Important facts should already be in the assistant text above.]'
 
+/** 单条 tool 消息写入会话 / API 的上限（约 12k tokens） */
+export const MAX_AGENT_TOOL_MESSAGE_CHARS = 48_000
+
+export const capToolMessageContent = (
+  content: string,
+  max = MAX_AGENT_TOOL_MESSAGE_CHARS,
+): string => {
+  const s = content ?? ''
+  if (s.length <= max) return s
+  return `${s.slice(0, max)}\n\n[truncated: ${s.length - max} chars omitted to stay within context budget]`
+}
+
 /** FRC：清理较早的 tool 消息内容（对齐 SUMMARIZE_TOOL_RESULTS Run时） */
 export const clearOldToolResults = (
   messages: AgentLoopMessage[],
@@ -21,6 +33,14 @@ export const clearOldToolResults = (
     if (m.role === 'tool' && m.content !== CLEARED_PLACEHOLDER) {
       m.content = CLEARED_PLACEHOLDER
       cleared += 1
+    }
+  }
+  // 仍保留的 tool 消息也截断，避免单轮多 Read 撑爆上下文
+  const kept = toolIndexes.slice(-keepRecentToolMessages)
+  for (const idx of kept) {
+    const m = messages[idx]
+    if (m.role === 'tool' && m.content !== CLEARED_PLACEHOLDER) {
+      m.content = capToolMessageContent(m.content)
     }
   }
   return cleared

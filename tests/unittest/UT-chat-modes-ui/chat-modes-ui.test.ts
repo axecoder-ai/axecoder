@@ -69,4 +69,13 @@ describe('chat-modes UI', () => {
     expect(loadStoredChatMode()).toBe('plan')
     expect(store.get('axecoder.chatMode')).toBe('plan')
   })
+
+  it('Draw.IO 位于 Plan 与 Multi-Agent 之间', () => {
+    const ids = CHAT_MODE_OPTIONS.map((m) => m.id)
+    const planIdx = ids.indexOf('plan')
+    const drawIdx = ids.indexOf('draw-io')
+    const maIdx = ids.indexOf('multi-agent')
+    expect(drawIdx).toBeGreaterThan(planIdx)
+    expect(maIdx).toBeGreaterThan(drawIdx)
+  })
 })

@@ -47,6 +47,14 @@ export const BUILTIN_WORKFLOW_ROLES: BuiltinWorkflowRoleDef[] = [
     skillSlugs: ['make-proposals', 'create-proposals'],
   },
   {
+    id: 'builtin-project-manager',
+    builtinRole: 'project_manager',
+    displayName: 'Project Manager',
+    role: 'Project Manager',
+    expertise: 'Task breakdown and dispatch per MetaGPT SOP',
+    skillSlugs: ['make-plan', 'create-plan'],
+  },
+  {
     id: 'builtin-planner',
     builtinRole: 'planner',
     displayName: 'Planner',

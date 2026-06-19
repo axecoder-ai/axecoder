@@ -10,6 +10,7 @@ import type {
 } from '../../types/axecoder'
 import WorkshopMessageItem from './WorkshopMessageItem.vue'
 import WorkshopSopProgress from './WorkshopSopProgress.vue'
+import DrawIoEmbed from './DrawIoEmbed.vue'
 import WorkbenchChatInput from './WorkbenchChatInput.vue'
 import { applyProgressPayload, type AgentProgressStep } from '../../utils/agent-progress'
 import { parseWorkshopStreamRole } from '../../utils/workshop-stream'
@@ -46,7 +47,7 @@ const props = defineProps<{
   agentHistoryCount?: number
   /** Multi-Agent 嵌入时与 Agent 底栏共用 activeModelId */
   preferredModelId?: string
-  /** Agent 嵌入 Workshop 时的编排模式（multi-agent / reflection） */
+  /** Agent 嵌入 Workshop 时的编排模式（multi-agent / software-company） */
   orchestrationChatMode?: string
 }>()
 
@@ -63,10 +64,35 @@ const emitWorkshopActive = (id: string) => {
 }
 
 const embeddedDefaultTitle = computed(() => {
-  if (props.orchestrationChatMode === 'reflection') return 'Reflection'
   if (props.orchestrationChatMode === 'software-company') return 'Software Co.'
+  if (props.orchestrationChatMode === 'draw-io') return 'Draw.IO'
   return 'Multi-Agent'
 })
+
+const isDrawIoMode = computed(() => props.orchestrationChatMode === 'draw-io')
+const BLANK_DRAW_IO_XML =
+  '<mxfile host="app.diagrams.net"><diagram id="blank" name="Page-1"><mxGraphModel grid="0" page="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>'
+const diagramXml = ref('')
+
+const syncDiagramFromSession = async () => {
+  if (!isDrawIoMode.value || !active.value?.id || !hasProject.value) {
+    diagramXml.value = ''
+    return
+  }
+  const res = await window.axecoder.drawIoGetDiagram(props.projectRoot, active.value.id)
+  if (res.ok) {
+    diagramXml.value = res.xml
+    return
+  }
+  diagramXml.value = active.value.diagramXml?.trim() || BLANK_DRAW_IO_XML
+}
+
+const onDiagramExport = async (xml: string) => {
+  if (!active.value) return
+  diagramXml.value = xml
+  active.value = { ...active.value, diagramXml: xml }
+  await window.axecoder.saveWorkshopSession(props.projectRoot, active.value)
+}
 
 const showSopProgress = computed(() => props.orchestrationChatMode === 'software-company')
 
@@ -112,6 +138,7 @@ const usersList = ref<UserEntry[]>([])
 const profileAvatarUrl = ref('')
 
 let offProgress: (() => void) | undefined
+let offDrawIo: (() => void) | undefined
 let offAgentProgress: (() => void) | undefined
 const progressSteps = ref<AgentProgressStep[]>([])
 const agentProgressActive = ref(false)
@@ -166,6 +193,10 @@ const showAgentHistoryHint = computed(
     showEmptyHint.value,
 )
 const composerPlaceholder = computed(() => {
+  if (isDrawIoMode.value) {
+    if (!active.value?.messages.length) return 'Describe a diagram to create or edit…'
+    return 'Refine the diagram…'
+  }
   if (!active.value?.messages.length) return 'Describe the task, or @ a role to assign directly…'
   return '@ a role or add a follow-up…'
 })
@@ -314,7 +345,16 @@ watch(
   },
 )
 
+const drawIoAssistantProps = () => ({
+  nickname: 'Draw.IO',
+  roleTitle: activeModel.value?.name?.trim() || 'Assistant',
+  unbound: false as const,
+})
+
 const messageRoleProps = (msg: WorkshopMessage) => {
+  if (isDrawIoMode.value && (msg.roleId === 'manager' || (msg.roleId as string) === 'drawio')) {
+    return drawIoAssistantProps()
+  }
   if (msg.roleId === 'user') {
     return {
       avatarUrl: profileAvatarUrl.value || undefined,
@@ -358,6 +398,9 @@ const messageRoleProps = (msg: WorkshopMessage) => {
 }
 
 const roleProps = (roleId: WorkshopRoleId, speakerUserId?: string | null) => {
+  if (isDrawIoMode.value && (roleId === 'manager' || (roleId as string) === 'drawio')) {
+    return drawIoAssistantProps()
+  }
   if (roleId === 'user') {
     return {
       avatarUrl: profileAvatarUrl.value || undefined,
@@ -409,6 +452,7 @@ const syncWorkshopSession = async () => {
   if (!session || session.id !== id) return
   active.value = session
   activePersisted = true
+  await syncDiagramFromSession()
   await scrollBottom()
 }
 
@@ -663,6 +707,7 @@ const selectSession = async (id: string) => {
   active.value = session
   activePersisted = !!session
   if (session) emitWorkshopActive(session.id)
+  await syncDiagramFromSession()
   await scrollBottom(true)
 }
 
@@ -678,6 +723,7 @@ const openForAgentChat = async (agentChatId: string) => {
     activePersisted = true
     modelId.value = session.modelId || modelId.value
     emitWorkshopActive(id)
+    await syncDiagramFromSession()
     await scrollBottom(true)
     return
   }
@@ -697,6 +743,7 @@ const openForAgentChat = async (agentChatId: string) => {
   answerInput.value = ''
   attachedFiles.value = []
   emitWorkshopActive(id)
+  await syncDiagramFromSession()
 }
 
 const newSession = () => {
@@ -775,10 +822,31 @@ onMounted(async () => {
       void syncWorkshopSession()
     }
   })
+  offDrawIo = window.axecoder.onDrawIoDiagramUpdated((p) => {
+    if (!active.value || p.workshopId !== active.value.id) return
+    diagramXml.value = p.xml
+    active.value = { ...active.value, diagramXml: p.xml }
+  })
 })
+
+watch(
+  () => props.orchestrationChatMode,
+  (mode) => {
+    if (mode === 'draw-io') void syncDiagramFromSession()
+    else diagramXml.value = ''
+  },
+)
+
+watch(
+  () => active.value?.id,
+  () => {
+    void syncDiagramFromSession()
+  },
+)
 
 onUnmounted(() => {
   offProgress?.()
+  offDrawIo?.()
   unbindWorkshopAgentProgress()
 })
 
@@ -814,13 +882,25 @@ defineExpose({
 </script>
 
 <template>
-  <div class="workshop-chat-section">
-    <WorkshopSopProgress v-if="showSopProgress && active" :phase="active.sopPhase" />
+  <div class="workshop-chat-section" :class="{ 'workshop-chat-section--draw-io': isDrawIoMode }">
+    <WorkshopSopProgress
+      v-if="showSopProgress && active"
+      :phase="active.sopPhase"
+      :task-index="active.sopTaskIndex"
+      :task-total="active.sopTaskTotal"
+    />
     <div v-if="!hasProject" class="workshop-empty">Open a project first</div>
-    <div v-else ref="listEl" class="message-list" @scroll="onScrollContainer">
+    <div v-else class="workshop-body" :class="{ 'workshop-body--draw-io': isDrawIoMode }">
+    <div ref="listEl" class="message-list" @scroll="onScrollContainer">
       <div v-if="showEmptyHint" class="workshop-empty-hint">
-        <p class="workshop-empty-title">Multi-Agent 协作</p>
-        <p class="workshop-empty-desc">在下方描述任务，Tech Lead 会协调各角色 Agent 协作完成。</p>
+        <p class="workshop-empty-title">{{ isDrawIoMode ? 'Draw.IO' : 'Multi-Agent 协作' }}</p>
+        <p class="workshop-empty-desc">
+          {{
+            isDrawIoMode
+              ? '在下方描述要画的图（流程图、架构图等），AI 会在右侧画布生成。'
+              : '在下方描述任务，Tech Lead 会协调各角色 Agent 协作完成。'
+          }}
+        </p>
         <p v-if="showAgentHistoryHint" class="workshop-empty-note">
           此标签下曾有普通 Agent 对话；Multi-Agent 使用独立线程，不会显示那些记录。切换到
           <strong>@ Agent</strong>
@@ -858,6 +938,10 @@ defineExpose({
         thinking
         v-bind="roleProps(thinkingRole, thinkingSpeakerUserId)"
       />
+    </div>
+    <div v-if="isDrawIoMode" class="draw-io-panel">
+      <DrawIoEmbed :key="activeId" :xml="diagramXml" @export-xml="onDiagramExport" />
+    </div>
     </div>
     <div v-if="hasProject && !embeddedInAgentChat" class="composer">
       <template v-if="pendingQuestion">
@@ -933,6 +1017,31 @@ defineExpose({
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+.workshop-chat-section--draw-io {
+  min-height: 0;
+}
+.workshop-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.workshop-body--draw-io {
+  flex-direction: row;
+}
+.workshop-body--draw-io .message-list {
+  flex: 0 0 42%;
+  max-width: 480px;
+  border-right: 1px solid var(--wc-border);
+}
+.draw-io-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  background: var(--wc-bg);
 }
 .message-list {
   flex: 1;

@@ -35,6 +35,9 @@ import { executeCodeGraphAgentTool, isCodeGraphAgentTool } from './agent-codegra
 import { forgetMemory, saveMemory } from './agent-memory'
 import { applySwitchModeToSession } from './chat-mode'
 import { emitAgentProgress } from './agent-progress-emit'
+import { getDrawIoWorkshopSession } from '../draw-io/draw-io-session-cache'
+import { setWorkshopDiagramXml, getWorkshopDiagramXml } from '../draw-io/draw-io-store'
+import { applyDrawIoSearchReplaceEdits } from '../draw-io/draw-io-xml'
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
@@ -500,6 +503,52 @@ export const executeExtendedAgentTool = async (
     const res = await forgetMemory(ctx.projectRoot, str(args.name))
     if (!res.ok) return immediate(name, 'Forget', `Error: ${res.error}`, false)
     return immediate(name, 'Forget', `Deleted memory "${res.name}".`, true)
+  }
+
+  if (name === 'DisplayDiagram') {
+    const wid = ctx.drawIoWorkshopId
+    if (!wid) return immediate(name, 'DisplayDiagram', 'Error: no Draw.IO workshop session', false)
+    const ws = getDrawIoWorkshopSession(wid)
+    if (!ws) return immediate(name, 'DisplayDiagram', 'Error: workshop session not found', false)
+    const xml = str(args.xml).trim()
+    if (!xml) return immediate(name, 'DisplayDiagram', 'Error: xml is required', false)
+    setWorkshopDiagramXml(ws, xml)
+    return immediate(name, 'DisplayDiagram', 'Diagram displayed in the editor.', true)
+  }
+
+  if (name === 'GetDiagram') {
+    const wid = ctx.drawIoWorkshopId
+    if (!wid) return immediate(name, 'GetDiagram', 'Error: no Draw.IO workshop session', false)
+    const ws = getDrawIoWorkshopSession(wid)
+    if (!ws) return immediate(name, 'GetDiagram', 'Error: workshop session not found', false)
+    const xml = getWorkshopDiagramXml(ws)
+    return immediate(name, 'GetDiagram', xml, true)
+  }
+
+  if (name === 'EditDiagram') {
+    const wid = ctx.drawIoWorkshopId
+    if (!wid) return immediate(name, 'EditDiagram', 'Error: no Draw.IO workshop session', false)
+    const ws = getDrawIoWorkshopSession(wid)
+    if (!ws) return immediate(name, 'EditDiagram', 'Error: workshop session not found', false)
+    const raw = args.edits
+    const edits = Array.isArray(raw)
+      ? raw
+          .map((e) =>
+            e && typeof e === 'object'
+              ? { search: str((e as { search?: unknown }).search), replace: str((e as { replace?: unknown }).replace) }
+              : null,
+          )
+          .filter((e): e is { search: string; replace: string } => !!e && !!e.search)
+      : []
+    if (!edits.length) return immediate(name, 'EditDiagram', 'Error: edits array required', false)
+    const current = getWorkshopDiagramXml(ws)
+    const { xml, errors } = applyDrawIoSearchReplaceEdits(current, edits)
+    if (errors.length && xml === current) {
+      return immediate(name, 'EditDiagram', `Error: ${errors.join('; ')}`, false)
+    }
+    setWorkshopDiagramXml(ws, xml)
+    const note = errors.length ? ` (warnings: ${errors.join('; ')})` : ''
+    return immediate(name, 'EditDiagram', `Diagram updated.${note}`, true)
   }
 
   return immediate(name, String(name), `Error: unhandled extended tool ${name}`, false)

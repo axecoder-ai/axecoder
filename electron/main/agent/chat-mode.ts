@@ -7,13 +7,12 @@ import { normalizeAutoPlan } from './agent-auto-plan'
 export type ChatModeId =
   | 'agent'
   | 'auto-plan'
-  | 'reflection'
-  | 'rppit'
   | 'plan'
   | 'planning'
   | 'planning-only'
   | 'multi-agent'
   | 'software-company'
+  | 'draw-io'
 
 export const DEFAULT_CHAT_MODE: ChatModeId = 'agent'
 
@@ -22,17 +21,18 @@ const DISABLED = new Set<ChatModeId>(['planning-only'])
 const VALID = new Set<string>([
   'agent',
   'auto-plan',
-  'reflection',
-  'rppit',
   'plan',
   'planning',
   'planning-only',
   'multi-agent',
   'software-company',
+  'draw-io',
 ])
 
 export const normalizeChatMode = (v: unknown): ChatModeId => {
-  if (typeof v !== 'string' || !VALID.has(v)) return DEFAULT_CHAT_MODE
+  if (typeof v !== 'string') return DEFAULT_CHAT_MODE
+  if (v === 'reflection' || v === 'rppit') return DEFAULT_CHAT_MODE
+  if (!VALID.has(v)) return DEFAULT_CHAT_MODE
   const mode = v as ChatModeId
   if (mode === 'auto-plan') return 'agent'
   if (mode === 'planning') return 'plan'
@@ -56,12 +56,6 @@ export const chatModeSystemAddon = (mode: ChatModeId): string => {
   if (mode === 'agent' || mode === 'auto-plan') {
     return AGENT_MODE_ADDON
   }
-  if (mode === 'reflection') {
-    return '\n\n<chat-mode>Reflection: collaboration runs in the Workshop panel with Developer↔Reviewer reflection loops (1–3 rounds). Do not use Task/Agent tools here; user messages trigger the reflection orchestrator.</chat-mode>'
-  }
-  if (mode === 'rppit') {
-    return '\n\n<chat-mode>rppit: The latest user message embeds the full /rppit command playbook (same as running /rppit). Follow that workflow strictly step by step; use built-in workflow commands under resources/builtin-commands when substeps reference ~/.cursor/commands.</chat-mode>'
-  }
   if (mode === 'plan' || mode === 'planning') {
     return '\n\n<chat-mode>Plan: stay in plan mode until the user approves implementation. Explore read-only, then call CreatePlan with name, overview, and plan body (saves docs/plans/plan-*.md; user clicks Build to implement)—do not only paste plan markdown in chat.</chat-mode>'
   }
@@ -73,6 +67,9 @@ export const chatModeSystemAddon = (mode: ChatModeId): string => {
   }
   if (mode === 'software-company') {
     return '\n\n<chat-mode>Software Company: MetaGPT-style SOP pipeline (PRD → Design → Tasks → Code → QA) in the Workshop panel. One-line requirement starts the fixed assembly line. Do not use Task/Agent/Coordinator tools here.</chat-mode>'
+  }
+  if (mode === 'draw-io') {
+    return '\n\n<chat-mode>Draw.IO: AI diagram editing in the Workshop panel with an embedded draw.io canvas. Use DisplayDiagram, EditDiagram, and GetDiagram tools only. Do not use Task/Agent/Coordinator or file mutation tools here.</chat-mode>'
   }
   return ''
 }
@@ -98,7 +95,7 @@ const applyChatModeEffects = (session: StoredAgentSession, mode: ChatModeId) => 
   if (mode === 'plan' || mode === 'planning' || mode === 'planning-only') {
     session.planMode = true
     session.ctx.planMode = true
-  } else if (mode === 'agent' || mode === 'auto-plan' || mode === 'reflection') {
+  } else if (mode === 'agent' || mode === 'auto-plan') {
     session.planMode = false
     session.ctx.planMode = false
   }
@@ -106,8 +103,12 @@ const applyChatModeEffects = (session: StoredAgentSession, mode: ChatModeId) => 
     session.activeTools = filterToolsForSubagent(allTools, 'explore') as AgentToolDef[]
     return
   }
-  if (mode === 'multi-agent' || mode === 'software-company') {
+  if (mode === 'multi-agent' || mode === 'software-company' || mode === 'draw-io') {
     session.activeTools = getSessionActiveTools(allTools, session.revealedToolNames)
+    if (mode === 'draw-io') {
+      const allowed = new Set(['DisplayDiagram', 'EditDiagram', 'GetDiagram'])
+      session.activeTools = session.activeTools.filter((t) => allowed.has(t.name))
+    }
     return
   }
   session.activeTools = getSessionActiveTools(allTools, session.revealedToolNames)

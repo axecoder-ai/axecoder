@@ -150,8 +150,8 @@ const isWorkshopEmbeddedInAgentChat = computed(
   () =>
     activeTabKind.value === 'agent' &&
     (chatModeId.value === 'multi-agent' ||
-      chatModeId.value === 'reflection' ||
-      chatModeId.value === 'software-company'),
+      chatModeId.value === 'software-company' ||
+      chatModeId.value === 'draw-io'),
 )
 const showWorkshopPanel = computed(
   () => isWorkshopMode.value || isWorkshopEmbeddedInAgentChat.value,
@@ -294,8 +294,8 @@ const syncMultiAgentWorkshop = async () => {
 }
 
 const embeddedWorkshopTitlePlaceholder = () => {
-  if (chatModeId.value === 'reflection') return 'Reflection'
   if (chatModeId.value === 'software-company') return 'Software Co.'
+  if (chatModeId.value === 'draw-io') return 'Draw.IO'
   return 'Multi-Agent'
 }
 const AGENT_TITLE_PLACEHOLDERS = new Set([
@@ -303,10 +303,10 @@ const AGENT_TITLE_PLACEHOLDERS = new Set([
   'New chat',
   '新对话',
   'Multi-Agent',
-  'Reflection',
+  'Draw.IO',
 ])
 
-/** Multi-Agent / Reflection 对话在 Workshop 线程；侧栏/标签仍显示 Agent 会话，需把 Workshop 标题写回 */
+/** Multi-Agent 对话在 Workshop 线程；侧栏/标签仍显示 Agent 会话，需把 Workshop 标题写回 */
 const syncMultiAgentAgentSessionTitle = async () => {
   if (!isWorkshopEmbeddedInAgentChat.value || !hasProject.value || !activeSession.value || !activeId.value)
     return
@@ -450,8 +450,8 @@ const hasSessionMessagesForModeLock = computed(() => {
   if ((activeSession.value?.messages.length ?? 0) > 0) return true
   if (
     (chatModeId.value === 'multi-agent' ||
-      chatModeId.value === 'reflection' ||
-      chatModeId.value === 'software-company') &&
+      chatModeId.value === 'software-company' ||
+      chatModeId.value === 'draw-io') &&
     workshopMessageCount.value > 0
   )
     return true
@@ -462,7 +462,7 @@ const onChatModePick = (id: ChatModeId) => {
   if (!canPickChatMode(chatModeId.value, id, hasSessionMessagesForModeLock.value)) return
   chatModeId.value = id
   saveStoredChatMode(id)
-  if (id !== 'multi-agent' && id !== 'reflection' && id !== 'software-company') {
+  if (id !== 'multi-agent' && id !== 'software-company' && id !== 'draw-io') {
     lastMultiAgentSyncKey = ''
     return
   }
@@ -2218,8 +2218,8 @@ watch(
     void loadMentionUsers()
     if (
       (mode === 'multi-agent' ||
-        mode === 'reflection' ||
-        mode === 'software-company') &&
+        mode === 'software-company' ||
+        mode === 'draw-io') &&
       mode !== prev
     )
       void syncMultiAgentWorkshop()
@@ -2247,8 +2247,8 @@ onMounted(async () => {
   void loadWsMetas()
   if (
     chatModeId.value === 'multi-agent' ||
-    chatModeId.value === 'reflection' ||
-    chatModeId.value === 'software-company'
+    chatModeId.value === 'software-company' ||
+    chatModeId.value === 'draw-io'
   ) {
     await syncMultiAgentWorkshop()
     await loadMentionUsers()
@@ -2953,6 +2953,19 @@ defineExpose({
 
 .chat-pane.workshop-in-chat .chat-input-area {
   flex-shrink: 0;
+  min-height: 0;
+}
+
+.chat-pane.workshop-in-chat .chat-input-area:has(.ask-card) {
+  max-height: min(58vh, 560px);
+  overflow-y: auto;
+}
+
+.workshop-clarify-hint:has(.ask-card) {
+  padding: 0;
+  border: none;
+  background: transparent;
+  margin-bottom: 8px;
 }
 
 .chat-pane.chat-empty .empty-hint {

@@ -5,8 +5,8 @@ describe('canPickChatMode', () => {
   it('allows any switch when session has no messages', () => {
     expect(canPickChatMode('agent', 'multi-agent', false)).toBe(true)
     expect(canPickChatMode('multi-agent', 'agent', false)).toBe(true)
-    expect(canPickChatMode('agent', 'reflection', false)).toBe(true)
-    expect(canPickChatMode('reflection', 'multi-agent', false)).toBe(true)
+    expect(canPickChatMode('agent', 'software-company', false)).toBe(true)
+    expect(canPickChatMode('software-company', 'multi-agent', false)).toBe(true)
   })
 
   it('blocks leaving multi-agent when session has messages', () => {
@@ -16,33 +16,35 @@ describe('canPickChatMode', () => {
 
   it('blocks entering multi-agent when session has messages', () => {
     expect(canPickChatMode('agent', 'multi-agent', true)).toBe(false)
-    expect(canPickChatMode('rppit', 'multi-agent', true)).toBe(false)
+    expect(canPickChatMode('plan', 'multi-agent', true)).toBe(false)
   })
 
-  it('blocks reflection and multi-agent cross-switch when session has messages', () => {
-    expect(canPickChatMode('reflection', 'multi-agent', true)).toBe(false)
-    expect(canPickChatMode('multi-agent', 'reflection', true)).toBe(false)
+  it('blocks multi-agent and software-company cross-switch when session has messages', () => {
+    expect(canPickChatMode('multi-agent', 'software-company', true)).toBe(false)
+    expect(canPickChatMode('software-company', 'multi-agent', true)).toBe(false)
   })
 
-  it('blocks entering reflection when session has messages', () => {
-    expect(canPickChatMode('agent', 'reflection', true)).toBe(false)
+  it('blocks entering software-company when session has messages', () => {
+    expect(canPickChatMode('agent', 'software-company', true)).toBe(false)
   })
 
   it('allows switching between non-embedded modes with messages', () => {
     expect(canPickChatMode('agent', 'plan', true)).toBe(true)
-    expect(canPickChatMode('plan', 'rppit', true)).toBe(true)
+    expect(canPickChatMode('plan', 'agent', true)).toBe(true)
   })
 
-  it('allows leaving reflection to agent when session has messages', () => {
-    expect(canPickChatMode('reflection', 'agent', true)).toBe(true)
+  it('allows leaving software-company to agent when session has messages', () => {
+    expect(canPickChatMode('software-company', 'agent', true)).toBe(true)
   })
 
   it('blocks disabled chat modes', () => {
     expect(canPickChatMode('agent', 'planning-only', false)).toBe(false)
   })
 
-  it('allows re-selecting current mode', () => {
-    expect(canPickChatMode('multi-agent', 'multi-agent', true)).toBe(true)
-    expect(canPickChatMode('reflection', 'reflection', true)).toBe(true)
+  it('blocks draw-io cross-switch when session has messages', () => {
+    expect(canPickChatMode('draw-io', 'multi-agent', true)).toBe(false)
+    expect(canPickChatMode('multi-agent', 'draw-io', true)).toBe(false)
+    expect(canPickChatMode('agent', 'draw-io', true)).toBe(false)
+    expect(canPickChatMode('draw-io', 'agent', true)).toBe(true)
   })
 })

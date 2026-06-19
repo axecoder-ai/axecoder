@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { AGENT_TOOLS } from '../../../electron/main/agent/agent-tool-defs'
 import {
   normalizeAgentToolCall,
+  normalizeToolArguments,
   resolveAgentToolName,
 } from '../../../electron/main/agent/agent-tool-aliases'
 import { parseAskUserQuestions } from '../../../electron/main/agent/tool-executor'
@@ -20,6 +21,21 @@ describe('AskUserQuestion tool', () => {
         arguments: { questions: [] },
       }).name,
     ).toBe('AskUserQuestion')
+  })
+
+  it('unwrap raw_arguments JSON string', () => {
+    expect(
+      normalizeToolArguments({
+        raw_arguments: JSON.stringify({ command: 'ls', description: 'list' }),
+      }),
+    ).toEqual({ command: 'ls', description: 'list' })
+    expect(
+      normalizeAgentToolCall({
+        id: 'tc-2',
+        name: 'Bash',
+        arguments: { raw_arguments: '{"pattern":"**/*.go"}' },
+      }).arguments,
+    ).toEqual({ pattern: '**/*.go' })
   })
 })
 

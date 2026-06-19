@@ -57,6 +57,13 @@ export type WorkshopSession = WorkshopSessionMeta & {
   sopSlug?: string
   /** 序列化的 Message Pool */
   sopPoolMessages?: import('../sop/sop-types').SopPoolMessage[]
+  /** 绿场 vs 增量（跳过 PRD/Design） */
+  sopIntent?: import('../sop/sop-intent').SopIntent
+  /** implement 逐 task 进度 */
+  sopTaskIndex?: number
+  sopTaskTotal?: number
+  /** Draw.IO 模式：当前图表 XML */
+  diagramXml?: string
   /** AskUserQuestion 结构化选项（优先于 pendingQuestion 纯文本） */
   pendingAsks?: import('../agent/agent-types').PendingAskUserPublic[]
 }
@@ -95,6 +102,11 @@ export type RoleSpeakInput = {
   sopAction?: import('../sop/sop-types').SopActionType
   /** Message Pool 订阅上下文 */
   poolContext?: string
+  /** 当前 implement 子任务 */
+  sopTaskId?: string
+  sopTaskTitle?: string
+  /** MetaGPT：implement 阶段复用 agent session 保留调试上下文 */
+  reuseImplementSession?: boolean
 }
 
 export type RoleSpeakOutput = {

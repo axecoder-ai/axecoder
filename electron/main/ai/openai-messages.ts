@@ -45,8 +45,17 @@ export const aiChatToOpenAiWire = (messages: AiChatMessage[]): Record<string, un
   })
 
 export const agentLoopToOpenAiWire = (messages: AgentLoopMessage[]): Record<string, unknown>[] => {
+  let lastReasoningIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role === 'assistant' && m.reasoningContent?.trim()) {
+      lastReasoningIdx = i
+      break
+    }
+  }
   const out: Record<string, unknown>[] = []
-  for (const m of messages) {
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
     if (m.role === 'system') {
       out.push({ role: m.role, content: m.content })
     } else if (m.role === 'user') {
@@ -55,7 +64,7 @@ export const agentLoopToOpenAiWire = (messages: AgentLoopMessage[]): Record<stri
       out.push({ role: 'user', content })
     } else if (m.role === 'assistant') {
       const row: Record<string, unknown> = { role: 'assistant', content: m.content ?? '' }
-      if (m.reasoningContent) row.reasoning_content = m.reasoningContent
+      if (lastReasoningIdx === i && m.reasoningContent) row.reasoning_content = m.reasoningContent
       if (m.toolCalls?.length) {
         row.tool_calls = m.toolCalls.map((tc) => ({
           id: tc.id,

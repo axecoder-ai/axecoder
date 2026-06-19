@@ -1,11 +1,10 @@
 export type ChatModeId =
   | 'agent'
   | 'auto-plan'
-  | 'reflection'
-  | 'rppit'
   | 'plan'
   | 'planning'
   | 'planning-only'
+  | 'draw-io'
   | 'multi-agent'
   | 'software-company'
 
@@ -23,20 +22,14 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
       'Read/write code and use tools; complex tasks auto-enter read-only plan mode first (heuristic + cheap model; /auto-plan off to disable)',
   },
   {
-    id: 'reflection',
-    label: 'Reflection',
-    description:
-      'Developer↔Reviewer reflection loop with Tech Lead guidance (1–3 rounds) in Workshop panel',
-  },
-  {
-    id: 'rppit',
-    label: 'rppit',
-    description: 'Each message runs the /rppit playbook (proposals → plan → implement → review)',
-  },
-  {
     id: 'plan',
     label: 'Plan',
     description: 'Plan first; file writes and shell need exiting plan mode',
+  },
+  {
+    id: 'draw-io',
+    label: 'Draw.IO',
+    description: 'AI-assisted draw.io diagrams in Workshop with embedded canvas',
   },
   {
     id: 'multi-agent',
@@ -60,7 +53,7 @@ export const agentAutoPlanSetting = (on: boolean): 'off' | 'on' => (on ? 'on' : 
 export const DISABLED_CHAT_MODES = new Set<ChatModeId>(['planning-only'])
 
 export const isWorkshopEmbeddedChatMode = (id: ChatModeId) =>
-  id === 'multi-agent' || id === 'reflection' || id === 'software-company'
+  id === 'draw-io' || id === 'multi-agent' || id === 'software-company'
 
 export const isChatModeEnabled = (id: ChatModeId) => !DISABLED_CHAT_MODES.has(id)
 
@@ -72,21 +65,21 @@ export const chatModeLabel = (id: ChatModeId) => {
   return CHAT_MODE_OPTIONS.find((m) => m.id === id)?.label ?? 'Agent'
 }
 
-/** 旧版 localStorage / 会话里可能仍存 auto-plan */
-const LEGACY_CHAT_MODE_IDS = new Set<ChatModeId>(['auto-plan', 'planning'])
+/** 旧版 localStorage / 会话里可能仍存 auto-plan、已下线的 reflection / rppit */
+const LEGACY_CHAT_MODE_IDS = new Set<string>(['auto-plan', 'planning', 'reflection', 'rppit'])
 
 export const isChatModeId = (v: unknown): v is ChatModeId =>
   typeof v === 'string' &&
   (CHAT_MODE_OPTIONS.some((m) => m.id === v) ||
     DISABLED_CHAT_MODES.has(v as ChatModeId) ||
-    LEGACY_CHAT_MODE_IDS.has(v as ChatModeId))
+    LEGACY_CHAT_MODE_IDS.has(v))
 
 export const loadStoredChatMode = (): ChatModeId => {
   try {
     const raw = localStorage.getItem(CHAT_MODE_STORAGE_KEY)
     if (!isChatModeId(raw)) return DEFAULT_CHAT_MODE
     let mode: ChatModeId = raw
-    if (raw === 'auto-plan') mode = 'agent'
+    if (raw === 'auto-plan' || raw === 'reflection' || raw === 'rppit') mode = 'agent'
     else if (raw === 'planning') mode = 'plan'
     if (!isChatModeEnabled(mode)) return DEFAULT_CHAT_MODE
     if (mode !== raw) saveStoredChatMode(mode)
@@ -104,7 +97,7 @@ export const saveStoredChatMode = (id: ChatModeId) => {
   }
 }
 
-/** 会话已有消息后：multi-agent / reflection 互斥；不可切入嵌入 Workshop 的模式 */
+/** 会话已有消息后：不可切入嵌入 Workshop 的模式 */
 export const canPickChatMode = (
   current: ChatModeId,
   next: ChatModeId,

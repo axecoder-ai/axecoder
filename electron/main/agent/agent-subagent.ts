@@ -33,6 +33,7 @@ import {
 } from './agent-subagent-store'
 import { buildReviewSubagentUserContent, isReviewSubagentType } from './agent-review-diff'
 import type { AiChatImagePart } from '../models-types'
+import { capToolMessageContent } from './agent-frc'
 
 const DEFAULT_MAX_SUB_TURNS = 6
 const MAX_SUB_TURNS_CAP = 24
@@ -302,7 +303,7 @@ export const runSubAgentTask = async (
             role: 'tool',
             toolCallId: tc.id,
             name: tc.name,
-            content: guardedContent ?? run.content,
+            content: capToolMessageContent(guardedContent ?? run.content),
           })
         }
       }

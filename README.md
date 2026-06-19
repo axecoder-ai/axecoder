@@ -2,11 +2,11 @@
 
 > Desktop IDE for coding — Electron + Vue 3 + Monaco, with a built-in AI Agent coding assistant
 
-AxeCoder is a cross-platform desktop code editor built around a **Claude Code–style AI Agent**. Open a project, chat with the model, and let the Agent read/write files, run commands, search the codebase, and coordinate sub-agents — all from a VS Code–like workbench. Built-in **AI Performance** and **AI Request Trace** panels give you real-time visibility into latency, token usage, and every model/tool call.
+AxeCoder is a cross-platform desktop code editor built around a **Claude Code–style AI Agent**. Open a project, chat with the model, and let the Agent read/write files, run commands, search the codebase, and coordinate sub-agents — all from a VS Code–like workbench. Beyond single-agent coding, it ships **Draw.IO** (AI diagrams via next-ai-draw-io) and **Software Co.** (MetaGPT-style multi-role SOP for PRD → code → QA). Built-in **AI Performance** and **AI Request Trace** panels give you real-time visibility into latency, token usage, and every model/tool call.
 
 ## 📸 Screenshots
 
-**Workbench & Agent session** — editor, file tree, unified session list, streaming tool cards, and bottom Trace tab in one layout. Supports Agent and Workshop (multi-role) sessions side by side.
+**Workbench & Agent session** — editor, file tree, unified session list, streaming tool cards, and bottom Trace tab in one layout. Supports Agent, Draw.IO, Multi-Agent, and Software Co. sessions side by side.
 
 ![AxeCoder workbench with AI Agent session](./docs/assets/workbench-agent-session.png)
 
@@ -25,7 +25,10 @@ AxeCoder is a cross-platform desktop code editor built around a **Claude Code–
 - **42 built-in tools** — Claude Code–aligned core set (Read / Edit / Write / Bash / Grep / Glob / Agent / Task …) plus extensions: WebSearch, WebFetch, LSP, MCP, Skills, Plan Mode, worktree helpers, and more
 - **Multi-turn agent loop** — automatic tool use with permission prompts, checkpoints/rollback, context compaction, and loop-guard against runaway calls
 - **Parallel sub-agents** — spawn `generalPurpose` / `explore` / `plan` sub-agents to research or execute in parallel
-- **Workshop (multi-agent)** — role-based collaborative sessions with step progress and streaming output inside the chat panel
+- **Workshop (embedded modes)** — three chat modes share a split-pane layout (chat + workspace):
+  - **Draw.IO** — AI-assisted diagrams (ported from [next-ai-draw-io](https://github.com/DayuanJiang/next-ai-draw-io)); embedded draw.io canvas with `DisplayDiagram` / `EditDiagram` / `GetDiagram` tools
+  - **Multi-Agent** — role-based turn-taking collaboration with step progress and streaming output
+  - **Software Co.** — MetaGPT-style SOP pipeline: one-line requirement → PRD → design → tasks → implement → QA → delivery; structured artifacts, Message Pool, per-role tool profiles, and automatic test feedback loops
 - **Plan Mode** — read-only analysis first, then implement after you approve the plan
 - **Output styles** — Default, Explanatory, or Learning reply modes
 
@@ -83,7 +86,9 @@ AxeCoder/
 │   ├── components/workbench/
 │   │   ├── ChatPane.vue              # Agent / Workshop chat
 │   │   ├── AgentsPanel.vue           # Unified session sidebar
-│   │   ├── WorkshopChatSection.vue   # Multi-agent workshop UI
+│   │   ├── WorkshopChatSection.vue   # Workshop UI (Multi-Agent / Draw.IO / Software Co.)
+│   │   ├── DrawIoEmbed.vue           # Embedded draw.io canvas
+│   │   ├── WorkshopSopProgress.vue   # SOP phase & task progress bar
 │   │   ├── EditorPane.vue            # Monaco editor area
 │   │   ├── AiMetricsPanel.vue        # AI Performance dashboard
 │   │   ├── AiTracePanel.vue          # AI Request Trace recorder
@@ -95,6 +100,8 @@ AxeCoder/
 │   └── i18n/                         # Localization
 ├── electron/main/
 │   ├── agent/                        # Agent loop, tools, MCP, skills, hooks
+│   ├── draw-io/                      # Draw.IO diagram engine (next-ai-draw-io port)
+│   ├── sop/                          # Software Co. SOP pipeline, Message Pool, QA loop
 │   ├── codegraph/                    # Vendored CodeGraph engine
 │   ├── ai/                           # Providers & chat-with-tools
 │   ├── ai-metrics-store.ts           # Performance metrics ring buffer
@@ -146,11 +153,31 @@ Build output goes to `release/`.
 3. Approve file writes and shell commands (or enable **auto-apply** in Settings → General)
 4. Use `/` for slash commands; `@` to reference files; spawn sub-agents for parallel work
 
-### Workshop (Multi-Agent)
+### Workshop Modes
 
-1. Create a **Workshop** session from the session list
-2. Assign roles and run collaborative multi-step tasks with visible step progress
-3. Workshop runs share the same chat column; switch between Agent and Workshop sessions anytime
+Workshop sessions use a **split layout**: chat on the left, mode-specific workspace on the right. Pick a mode from the chat composer before the first message (Agent / Plan / Draw.IO / Multi-Agent / Software Co.).
+
+#### Draw.IO (AI Diagrams)
+
+1. Select **Draw.IO** mode in the chat composer
+2. Describe the diagram in natural language — e.g. "draw a microservices architecture with API gateway"
+3. The Agent uses built-in diagram tools to update the canvas in real time; `diagramXml` is persisted in the session
+4. Requires network access to `embed.diagrams.net` (same as upstream next-ai-draw-io)
+
+#### Multi-Agent
+
+1. Select **Multi-Agent** mode
+2. Built-in roles (Manager, Researcher, Developer, etc.) discuss and execute in turn with visible step progress
+3. Coordinator routes tasks dynamically across roles
+
+#### Software Co. (MetaGPT-style)
+
+1. Select **Software Co.** mode and describe a software requirement in one line
+2. The SOP pipeline runs automatically through phases: **requirement → PRD → design → tasks → implement → QA → done**
+3. Each phase is handled by a dedicated role (Product Analyst, Architect, Project Manager, Developer, QA Engineer, …) with role-specific tool profiles
+4. Structured deliverables land under `docs/deliverables/{slug}/_artifacts/`; a **Message Pool** passes artifacts between roles with `causeBy` metadata
+5. Implementation runs **task-by-task** with shell-based test feedback; QA failures loop back to Developer (up to 3 rounds)
+6. Watch the **SOP progress bar** for phase and per-task status in the chat panel
 
 ### Monitor AI Calls
 
@@ -186,6 +213,7 @@ Build output goes to `release/`.
 | Agents | `Agent`, `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode` |
 | Web | `WebSearch`, `WebFetch` |
 | Code intelligence | `LSP`, `CodeGraphExplore`, `CodeGraphSearch`, `CodeGraphNode` |
+| Diagrams (Draw.IO) | `DisplayDiagram`, `EditDiagram`, `GetDiagram` |
 | Extensions | `Skill`, `DiscoverSkills`, `CallMcpTool`, `McpAuth`, `ListMcpResources`, `ReadMcpResource`, `NotebookEdit`, `EnterWorktree`, `ExitWorktree`, … |
 
 \*42 tools total — see `electron/main/agent/agent-types.ts` for the full list.

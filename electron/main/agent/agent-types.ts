@@ -51,6 +51,9 @@ export type AgentToolName =
   | 'Workflow'
   | 'Remember'
   | 'Forget'
+  | 'DisplayDiagram'
+  | 'EditDiagram'
+  | 'GetDiagram'
 
 export type SubagentType =
   | 'generalPurpose'
@@ -235,6 +238,9 @@ export const EXTENDED_AGENT_TOOL_NAMES: AgentToolName[] = [
   'Workflow',
   'Remember',
   'Forget',
+  'DisplayDiagram',
+  'EditDiagram',
+  'GetDiagram',
 ]
 
 export const ALL_AGENT_TOOL_NAMES: AgentToolName[] = [

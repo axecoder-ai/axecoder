@@ -19,6 +19,11 @@ describe('chat-mode merge: auto-plan into agent', () => {
     expect(normalizeChatMode('plan')).toBe('plan')
   })
 
+  it('normalizeChatMode 将已下线的 reflection / rppit 映射为 agent', () => {
+    expect(normalizeChatMode('reflection')).toBe('agent')
+    expect(normalizeChatMode('rppit')).toBe('agent')
+  })
+
   it('agent system addon 说明复杂任务可自动进规划', () => {
     const addon = chatModeSystemAddon('agent')
     expect(addon).toContain('auto-enter read-only plan mode')

@@ -8,10 +8,6 @@ import {
   saveWorkshopSession,
 } from './workshop/workshop-store'
 import { sendWorkshopMessage } from './workshop/workshop-turn-orchestrator'
-import {
-  buildReflectionJudgeLlm,
-  sendReflectionMessage,
-} from './workshop/reflection-turn-orchestrator'
 import { buildWorkshopRouterLlm } from './workshop/workshop-router-llm'
 import { buildAgentRoleSpeaker } from './workshop/workshop-agent-speaker'
 import { emitWorkshopProgress } from './workshop/workshop-progress-emit'
@@ -23,6 +19,7 @@ import {
   scriptedMemberSpeaker,
   scriptedRouterLlm,
 } from './workshop/workshop-turn-orchestrator'
+import { sendDrawIoWorkshopMessage } from './draw-io/draw-io-turn'
 import { sendSopPipelineMessage } from './sop/sop-pipeline-engine'
 import { modelSupportsVision } from '../../shared/ai/vision'
 import { visionUnsupportedError } from './ai/ai-vision-guard'
@@ -141,21 +138,17 @@ export const registerWorkshopIpc = (_getMainWindow: () => BrowserWindow | null) 
       }
     }
     const res =
-      orchestrationChatMode === 'reflection'
-        ? await sendReflectionMessage(
-            session,
-            text,
-            speaker,
-            buildReflectionJudgeLlm(session.modelId, root),
-            onProgress,
-            sendOptions,
-          )
-        : orchestrationChatMode === 'software-company'
-          ? await sendSopPipelineMessage(session, text, speaker, onProgress, {
+      orchestrationChatMode === 'software-company'
+        ? await sendSopPipelineMessage(session, text, speaker, onProgress, {
+            ...sendOptions,
+            projectRoot: root,
+          })
+        : orchestrationChatMode === 'draw-io'
+          ? await sendDrawIoWorkshopMessage(session, text, modelId, onProgress, {
               ...sendOptions,
               projectRoot: root,
             })
-          : await sendWorkshopMessage(session, text, speaker, routerLlm, onProgress, sendOptions)
+        : await sendWorkshopMessage(session, text, speaker, routerLlm, onProgress, sendOptions)
     if (!res.ok) return res
     res.session.pendingUserImages = undefined
     const saved = await saveWorkshopSession(root, res.session)

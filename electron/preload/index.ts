@@ -802,6 +802,19 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.on('workshop:progress', listener)
     return () => ipcRenderer.off('workshop:progress', listener)
   },
+  drawIoGetDiagram: (projectRoot: string, workshopId: string) =>
+    ipcRenderer.invoke(
+      'drawIo:getDiagram',
+      cloneForIpc(projectRoot),
+      cloneForIpc(workshopId),
+    ) as Promise<{ ok: true; xml: string } | { ok: false; error: string }>,
+  onDrawIoDiagramUpdated: (
+    callback: (payload: { workshopId: string; xml: string }) => void,
+  ) => {
+    const listener = (_: unknown, payload: { workshopId: string; xml: string }) => callback(payload)
+    ipcRenderer.on('drawIo:diagramUpdated', listener)
+    return () => ipcRenderer.off('drawIo:diagramUpdated', listener)
+  },
 })
 
 contextBridge.exposeInMainWorld('ipcRenderer', {

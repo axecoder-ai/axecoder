@@ -7,6 +7,7 @@ import { registerTerminalIpc, killTerminalPty } from './terminal-ipc'
 import { registerChatIpc } from './chat-store'
 import { registerSessionIpc } from './session/session-ipc'
 import { registerWorkshopIpc } from './workshop-ipc'
+import { registerDrawIoIpc } from './draw-io-ipc'
 import { registerAiIpc } from './ai-ipc'
 import { registerAgentIpc } from './agent-ipc'
 import { registerModelsIpc } from './models-ipc'
@@ -499,6 +500,7 @@ app.whenReady().then(async () => {
   registerAiIpc()
   registerAgentIpc(() => win)
   registerWorkshopIpc(() => win)
+  registerDrawIoIpc(() => win)
   registerAiMetricsIpc()
   registerAiTraceIpc()
   ipcMain.handle('app:getStartupProjectPath', () => startupProjectPath ?? null)

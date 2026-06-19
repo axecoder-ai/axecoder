@@ -177,24 +177,6 @@ onUnmounted(() => {
                     d="M2.5 4.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75zm0 3.5a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75zm0 3.5a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75z"
                   />
                 </svg>
-                <!-- Reflection -->
-                <svg v-else-if="m.id === 'reflection'" viewBox="0 0 16 16" width="14" height="14">
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    d="M4 10.5 8 5.5l4 5M4 12h8"
-                  />
-                </svg>
-                <!-- rppit -->
-                <svg v-else-if="m.id === 'rppit'" viewBox="0 0 16 16" width="14" height="14">
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    d="M5 3.5h6v9H5zm0 2.5h6M7 8.5h4"
-                  />
-                </svg>
                 <!-- Multi-Agent -->
                 <svg v-else-if="m.id === 'multi-agent'" viewBox="0 0 16 16" width="14" height="14">
                   <circle cx="5.5" cy="6" r="2.25" fill="none" stroke="currentColor" stroke-width="1.2" />
@@ -258,12 +240,6 @@ onUnmounted(() => {
             fill="currentColor"
             d="M2.5 4.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75zm0 3.5a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75zm0 3.5a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75z"
           />
-        </svg>
-        <svg v-else-if="activeModeId === 'reflection'" viewBox="0 0 16 16" width="14" height="14">
-          <path fill="none" stroke="currentColor" stroke-width="1.2" d="M4 10.5 8 5.5l4 5M4 12h8" />
-        </svg>
-        <svg v-else-if="activeModeId === 'rppit'" viewBox="0 0 16 16" width="14" height="14">
-          <path fill="none" stroke="currentColor" stroke-width="1.2" d="M5 3.5h6v9H5zm0 2.5h6M7 8.5h4" />
         </svg>
         <svg v-else-if="activeModeId === 'multi-agent'" viewBox="0 0 16 16" width="14" height="14">
           <circle cx="5.5" cy="6" r="2.25" fill="none" stroke="currentColor" stroke-width="1.2" />

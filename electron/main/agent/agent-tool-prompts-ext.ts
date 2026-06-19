@@ -284,4 +284,29 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
   obj('Forget', 'Delete a saved auto-memory entry by name.', {
     name: { type: 'string' },
   }, ['name']),
+  obj(
+    'DisplayDiagram',
+    'Display a new draw.io diagram or replace the entire diagram XML.',
+    { xml: { type: 'string', description: 'Full draw.io mxfile or mxGraphModel XML' } },
+    ['xml'],
+  ),
+  obj(
+    'EditDiagram',
+    'Apply search/replace edits to the current diagram XML.',
+    {
+      edits: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            search: { type: 'string' },
+            replace: { type: 'string' },
+          },
+          required: ['search', 'replace'],
+        },
+      },
+    },
+    ['edits'],
+  ),
+  obj('GetDiagram', 'Return the current diagram XML before making targeted edits.', {}, []),
 ]

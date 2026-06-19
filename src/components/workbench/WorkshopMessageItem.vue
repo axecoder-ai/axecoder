@@ -48,14 +48,16 @@ defineEmits<{
 }>()
 
 const displayNickname = computed(() => {
-  if (props.unbound) return 'Not configured'
   const n = props.nickname?.trim()
   if (n) return n
   if (props.roleId === 'system') return 'System'
-  return 'Not configured'
+  if (props.roleId === 'manager') return 'Tech Lead'
+  if (props.roleId === 'backend') return 'Backend'
+  if (props.roleId === 'frontend') return 'Frontend'
+  if (props.roleId === 'tester') return 'QA'
+  return 'Assistant'
 })
 const displayRoleTitle = computed(() => {
-  if (props.unbound) return 'Not configured in Users'
   const t = props.roleTitle?.trim()
   if (t) return t
   if (props.roleId === 'system') return 'Collaboration assistant'

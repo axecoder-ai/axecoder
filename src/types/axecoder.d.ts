@@ -114,11 +114,10 @@ export type PermissionsView = {
 export type ChatModeId =
   | 'agent'
   | 'auto-plan'
-  | 'reflection'
-  | 'rppit'
   | 'plan'
   | 'planning'
   | 'planning-only'
+  | 'draw-io'
   | 'multi-agent'
   | 'software-company'
 
@@ -537,6 +536,9 @@ export type WorkshopSession = WorkshopSessionMeta & {
   currentStepIndex?: number
   sopPhase?: SopPipelinePhase
   sopSlug?: string
+  sopIntent?: 'greenfield' | 'incremental'
+  sopTaskIndex?: number
+  sopTaskTotal?: number
   sopPoolMessages?: {
     id: string
     causeBy: SopActionType
@@ -547,6 +549,7 @@ export type WorkshopSession = WorkshopSessionMeta & {
     createdAt: number
   }[]
   pendingAsks?: AgentPendingAskUser[]
+  diagramXml?: string
 }
 
 export type WorkshopProgressPayload = {
@@ -1256,6 +1259,13 @@ export type AxeCoderFs = {
   ) => Promise<WorkshopRunResult>
   workshopStop: (workshopId: string) => Promise<{ ok: true; stopped: number } | { ok: false; error: string }>
   onWorkshopProgress: (callback: (payload: WorkshopProgressPayload) => void) => () => void
+  drawIoGetDiagram: (
+    projectRoot: string,
+    workshopId: string,
+  ) => Promise<{ ok: true; xml: string } | { ok: false; error: string }>
+  onDrawIoDiagramUpdated: (
+    callback: (payload: { workshopId: string; xml: string }) => void,
+  ) => () => void
 }
 
 declare global {

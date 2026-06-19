@@ -1,6 +1,6 @@
 import type { AgentLoopMessage, AgentToolCall, AgentToolDef } from '../../agent/agent-types'
 import type { AiTokenUsage, ModelEntry } from '../../models-types'
-import { resolveAgentToolName } from '../../agent/agent-tool-aliases'
+import { resolveAgentToolName, normalizeAgentToolCall } from '../../agent/agent-tool-aliases'
 import { AGENT_TOOLS } from '../../agent/agent-tool-defs'
 import { userMessageToAnthropicContent } from '../ai-message-images'
 import { fetchAiWithRetry, formatAiRequestFailedError } from '../ai-request-retry'
@@ -118,11 +118,13 @@ export const chatAnthropicWithTools = async (
     for (const b of blocks) {
       if (b.type === 'text' && b.text) text += b.text
       if (b.type === 'tool_use' && b.id && b.name) {
-        toolCalls.push({
-          id: b.id,
-          name: (resolveAgentToolName(b.name) ?? b.name) as AgentToolCall['name'],
-          arguments: b.input ?? {},
-        })
+        toolCalls.push(
+          normalizeAgentToolCall({
+            id: b.id,
+            name: (resolveAgentToolName(b.name) ?? b.name) as AgentToolCall['name'],
+            arguments: b.input ?? {},
+          }),
+        )
       }
     }
     const usage: AiTokenUsage | undefined =

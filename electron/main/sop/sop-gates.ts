@@ -58,7 +58,9 @@ const prdMarkdownOk = (body: string) =>
   ) && body.length >= 40
 
 const designMarkdownOk = (body: string) =>
-  /文件列表|File List|数据结构|Data Structure|API|接口|系统设计|架构/i.test(body) && body.length >= 40
+  (/文件列表|File List|数据结构|Data Structure|API|接口|系统设计|架构|Sequence|时序/i.test(body) &&
+    body.length >= 40) ||
+  (/sequenceDiagram|```mermaid/i.test(body) && body.length >= 30)
 
 const tasksMarkdownOk = (body: string) =>
   /## Tasks|任务列表|任务拆分|^- \[/im.test(body) || /"tasks"\s*:\s*\[/i.test(body)

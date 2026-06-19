@@ -23,6 +23,14 @@ describe('MessagePool', () => {
     expect(pool.summaryForWatch(['WritePRD'])).toContain('[WritePRD]')
   })
 
+  it('publish 与 summary 超长时截断', () => {
+    const pool = new MessagePool()
+    pool.publish({ causeBy: 'WriteCode', phase: 'implement', content: 'x'.repeat(20_000) })
+    const msg = pool.all()[0]!
+    expect(msg.content.length).toBeLessThan(24_000)
+    expect(pool.summaryForWatch(['WriteCode']).length).toBeLessThanOrEqual(96_000 + 64)
+  })
+
   it('toJSON 可 hydrate 恢复', () => {
     const pool = new MessagePool()
     pool.publish({ causeBy: 'UserRequirement', phase: 'requirement', content: 'x' })

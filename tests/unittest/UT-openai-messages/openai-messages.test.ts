@@ -66,4 +66,19 @@ describe('agentLoopToOpenAiWire', () => {
     expect(wire[1].tool_calls).toHaveLength(1)
     expect(wire[2]).toEqual({ role: 'tool', tool_call_id: 'c1', content: 'ok' })
   })
+
+  it('仅最近一条 assistant 回传 reasoning_content', () => {
+    const wire = agentLoopToOpenAiWire([
+      { role: 'user', content: 'q' },
+      { role: 'assistant', content: 'a1', reasoningContent: 'old think' },
+      { role: 'user', content: 'q2' },
+      { role: 'assistant', content: 'a2', reasoningContent: 'new think' },
+    ])
+    expect(wire[1]).toEqual({ role: 'assistant', content: 'a1' })
+    expect(wire[3]).toEqual({
+      role: 'assistant',
+      content: 'a2',
+      reasoning_content: 'new think',
+    })
+  })
 })

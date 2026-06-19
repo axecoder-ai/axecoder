@@ -119,7 +119,9 @@ const onSubmit = () => {
   border: 1px solid var(--wc-border);
   border-radius: 8px;
   background: var(--wc-chat-box-bg);
-  overflow: hidden;
+  max-height: min(50vh, 480px);
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .ask-head {

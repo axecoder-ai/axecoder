@@ -16,8 +16,52 @@ export const resolveAgentToolName = (raw: string): AgentToolName | undefined => 
   return undefined
 }
 
+/** 部分 OpenAI 兼容网关/模型会把参数包在 raw_arguments 或 parameters 里 */
+export const normalizeToolArguments = (args: Record<string, unknown>): Record<string, unknown> => {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return {}
+
+  const raw = args.raw_arguments ?? args.rawArguments
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return normalizeToolArguments(parsed as Record<string, unknown>)
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  if (typeof args.arguments === 'string' && args.arguments.trim()) {
+    const onlyArgsKey =
+      Object.keys(args).length === 1 ||
+      (Object.keys(args).length === 2 && typeof args.name === 'string')
+    if (onlyArgsKey) {
+      try {
+        const parsed = JSON.parse(args.arguments) as unknown
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return normalizeToolArguments(parsed as Record<string, unknown>)
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+  }
+
+  const params = args.parameters ?? args.input
+  if (params && typeof params === 'object' && !Array.isArray(params)) {
+    const keys = Object.keys(args)
+    if (keys.length === 1 || (keys.length === 2 && typeof args.name === 'string')) {
+      return normalizeToolArguments(params as Record<string, unknown>)
+    }
+  }
+
+  return args
+}
+
 export const normalizeAgentToolCall = (call: AgentToolCall): AgentToolCall => {
-  const canon = resolveAgentToolName(call.name)
-  if (!canon || canon === call.name) return call
-  return { ...call, name: canon }
+  const canon = resolveAgentToolName(call.name) ?? call.name
+  const arguments_ = normalizeToolArguments(call.arguments as Record<string, unknown>)
+  if (canon === call.name && arguments_ === call.arguments) return call
+  return { ...call, name: canon, arguments: arguments_ }
 }

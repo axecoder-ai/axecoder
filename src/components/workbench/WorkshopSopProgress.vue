@@ -5,6 +5,8 @@ import { useI18n } from '../../i18n'
 
 const props = defineProps<{
   phase?: SopPipelinePhase
+  taskIndex?: number
+  taskTotal?: number
 }>()
 
 const { t } = useI18n()
@@ -27,6 +29,12 @@ const steps = computed(() =>
 )
 
 const current = computed(() => props.phase ?? 'idle')
+
+const taskLabel = computed(() => {
+  if (current.value !== 'implement' || !props.taskTotal) return ''
+  const i = props.taskIndex ?? 0
+  return t('workshop.sopTaskProgress', { current: i, total: props.taskTotal })
+})
 
 const stepState = (id: SopPipelinePhase) => {
   const order = steps.value.map((s) => s.id)
@@ -51,6 +59,7 @@ const stepState = (id: SopPipelinePhase) => {
     >
       <span class="dot" />
       <span class="label">{{ s.label }}</span>
+      <span v-if="s.id === 'implement' && taskLabel" class="task-badge">{{ taskLabel }}</span>
     </div>
   </div>
 </template>
@@ -104,6 +113,15 @@ const stepState = (id: SopPipelinePhase) => {
 }
 .sop-step.active .label {
   text-shadow: 0 0 12px color-mix(in srgb, var(--lite) 45%, transparent);
+}
+.task-badge {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--lite) 18%, transparent);
+  color: var(--text-secondary, #aaa);
 }
 @keyframes sop-lite-pulse {
   0%,

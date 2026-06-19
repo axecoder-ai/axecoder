@@ -1,5 +1,5 @@
 import type { AgentToolCall } from '../agent/agent-types'
-import { resolveAgentToolName } from '../agent/agent-tool-aliases'
+import { resolveAgentToolName, normalizeAgentToolCall } from '../agent/agent-tool-aliases'
 
 export type ResponsesStreamAccum = {
   content: string
@@ -91,11 +91,13 @@ export const responsesStreamAccumToToolCalls = (
     } catch {
       args = {}
     }
-    out.push({
-      id: slot.id,
-      name: (resolveAgentToolName(slot.name) ?? slot.name) as AgentToolCall['name'],
-      arguments: args,
-    })
+    out.push(
+      normalizeAgentToolCall({
+        id: slot.id,
+        name: (resolveAgentToolName(slot.name) ?? slot.name) as AgentToolCall['name'],
+        arguments: args,
+      }),
+    )
   }
   return out
 }

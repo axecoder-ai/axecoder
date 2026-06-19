@@ -124,7 +124,13 @@ export const grepProject = async (
     const hits = await runRipgrep(projectRoot, q)
     if (!hits.length) return { ok: true, text: 'No matches found.' }
     const lines = hits.map((h) => `${h.file}:${h.line}:${h.col} ${h.text}`)
-    return { ok: true, text: lines.join('\n') }
+    const joined = lines.join('\n')
+    const max = 80_000
+    if (joined.length <= max) return { ok: true, text: joined }
+    return {
+      ok: true,
+      text: `${joined.slice(0, max)}\n\n[truncated: ${joined.length - max} chars of grep output omitted]`,
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'grep failed'
     return { ok: false, error: msg }

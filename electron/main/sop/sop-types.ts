@@ -59,9 +59,9 @@ export const SOP_PHASE_CHAIN: SopPhaseDef[] = [
   {
     phase: 'tasks',
     action: 'WriteTasks',
-    builtinRole: 'planner',
+    builtinRole: 'project_manager',
     artifact: 'tasks',
-    watch: ['WriteDesign'],
+    watch: ['WriteDesign', 'UserRequirement'],
   },
   {
     phase: 'implement',

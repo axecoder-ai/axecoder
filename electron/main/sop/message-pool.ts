@@ -4,6 +4,12 @@ let seq = 0
 
 const newId = () => `pool-${Date.now()}-${++seq}`
 
+const POOL_MSG_CHARS = 24_000
+const POOL_SUMMARY_CHARS = 96_000
+
+const clipPool = (text: string, max: number) =>
+  text.length <= max ? text : `${text.slice(0, max)}…[pool truncated]`
+
 /** MetaGPT 式共享消息池：publish + 按 causeBy 订阅 */
 export class MessagePool {
   private messages: SopPoolMessage[] = []
@@ -21,7 +27,7 @@ export class MessagePool {
       causeBy: msg.causeBy,
       phase: msg.phase,
       speakerUserId: msg.speakerUserId,
-      content: msg.content,
+      content: clipPool(msg.content, POOL_MSG_CHARS),
       artifactPath: msg.artifactPath,
     }
     this.messages.push(full)
@@ -44,9 +50,19 @@ export class MessagePool {
   }
 
   summaryForWatch(watch: SopActionType[]): string {
-    return this.subscribe(watch)
-      .map((m) => `[${m.causeBy}] ${m.content}`)
+    return this.contextForWatch(watch)
+  }
+
+  /** MetaGPT 式上下文：artifact 路径提示 Read，减少截断丢信息 */
+  contextForWatch(watch: SopActionType[]): string {
+    const text = this.subscribe(watch)
+      .map((m) => {
+        const pathLine = m.artifactPath ? `artifact: ${m.artifactPath} (use Read for full content)` : ''
+        const body = clipPool(m.content, m.artifactPath ? 2_000 : POOL_MSG_CHARS)
+        return [pathLine, `[${m.causeBy}] ${body}`].filter(Boolean).join('\n')
+      })
       .join('\n\n')
+    return clipPool(text, POOL_SUMMARY_CHARS)
   }
 }
 

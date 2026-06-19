@@ -4,7 +4,11 @@ import { listUsers } from '../users-store'
 import type { UserEntry } from '../users-types'
 import { hydrateMessagePool, MessagePool } from './message-pool'
 import { runQaLoop } from './qa-loop'
-import { shouldTriggerSopCodeRecovery, validateImplementOnDisk, validateSopGate } from './sop-gates'
+import { nextRunnablePhase } from './sop-action-graph'
+import { classifySopIntent, type SopIntent } from './sop-intent'
+import { runProjectTests } from './sop-test-runner'
+import { parseTasksFromBody, runTasksImplementLoop } from './sop-task-runner'
+import { shouldTriggerSopCodeRecovery, validateImplementOnDisk, validateSopGate, projectHasApplicationSource } from './sop-gates'
 import { artifactBodyForGate, extractClarifyQuestion } from './sop-artifact'
 import { designToMarkdown } from './schemas/design'
 import { prdToMarkdown } from './schemas/prd'
@@ -101,7 +105,7 @@ const runRolePhase = async (
 
   const roleId = inferWorkshopRoleId(user)
   onProgress?.(roleId, 'thinking', user.id)
-  const poolContext = pool.summaryForWatch(def.watch)
+  const poolContext = pool.contextForWatch(def.watch)
   const inp = {
     roleId,
     userBrief: session.userBrief,
@@ -158,6 +162,39 @@ const runRolePhase = async (
   return { ok: true, artifactBody: body, relatedFiles: out.relatedFiles }
 }
 
+const artifactRelPath = (slug: string, kind: string) =>
+  path.join('docs', 'deliverables', slug, '_artifacts', artifactFileName(kind))
+
+const loadTasksBody = async (
+  projectRoot: string,
+  slug: string,
+  pool: MessagePool,
+): Promise<string | null> => {
+  const last = pool.subscribe(['WriteTasks']).slice(-1)[0]
+  if (last?.artifactPath && projectRoot) {
+    try {
+      return await fs.readFile(path.join(projectRoot, last.artifactPath), 'utf-8')
+    } catch {
+      /* fall through */
+    }
+  }
+  if (last?.content?.trim()) return last.content
+  if (projectRoot) {
+    try {
+      return await fs.readFile(path.join(projectRoot, artifactRelPath(slug, 'tasks')), 'utf-8')
+    } catch {
+      /* missing */
+    }
+  }
+  return null
+}
+
+const collectArtifactPaths = (slug: string): string[] => [
+  artifactRelPath(slug, 'prd'),
+  artifactRelPath(slug, 'design'),
+  artifactRelPath(slug, 'tasks'),
+]
+
 const runPipelineFromPhase = async (
   session: WorkshopSession,
   pool: MessagePool,
@@ -170,6 +207,7 @@ const runPipelineFromPhase = async (
 ): Promise<WorkshopRunResult> => {
   let phase: SopPipelinePhase | null = startPhase
   const slug = session.sopSlug || slugFromBrief(session.userBrief)
+  const intent: SopIntent = session.sopIntent ?? 'greenfield'
 
   while (phase && phase !== 'done') {
     session.sopPhase = phase
@@ -186,6 +224,12 @@ const runPipelineFromPhase = async (
       const runTests =
         options?.runTests ??
         (async () => {
+          if (projectRoot.trim()) {
+            const shell = await runProjectTests(projectRoot)
+            if (!shell.command.startsWith('echo')) {
+              return { ok: shell.ok, output: `${shell.command}\n${shell.output}` }
+            }
+          }
           const r = await runRolePhase(session, pool, qaUser, 'qa', speaker, onProgress)
           if (!r.ok) return { ok: false, output: r.error }
           const passed = validateSopGate('qa', r.artifactBody).ok
@@ -242,6 +286,86 @@ const runPipelineFromPhase = async (
       continue
     }
 
+    if (phase === 'implement') {
+      const dev = findBuiltin(users, 'developer')
+      if (!dev) {
+        pushChat(session, 'system', 'Developer role missing')
+        session.phase = 'done'
+        session.sopPhase = 'done'
+        return { ok: true, session }
+      }
+      const tasksBody = await loadTasksBody(projectRoot, slug, pool)
+      const tasksDoc = tasksBody ? parseTasksFromBody(tasksBody) : null
+      if (!tasksDoc) {
+        const ran = await runRolePhase(session, pool, dev, 'implement', speaker, onProgress)
+        if ('waiting' in ran && ran.waiting) {
+          session.sopPoolMessages = pool.toJSON()
+          return { ok: true, session }
+        }
+        if (!ran.ok) return { ok: false, error: ran.error }
+        const gate = validateSopGate('implement', ran.artifactBody)
+        const implGate =
+          gate.ok && projectRoot
+            ? await validateImplementOnDisk(ran.relatedFiles, projectRoot)
+            : gate
+        if (!implGate.ok) {
+          session.phase = 'waiting_user'
+          session.pendingQuestion = implGate.error || resolvePendingQuestion('implement', ran.artifactBody)
+          session.sopPhase = 'implement'
+          session.sopPoolMessages = pool.toJSON()
+          return { ok: true, session }
+        }
+        pool.publish({
+          causeBy: 'WriteCode',
+          phase: 'implement',
+          speakerUserId: dev.id,
+          content: ran.artifactBody.slice(0, 4000),
+        })
+        phase = nextRunnablePhase('implement', pool, intent)
+        continue
+      }
+
+      const impl = await runTasksImplementLoop({
+        session,
+        pool,
+        developer: dev,
+        speaker,
+        tasksDoc,
+        artifactPaths: projectRoot ? collectArtifactPaths(slug) : undefined,
+        projectRoot,
+        onProgress,
+        runTests: options?.runTests,
+        pushChat,
+      })
+      if ('waiting' in impl && impl.waiting) {
+        session.sopPoolMessages = pool.toJSON()
+        return { ok: true, session }
+      }
+      if (!impl.ok) return { ok: false, error: impl.error }
+
+      const implGate = projectRoot
+        ? await validateImplementOnDisk(impl.relatedFiles, projectRoot)
+        : { ok: true as const }
+      if (!implGate.ok) {
+        session.phase = 'waiting_user'
+        session.pendingQuestion = implGate.error || resolvePendingQuestion('implement', impl.summary)
+        session.sopPhase = 'implement'
+        pushChat(session, 'system', `SOP 暂停（implement）：${implGate.error}`, { hidden: true })
+        session.sopPoolMessages = pool.toJSON()
+        return { ok: true, session }
+      }
+
+      pool.publish({
+        causeBy: 'WriteCode',
+        phase: 'implement',
+        speakerUserId: dev.id,
+        content: impl.summary.slice(0, 4000),
+      })
+      session.sopTaskIndex = session.sopTaskTotal
+      phase = nextRunnablePhase('implement', pool, intent)
+      continue
+    }
+
     const def = sopPhaseDef(phase)
     if (!def) break
 
@@ -265,7 +389,7 @@ const runPipelineFromPhase = async (
     if (!implGate.ok) {
       session.phase = 'waiting_user'
       session.pendingAsks = undefined
-      session.pendingQuestion = resolvePendingQuestion(phase, ran.artifactBody)
+      session.pendingQuestion = implGate.error || resolvePendingQuestion(phase, ran.artifactBody)
       session.sopPhase = phase
       pushChat(session, 'system', `SOP 暂停（${phase}）：${implGate.error}`, { hidden: true })
       session.sopPoolMessages = pool.toJSON()
@@ -303,7 +427,7 @@ const runPipelineFromPhase = async (
       if (last) last.artifactPath = rel
     }
 
-    phase = nextSopPhase(phase)
+    phase = nextRunnablePhase(phase, pool, intent)
   }
 
   const manager = findBuiltin(users, 'manager')
@@ -546,10 +670,16 @@ export const sendSopPipelineMessage = async (
       phase: 'requirement',
       content: trimmed,
     })
-    session.sopPhase = 'prd'
+    const hasSource = projectRoot ? await projectHasApplicationSource(projectRoot) : false
+    session.sopIntent = classifySopIntent(trimmed, hasSource)
+  const start =
+    session.sopIntent === 'incremental'
+      ? 'tasks'
+      : 'prd'
+    session.sopPhase = start
     session.phase = 'running'
     session.sopPoolMessages = pool.toJSON()
-    return runPipelineFromPhase(session, pool, users, speaker, projectRoot, 'prd', onProgress, options)
+    return runPipelineFromPhase(session, pool, users, speaker, projectRoot, start, onProgress, options)
   }
 
   pushChat(session, 'user', options?.displayText?.trim() || trimmed)
@@ -573,7 +703,10 @@ export const scriptedSopSpeaker =
       }),
       tasks: JSON.stringify({
         title: 'Todo Tasks',
-        tasks: [{ id: 't1', title: 'Implement todo module' }],
+        tasks: [
+          { id: 't1', title: 'Implement todo store', deps: [] },
+          { id: 't2', title: 'Wire API', deps: ['t1'] },
+        ],
       }),
       implement: 'Implemented todo module with tests.',
       qa: 'All tests pass.\ngo test ./... ok  4 passed',
@@ -588,6 +721,12 @@ export const scriptedSopSpeaker =
         planSource: body,
       }
     }
-    const relatedFiles = key === 'implement' ? ['src/todo.ts'] : undefined
+    const taskId = inp.sopTaskId
+    const relatedFiles =
+      key === 'implement'
+        ? taskId === 't2'
+          ? ['src/todo-api.ts']
+          : ['src/todo.ts']
+        : undefined
     return { summary: body.slice(0, 120), planSource: body, relatedFiles }
   }
