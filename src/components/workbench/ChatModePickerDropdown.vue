@@ -161,17 +161,8 @@ onUnmounted(() => {
               @click="pick(m.id)"
             >
               <span class="mode-icon" aria-hidden="true">
-                <!-- Agent -->
-                <svg v-if="m.id === 'agent'" viewBox="0 0 16 16" width="14" height="14">
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    d="M4.5 8c0-2.5 1.5-4 3.5-4s3.5 1.5 3.5 4-1.5 4-3.5 4-3.5-1.5-3.5-4z M8 8c0-2.5 1.5-4 3.5-4s3.5 1.5 3.5 4-1.5 4-3.5 4-3.5-1.5-3.5-4z"
-                  />
-                </svg>
                 <!-- Plan -->
-                <svg v-else-if="m.id === 'plan'" viewBox="0 0 16 16" width="14" height="14">
+                <svg v-if="m.id === 'plan'" viewBox="0 0 16 16" width="14" height="14">
                   <path
                     fill="currentColor"
                     d="M2.5 4.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75zm0 3.5a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75zm0 3.5a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75z"

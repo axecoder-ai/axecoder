@@ -23,11 +23,13 @@ describe('agent-builtin-skills', () => {
     else process.env.APP_ROOT = prevAppRoot
   })
 
-  it('lists 14 built-in skills from resources/builtin-skills', async () => {
+  it('lists builtin-skills plus mattpocock manifest entries', async () => {
     const list = await discoverBuiltinSkills()
-    expect(list.length).toBe(14)
+    expect(list.length).toBeGreaterThanOrEqual(14)
     expect(list.map((s) => s.name)).toContain('brainstorming')
     expect(list.map((s) => s.name)).toContain('writing-plans')
+    expect(list.map((s) => s.name)).toContain('grill-with-docs')
+    expect(list.map((s) => s.name)).toContain('setup-matt-pocock-skills')
     expect(list.every((s) => s.source === 'builtin')).toBe(true)
   })
 

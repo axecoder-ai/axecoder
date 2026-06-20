@@ -77,10 +77,12 @@ export const isChatModeId = (v: unknown): v is ChatModeId =>
 export const loadStoredChatMode = (): ChatModeId => {
   try {
     const raw = localStorage.getItem(CHAT_MODE_STORAGE_KEY)
-    if (!isChatModeId(raw)) return DEFAULT_CHAT_MODE
-    let mode: ChatModeId = raw
+    if (!raw) return DEFAULT_CHAT_MODE
+    let mode: ChatModeId
     if (raw === 'auto-plan' || raw === 'reflection' || raw === 'rppit') mode = 'agent'
     else if (raw === 'planning') mode = 'plan'
+    else if (isChatModeId(raw)) mode = raw
+    else return DEFAULT_CHAT_MODE
     if (!isChatModeEnabled(mode)) return DEFAULT_CHAT_MODE
     if (mode !== raw) saveStoredChatMode(mode)
     return mode

@@ -135,4 +135,8 @@ export const AGENTS_MD_TEMPLATE = `# AGENTS.md
 - Prefer minimal changes
 - Read relevant files before editing
 - QA：\`npm test\`
+
+## Domain docs
+
+Project vocabulary lives in \`CONTEXT.md\` (create via \`/grill-with-docs\` if missing). Architecture decisions: \`docs/adr/\`. Matt Pocock engineering setup: \`docs/agents/\` (run \`/setup-matt-pocock-skills\` once).
 `
