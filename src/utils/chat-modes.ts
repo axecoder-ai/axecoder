@@ -39,7 +39,7 @@ export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
   {
     id: 'software-company',
     label: 'Software Co.',
-    description: 'MetaGPT-style SOP: PRD → design → tasks → code → QA',
+    description: 'MetaGPT SOP: PRD → design → tasks → code → QA; each role runs at Agent efficiency',
   },
 ]
 
@@ -79,7 +79,7 @@ export const loadStoredChatMode = (): ChatModeId => {
     const raw = localStorage.getItem(CHAT_MODE_STORAGE_KEY)
     if (!raw) return DEFAULT_CHAT_MODE
     let mode: ChatModeId
-    if (raw === 'auto-plan' || raw === 'reflection' || raw === 'rppit') mode = 'agent'
+    if (raw === 'auto-plan' || raw === 'reflection' || raw === 'rppit' || raw === 'understand') mode = 'agent'
     else if (raw === 'planning') mode = 'plan'
     else if (isChatModeId(raw)) mode = raw
     else return DEFAULT_CHAT_MODE

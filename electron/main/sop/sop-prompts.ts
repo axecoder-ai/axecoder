@@ -1,3 +1,4 @@
+import type { SopIntent } from './sop-intent'
 import type { SopPipelinePhase } from './sop-types'
 
 const SOP_ARTIFACT_HINTS: Partial<Record<SopPipelinePhase, string>> = {
@@ -50,6 +51,27 @@ export const sopResearchAuditPromptBlock = (): string =>
     'Ignore docs/deliverables and test-only folders when judging whether service code exists.',
     'End with a clear verdict: 有源码 / 缺源码 and list paths.',
   ].join('\n')
+
+/** Fast 路径：单 session 内软 SOP，不强制分阶段停表 */
+export const sopSoftOrchestrationPromptBlock = (
+  intent: SopIntent,
+  slug?: string,
+): string => {
+  const artifactDir = slug?.trim()
+    ? `docs/deliverables/${slug.trim()}/_artifacts/`
+    : 'docs/deliverables/{slug}/_artifacts/'
+  const skip =
+    intent === 'incremental'
+      ? 'Incremental/fix request: skip PRD and design unless the user asked for them. Go straight to code changes.'
+      : 'Greenfield: briefly align requirements, then implement. Write PRD/design/tasks JSON to disk only when the change is large or the user needs traceability.'
+  return [
+    '[Software Company · Fast SOP · single session]',
+    skip,
+    `Optional artifacts (Write when useful): ${artifactDir}sop-prd.json, sop-design.json, sop-tasks.json`,
+    'Implement application source on disk (not docs-only). Run tests via Bash when appropriate—no mandatory per-task QA loop.',
+    'List changed paths in your final reply.',
+  ].join('\n')
+}
 
 export const sopPhasePromptBlock = (phase?: SopPipelinePhase, poolContext?: string): string => {
   if (!phase || phase === 'idle' || phase === 'requirement' || phase === 'done') return ''

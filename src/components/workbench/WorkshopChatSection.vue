@@ -70,6 +70,7 @@ const embeddedDefaultTitle = computed(() => {
 })
 
 const isDrawIoMode = computed(() => props.orchestrationChatMode === 'draw-io')
+const isSplitPanelMode = computed(() => isDrawIoMode.value)
 const BLANK_DRAW_IO_XML =
   '<mxfile host="app.diagrams.net"><diagram id="blank" name="Page-1"><mxGraphModel grid="0" page="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>'
 const diagramXml = ref('')
@@ -882,7 +883,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="workshop-chat-section" :class="{ 'workshop-chat-section--draw-io': isDrawIoMode }">
+  <div class="workshop-chat-section" :class="{ 'workshop-chat-section--split': isSplitPanelMode }">
     <WorkshopSopProgress
       v-if="showSopProgress && active"
       :phase="active.sopPhase"
@@ -890,7 +891,7 @@ defineExpose({
       :task-total="active.sopTaskTotal"
     />
     <div v-if="!hasProject" class="workshop-empty">Open a project first</div>
-    <div v-else class="workshop-body" :class="{ 'workshop-body--draw-io': isDrawIoMode }">
+    <div v-else class="workshop-body" :class="{ 'workshop-body--split': isSplitPanelMode }">
     <div ref="listEl" class="message-list" @scroll="onScrollContainer">
       <div v-if="showEmptyHint" class="workshop-empty-hint">
         <p class="workshop-empty-title">{{ isDrawIoMode ? 'Draw.IO' : 'Multi-Agent 协作' }}</p>
@@ -939,7 +940,7 @@ defineExpose({
         v-bind="roleProps(thinkingRole, thinkingSpeakerUserId)"
       />
     </div>
-    <div v-if="isDrawIoMode" class="draw-io-panel">
+    <div v-if="isDrawIoMode" class="side-panel">
       <DrawIoEmbed :key="activeId" :xml="diagramXml" @export-xml="onDiagramExport" />
     </div>
     </div>
@@ -1018,6 +1019,7 @@ defineExpose({
   flex: 1;
   min-height: 0;
 }
+.workshop-chat-section--split,
 .workshop-chat-section--draw-io {
   min-height: 0;
 }
@@ -1027,14 +1029,17 @@ defineExpose({
   display: flex;
   flex-direction: column;
 }
+.workshop-body--split,
 .workshop-body--draw-io {
   flex-direction: row;
 }
+.workshop-body--split .message-list,
 .workshop-body--draw-io .message-list {
   flex: 0 0 42%;
   max-width: 480px;
   border-right: 1px solid var(--wc-border);
 }
+.side-panel,
 .draw-io-panel {
   flex: 1;
   min-width: 0;

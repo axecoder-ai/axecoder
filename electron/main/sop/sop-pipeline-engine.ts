@@ -7,7 +7,7 @@ import { runQaLoop } from './qa-loop'
 import { nextRunnablePhase } from './sop-action-graph'
 import { classifySopIntent, type SopIntent } from './sop-intent'
 import { runProjectTests } from './sop-test-runner'
-import { parseTasksFromBody, runTasksImplementLoop } from './sop-task-runner'
+import { parseTasksFromBody, runTasksImplementBatch, runTasksImplementLoop } from './sop-task-runner'
 import { shouldTriggerSopCodeRecovery, validateImplementOnDisk, validateSopGate, projectHasApplicationSource } from './sop-gates'
 import { artifactBodyForGate, extractClarifyQuestion } from './sop-artifact'
 import { designToMarkdown } from './schemas/design'
@@ -28,6 +28,7 @@ import type {
   WorkshopSession,
 } from '../workshop/workshop-types'
 import { inferWorkshopRoleId } from '../workshop/workshop-user-bind'
+import { isSopFastMode, isSopPerTaskMode } from './sop-mode'
 
 const resolvePendingQuestion = (
   phase: SopPipelinePhase,
@@ -115,6 +116,8 @@ const runRolePhase = async (
     sopPhase: phase,
     sopAction: def.action,
     poolContext,
+    sopAgentParity: true,
+    reuseImplementSession: phase === 'implement',
   }
   onProgress?.(roleId, 'speaking', user.id)
   const out = await speaker(inp)
@@ -325,7 +328,8 @@ const runPipelineFromPhase = async (
         continue
       }
 
-      const impl = await runTasksImplementLoop({
+      const implRunner = isSopPerTaskMode() ? runTasksImplementLoop : runTasksImplementBatch
+      const impl = await implRunner({
         session,
         pool,
         developer: dev,
@@ -534,7 +538,7 @@ const runSopCodeRecovery = async (
 }
 
 /** 流水线 done 后用户追问：缺码则 Researcher+Developer 补写，否则 Tech Lead 直接答 */
-const runSopUserFollowUp = async (
+export const runSopUserFollowUp = async (
   session: WorkshopSession,
   userText: string,
   pool: MessagePool,
@@ -624,6 +628,11 @@ export const sendSopPipelineMessage = async (
 ): Promise<WorkshopRunResult> => {
   const trimmed = text.trim()
   if (!trimmed) return { ok: false, error: 'Message cannot be empty' }
+
+  if (isSopFastMode()) {
+    const { sendSopFastPipelineMessage } = await import('./sop-fast-pipeline')
+    return sendSopFastPipelineMessage(session, trimmed, speaker, onProgress, options)
+  }
 
   const projectRoot = options?.projectRoot?.trim() ?? ''
   const usersFile = await listUsers()

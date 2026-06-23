@@ -7,6 +7,8 @@ export {
   scriptedSopSpeaker,
   type SendSopPipelineOptions,
 } from './sop-pipeline-engine'
+export { isSopFastMode, isSopPerTaskMode } from './sop-mode'
+export { sendSopFastPipelineMessage } from './sop-fast-pipeline'
 export {
   SOP_PHASE_CHAIN,
   nextSopPhase,

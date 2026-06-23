@@ -112,6 +112,7 @@ export const runTasksImplementLoop = async (deps: TaskImplementDeps): Promise<Ta
         sopTaskId: task.id,
         sopTaskTitle: task.title,
         reuseImplementSession: true,
+        sopAgentParity: true,
       }
       deps.onProgress?.(roleId, 'speaking', deps.developer.id)
       const out = await deps.speaker(inp)
@@ -174,4 +175,107 @@ export const runTasksImplementLoop = async (deps: TaskImplementDeps): Promise<Ta
 
   deps.session.sopTaskIndex = sorted.length
   return { ok: true, relatedFiles: [...new Set(allFiles)], summary: summaries.join('\n') }
+}
+
+/** MetaGPT 任务清单对齐，但所有 task 在一次 Agent 会话内完成（与 Agent 模式同效率） */
+export const runTasksImplementBatch = async (deps: TaskImplementDeps): Promise<TaskImplementResult> => {
+  const sorted = topoSortTasks(deps.tasksDoc.tasks)
+  const allFiles: string[] = []
+  const roleId = inferWorkshopRoleId(deps.developer)
+  const maxFb = deps.maxFeedbackRounds ?? 1
+
+  deps.session.sopTaskTotal = sorted.length
+  deps.session.sopTaskIndex = sorted.length
+  deps.session.sopPhase = 'implement'
+
+  const taskList = sorted
+    .map(
+      (t, i) =>
+        `${i + 1}. [${t.id}] ${t.title}${t.deps?.length ? ` (deps: ${t.deps.join(',')})` : ''}`,
+    )
+    .join('\n')
+
+  const artifactHint = deps.artifactPaths?.length
+    ? `Read upstream artifacts:\n${deps.artifactPaths.map((p) => `- ${p}`).join('\n')}`
+    : ''
+
+  const runBatch = async (extra: string): Promise<TaskImplementResult> => {
+    deps.onProgress?.(roleId, 'thinking', deps.developer.id)
+    const out = await deps.speaker({
+      roleId,
+      userBrief: deps.session.userBrief,
+      priorSummary: [
+        artifactHint,
+        deps.pool.contextForWatch(['WriteTasks', 'WriteDesign', 'WritePRD', 'UserRequirement']),
+        `Implement ALL tasks below in one continuous Agent session (MetaGPT WriteCode):\n${taskList}`,
+        'Use Write/Edit for application source. Run tests once when done if appropriate.',
+        extra,
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      speakMode: 'member',
+      assigneeUser: deps.developer,
+      sopPhase: 'implement',
+      sopAction: 'WriteCode',
+      poolContext: deps.pool.contextForWatch(['WriteTasks', 'WriteDesign']),
+      reuseImplementSession: true,
+      sopAgentParity: true,
+    })
+    deps.onProgress?.(roleId, 'done', deps.developer.id)
+
+    if (out.needsUser) {
+      deps.pushChat(deps.session, roleId, out.summary.trim(), {
+        speakerUserId: deps.developer.id,
+        relatedFiles: out.relatedFiles,
+        causeBy: 'WriteCode',
+      })
+      deps.session.phase = 'waiting_user'
+      return { ok: true, waiting: true }
+    }
+
+    const body = out.planSource?.trim() || out.summary.trim()
+    if (out.relatedFiles?.length) allFiles.push(...out.relatedFiles)
+
+    for (const t of sorted) {
+      deps.pool.publish({
+        causeBy: 'WriteCode',
+        phase: 'implement',
+        speakerUserId: deps.developer.id,
+        content: `Task ${t.id} (${t.title}) included in batch implement: ${body.slice(0, 500)}`,
+      })
+    }
+    deps.pushChat(deps.session, roleId, out.summary.trim().slice(0, 400) || body.slice(0, 400), {
+      speakerUserId: deps.developer.id,
+      relatedFiles: out.relatedFiles,
+      causeBy: 'WriteCode',
+    })
+    return { ok: true, relatedFiles: [...new Set(allFiles)], summary: body }
+  }
+
+  let last = await runBatch('')
+  if ('waiting' in last && last.waiting) return last
+  if (!last.ok) return last
+
+  if (deps.projectRoot.trim()) {
+    const runTests = deps.runTests ?? (() => runProjectTests(deps.projectRoot, deps.testExec))
+    let waitingDuringFb = false
+    const fb = await runQaLoop({
+      maxRounds: maxFb,
+      runTests,
+      fixBug: async (_round, testOutput) => {
+        const fix = await runBatch(`Tests failed after batch implement:\n${testOutput}`)
+        if ('waiting' in fix && fix.waiting) {
+          waitingDuringFb = true
+          return 'waiting user'
+        }
+        return fix.ok ? fix.summary : fix.error
+      },
+    })
+    if (waitingDuringFb) return { ok: true, waiting: true }
+    if (!fb.passed && fb.rounds.length >= maxFb) {
+      return { ok: false, error: `Batch implement: tests did not pass after ${maxFb} round(s)` }
+    }
+  }
+
+  return { ok: true, relatedFiles: [...new Set(allFiles)], summary: last.ok ? last.summary : '' }
 }

@@ -737,6 +737,7 @@ export const runAgentLoopUntilDoneOrPending = async (
           if (!applied.ok) return { ok: false, error: applied.error }
           continue
         }
+        const pendingReplyText = assistantText || (res.content ?? '').trim()
         return finishPending(
           sessionId,
           session,
@@ -744,7 +745,7 @@ export const runAgentLoopUntilDoneOrPending = async (
           pendingBashPublic,
           pendingAskPublic,
           pendingPlanPublic,
-          assistantText,
+          pendingReplyText,
           res.content,
           res.reasoningContent,
         )
@@ -752,13 +753,9 @@ export const runAgentLoopUntilDoneOrPending = async (
       continue
     }
 
-    return finishDone(
-      session,
-      assistantText || '(model returned no content)',
-      sessionId,
-      res.content,
-      res.reasoningContent,
-    )
+    const replyText =
+      assistantText || (res.content ?? '').trim() || '(model returned no content)'
+    return finishDone(session, replyText, sessionId, res.content, res.reasoningContent)
   }
   } finally {
     clearAgentRunAbort(sessionId)
@@ -1252,6 +1249,8 @@ export type WorkshopAgentTurnOptions = {
   /** SOP implement：多 task 间复用 session 保留调试记忆 */
   reuseSession?: boolean
   sopBuiltinRole?: import('../users-types').BuiltinUserRole
+  /** Software Co.：该角色回合与 Chat Agent 同等效率 */
+  sopAgentParity?: boolean
 }
 
 const finishWorkshopTurn = async (
@@ -1331,10 +1330,11 @@ export const runWorkshopRoleAgentTurn = async (
   const cfg = await getConfig()
   const revealedToolNames = new Set<AgentToolName>()
   const allTools = buildFullAgentTools()
-  const activeTools = filterToolsForSopRole(
-    getSessionActiveTools(allTools, revealedToolNames),
-    options?.sopBuiltinRole,
-  )
+  const baseTools = getSessionActiveTools(allTools, revealedToolNames)
+  const activeTools = options?.sopAgentParity
+    ? baseTools
+    : filterToolsForSopRole(baseTools, options?.sopBuiltinRole)
+  const workshopChatMode: ChatModeId = options?.sopAgentParity ? 'software-company' : 'agent'
   const scratchpadDir = await ensureScratchpadDir(sid)
 
   const ctx: AgentContext = {
@@ -1375,6 +1375,7 @@ export const runWorkshopRoleAgentTurn = async (
   if (existing) {
     existing.messages.push(userMsg)
     existing.activeTools = activeTools
+    existing.chatMode = workshopChatMode
     putSession(sid, existing)
     const result = await runAgentLoopUntilDoneOrPending(sid, existing)
     return finishWorkshopTurn(sid, result, options)
@@ -1390,7 +1391,7 @@ export const runWorkshopRoleAgentTurn = async (
           outputStyleId: cfg.agentOutputStyle,
           scratchpadDir,
           agentFrcKeepToolMessages: cfg.agentFrcKeepToolMessages ?? 8,
-        })) + chatModeSystemAddon('agent'),
+        })) + chatModeSystemAddon(workshopChatMode),
     },
     userMsg,
   ]
@@ -1407,7 +1408,7 @@ export const runWorkshopRoleAgentTurn = async (
     pendingPlanById: new Map(),
     turn: 0,
     planMode: false,
-    chatMode: 'agent',
+    chatMode: workshopChatMode,
     revealedToolNames,
     activeTools,
     proactiveEnabled: false,
@@ -1416,7 +1417,7 @@ export const runWorkshopRoleAgentTurn = async (
     compactedOnce: false,
     loopGuard: createLoopGuardState(),
   }
-  applyChatModeToNewSession(session, 'agent')
+  applyChatModeToNewSession(session, workshopChatMode)
 
   putSession(sid, session)
   const result = await runAgentLoopUntilDoneOrPending(sid, session)

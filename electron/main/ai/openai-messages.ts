@@ -11,7 +11,18 @@ export type OpenAiAssistantParts = {
 
 export const pickOpenAiContent = (message: Record<string, unknown> | undefined): string => {
   const c = message?.content
-  return typeof c === 'string' ? c : ''
+  if (typeof c === 'string') return c
+  if (Array.isArray(c)) {
+    const parts: string[] = []
+    for (const part of c) {
+      if (part && typeof part === 'object' && 'text' in part) {
+        const t = (part as { text?: string }).text
+        if (typeof t === 'string' && t.trim()) parts.push(t)
+      }
+    }
+    if (parts.length) return parts.join('\n')
+  }
+  return ''
 }
 
 export const pickOpenAiReasoningContent = (
@@ -28,7 +39,12 @@ export const parseOpenAiAssistantParts = (
   const content = pickOpenAiContent(message)
   const reasoningContent = pickOpenAiReasoningContent(message)
   const displayText = pickOpenAiReplyText(message)
-  return { content, reasoningContent, displayText }
+  const normalized = displayText.trim() || content.trim()
+  return {
+    content: content.trim() || normalized,
+    reasoningContent,
+    displayText: normalized,
+  }
 }
 
 export const aiChatToOpenAiWire = (messages: AiChatMessage[]): Record<string, unknown>[] =>

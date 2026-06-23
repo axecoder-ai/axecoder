@@ -65,7 +65,9 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput, replyLanguage?: strin
       .join('\n')
   }
   if (input.speakMode === 'member' && input.assigneeUser) {
-    const sopBlock = sopPhasePromptBlock(input.sopPhase, input.poolContext)
+    const sopBlock = input.sopAgentParity
+      ? ''
+      : sopPhasePromptBlock(input.sopPhase, input.poolContext)
     const followUpBlock = input.sopPhase === 'done' ? sopFollowUpPromptBlock() : ''
     const auditBlock =
       input.sopPhase === 'done' && input.assigneeUser.builtinRole === 'researcher'

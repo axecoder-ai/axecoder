@@ -107,6 +107,8 @@ export type RoleSpeakInput = {
   sopTaskTitle?: string
   /** MetaGPT：implement 阶段复用 agent session 保留调试上下文 */
   reuseImplementSession?: boolean
+  /** Software Co.：该角色回合与 Chat Agent 同等效率（工具全开、session 复用） */
+  sopAgentParity?: boolean
 }
 
 export type RoleSpeakOutput = {

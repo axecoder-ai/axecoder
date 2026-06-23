@@ -66,7 +66,7 @@ export const chatModeSystemAddon = (mode: ChatModeId): string => {
     return '\n\n<chat-mode>Multi-Agent: collaboration runs in the Workshop multi-role panel in this chat. Do not use Task/Agent/Coordinator tools here.</chat-mode>'
   }
   if (mode === 'software-company') {
-    return '\n\n<chat-mode>Software Company: MetaGPT-style SOP pipeline (PRD → Design → Tasks → Code → QA) in the Workshop panel. One-line requirement starts the fixed assembly line. Do not use Task/Agent/Coordinator tools here.</chat-mode>'
+    return '\n\n<chat-mode>Software Company: MetaGPT SOP (PRD → Design → Tasks → Code → QA) with dedicated roles. Each role runs one continuous Agent session (full tools, same loop as Agent mode). Deliver structured artifacts to docs/deliverables/{slug}/_artifacts/. Task sub-agents allowed when helpful.</chat-mode>'
   }
   if (mode === 'draw-io') {
     return '\n\n<chat-mode>Draw.IO: AI diagram editing in the Workshop panel with an embedded draw.io canvas. Use DisplayDiagram, EditDiagram, and GetDiagram tools only. Do not use Task/Agent/Coordinator or file mutation tools here.</chat-mode>'

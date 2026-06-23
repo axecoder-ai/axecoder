@@ -109,14 +109,18 @@ let offActivity: (() => void) | undefined
 
 const applySnap = (snap: AiMetricsSnapshot) => {
   snapshot.value = snap
-  if (snap.activityLog?.length) activityLog.value = snap.activityLog
+  if (snap.activityLog?.length) {
+    activityLog.value = snap.activityLog
+    if (hover.value) void nextTick(scrollActivityToBottom)
+  }
 }
 
 watch(
-  () => filteredActivity.value.length,
+  () => filteredActivity.value.at(-1)?.id,
   () => {
     if (hover.value) void nextTick(scrollActivityToBottom)
   },
+  { flush: 'post' },
 )
 
 onMounted(async () => {
@@ -124,6 +128,7 @@ onMounted(async () => {
   offMetrics = window.axecoder.onAiMetricsUpdate((s) => applySnap(s))
   offActivity = window.axecoder.onAiMetricsActivity((lines) => {
     activityLog.value = lines
+    if (hover.value) void nextTick(scrollActivityToBottom)
   })
   window.addEventListener('resize', syncPopoverPos)
 })
@@ -297,7 +302,6 @@ onUnmounted(() => {
 .footer-tps-activity {
   max-height: 220px;
   overflow: auto;
-  scroll-behavior: smooth;
   background: var(--wc-bg-dark, rgba(0, 0, 0, 0.25));
   border: 1px solid var(--wc-border, rgba(255, 255, 255, 0.08));
   border-radius: 4px;

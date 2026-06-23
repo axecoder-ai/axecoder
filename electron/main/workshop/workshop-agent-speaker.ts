@@ -24,14 +24,17 @@ export const buildAgentRoleSpeaker = (
     const name = enriched.assigneeUser?.displayName?.trim() || enriched.roleId
     const replyLanguage = await resolveWorkshopReplyLanguage(root)
     const taskPrompt = buildRoleTaskPrompt(enriched, replyLanguage)
-    const streamKey = enriched.reuseImplementSession
-      ? `u-${enriched.assigneeUser!.id}-implement`
-      : (enriched.speakMode === 'member' ||
-          enriched.speakMode === 'execute' ||
-          enriched.speakMode === 'manager_chat') &&
-        enriched.assigneeUser
-        ? `u-${enriched.assigneeUser.id}`
-        : enriched.roleId
+    const streamKey =
+      enriched.sopAgentParity && enriched.assigneeUser
+        ? `u-${enriched.assigneeUser.id}-sop`
+        : enriched.reuseImplementSession && enriched.assigneeUser
+          ? `u-${enriched.assigneeUser.id}-implement`
+          : (enriched.speakMode === 'member' ||
+              enriched.speakMode === 'execute' ||
+              enriched.speakMode === 'manager_chat') &&
+            enriched.assigneeUser
+            ? `u-${enriched.assigneeUser.id}`
+            : enriched.roleId
     const sessionId = buildWorkshopStreamId(workshopId, streamKey)
     const roleModelId = await resolveModelIdForTask(
       modelTaskKindForWorkshopRole(enriched.roleId, enriched.speakMode),
@@ -40,8 +43,9 @@ export const buildAgentRoleSpeaker = (
     const res = await runWorkshopRoleAgentTurn(root, roleModelId, sessionId, taskPrompt, name, {
       speakMode: enriched.speakMode,
       userImages,
-      reuseSession: enriched.reuseImplementSession,
+      reuseSession: !!(enriched.reuseImplementSession || enriched.sopAgentParity),
       sopBuiltinRole: enriched.assigneeUser?.builtinRole,
+      sopAgentParity: enriched.sopAgentParity,
     })
     if (!res.ok) throw new Error(res.error)
     const users = enriched.users ?? []

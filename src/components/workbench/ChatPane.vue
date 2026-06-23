@@ -1096,6 +1096,29 @@ const mergeBackgroundTaskIds = (msg: ChatMessage, ids?: string[]) => {
   msg.backgroundTaskIds = [...set]
 }
 
+const AGENT_NO_CONTENT = '(model returned no content)'
+
+const resolveAgentReplyBody = (
+  res: { assistantText?: string; assistantContent?: string },
+  streamFallback = '',
+): string => {
+  const text = (res.assistantText ?? '').trim()
+  if (text && text !== AGENT_NO_CONTENT) return text
+  const content = (res.assistantContent ?? '').trim()
+  if (content) return content
+  const stream = streamFallback.trim()
+  if (stream) return stream
+  return text
+}
+
+const assistantBubbleText = (msg: ChatMessage) => {
+  const content = (msg.assistantContent ?? '').trim()
+  const text = (msg.text ?? '').trim()
+  if (text && text !== AGENT_NO_CONTENT) return msg.text
+  if (content) return content
+  return msg.text
+}
+
 const pushAssistantFromAgent = (
   res: AgentSendResult | AgentContinueResult,
   model?: ModelEntry,
@@ -1110,10 +1133,11 @@ const pushAssistantFromAgent = (
   }
   const suffix = formatToolLog(res.toolLog)
   const speakerUserId = res.speakerUserId
+  const body = resolveAgentReplyBody(res, streamText.value)
   if (res.status === 'done') {
     activeSession.value.messages.push({
       role: 'assistant',
-      text: (res.assistantText + suffix).trim() || '(done)',
+      text: (body + suffix).trim() || '(done)',
       toolLog: res.toolLog,
       ...(speakerUserId ? { speakerUserId } : {}),
       ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
@@ -1126,7 +1150,7 @@ const pushAssistantFromAgent = (
   }
   activeSession.value.messages.push({
     role: 'assistant',
-    text: (res.assistantText + suffix).trim() || 'Please confirm the following changes:',
+    text: (body + suffix).trim() || 'Please confirm the following changes:',
     toolLog: res.toolLog,
     pendingWrites: res.pending,
     pendingBashes: res.pendingBashes,
@@ -1165,7 +1189,8 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     msg.pendingBashes = undefined
     msg.pendingAsks = undefined
     msg.pendingPlans = undefined
-    msg.text = (res.assistantText + suffix).trim() || msg.text
+    const next = resolveAgentReplyBody(res) + suffix
+    if (next.trim()) msg.text = next.trim()
     mergeBackgroundTaskIds(msg, res.backgroundTaskIds)
     maybePlayAgentDoneSound(res)
     emit('filesChanged')
@@ -2553,9 +2578,9 @@ defineExpose({
             </div>
           </div>
           <div
-            v-if="msg.text.trim()"
+            v-if="assistantBubbleText(msg).trim()"
             class="assistant-text"
-            v-html="renderMarkdown(msg.text)"
+            v-html="renderMarkdown(assistantBubbleText(msg))"
           />
           <ChatAskUserCard
             v-for="pa in msg.pendingAsks ?? []"

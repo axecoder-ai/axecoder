@@ -6,6 +6,7 @@ export const IGNORED_DIR_NAMES = new Set([
   'node_modules',
   '.git',
   '.codegraph',
+  '.understand-anything',
   'dist',
   'dist-electron',
   'release',
