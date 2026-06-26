@@ -31,13 +31,10 @@ import FooterTpsBadge from './FooterTpsBadge.vue'
 import { isUnderProject, relativeToProject, type ChatFileRef } from '../../utils/chat-file-context'
 import { formatWorkshopAskAnswers } from '../../utils/workshop-ask'
 import {
-  applyProgressPayload,
   CHAT_IDLE_HINTS,
-  type AgentProgressStep,
 } from '../../utils/agent-progress'
-import { useAgentStore } from '../../stores/agentStore'
+import { useChatSessionRuns } from '../../composables/useChatSessionRuns'
 import { useStickToBottomScroll } from '../../composables/useStickToBottomScroll'
-import { detectThinkingType } from '../../utils/thinking-parser'
 import {
   isPlanBuiltContent,
   isPlanEditorPath,
@@ -92,9 +89,6 @@ import {
 } from '../../utils/chat-effort'
 
 const md = new MarkdownIt()
-const agentStore = useAgentStore()
-
-const showTpsLive = computed(() => agentProgressActive.value || loading.value)
 
 const workshopSectionRef = ref<InstanceType<typeof WorkshopChatSection> | null>(null)
 
@@ -408,7 +402,6 @@ const mentionUsers = ref<UserEntry[]>([])
 const roleAvatarUrls = ref<Record<string, string>>({})
 const { scrollEl: messagesEl, onScrollContainer, scrollToBottom: scrollMessages } =
   useStickToBottomScroll()
-const loading = ref(false)
 const modelsFile = ref<ModelsFile>({ schemaVersion: 1, activeModelId: '', models: [] })
 const attachedFiles = ref<ChatFileRef[]>([])
 const chatSessionId = computed(
@@ -424,24 +417,9 @@ const {
 } = useChatAttachedImages(chatSessionId)
 const includeContextFile = ref(false)
 const dropActive = ref(false)
-const pendingBusy = ref(false)
-const progressSteps = ref<AgentProgressStep[]>([])
-const loopGuardNotice = ref('')
-const pendingAssigneeUserId = ref('')
-type SubagentTaskView = {
-  id: string
-  description: string
-  status: 'running' | 'completed' | 'failed' | 'stopped'
-}
-const subagentTasks = ref<Map<string, SubagentTaskView>>(new Map())
-const subagentTaskList = computed(() => [...subagentTasks.value.values()])
-const streamText = ref('')
 const idleHintIdx = ref(0)
 let idleHintTimer: ReturnType<typeof setInterval> | null = null
-let progressUnsub: (() => void) | null = null
 let aiStreamUnsub: (() => void) | null = null
-const agentProgressActive = ref(false)
-const runningAgentSessionId = ref('')
 
 const chatModeId = ref<ChatModeId>(loadStoredChatMode())
 const workshopMessageCount = ref(0)
@@ -456,6 +434,55 @@ const hasSessionMessagesForModeLock = computed(() => {
   )
     return true
   return false
+})
+
+let bumpPlanForChat: (chatId: string, sessionId: string) => void = () => {}
+
+const {
+  loading,
+  pendingBusy,
+  progressSteps,
+  streamText,
+  thinkingText,
+  thinkingType,
+  loopGuardNotice,
+  subagentTaskList,
+  runningAgentSessionId,
+  agentProgressActive,
+  getRunState,
+  beginRun,
+  endRun,
+  clearRunProgress,
+  setPendingBusy,
+  isRunning,
+  clearUnread,
+  appendStreamText,
+  linkAgentSession,
+  setupProgressListener,
+  teardownProgressListener,
+} = useChatSessionRuns({
+  getActiveChatId: () => activeId.value,
+  getMessagesForChat: (chatId) => {
+    if (activeId.value === chatId && activeSession.value) return activeSession.value.messages
+    return sessionCache.value[chatId]?.messages ?? []
+  },
+  hasSessionMessagesForModeLock: () => hasSessionMessagesForModeLock.value,
+  getChatModeId: () => chatModeId.value,
+  setChatModeId: (id) => {
+    chatModeId.value = id
+    saveStoredChatMode(id)
+  },
+  onToolProgressDone: (chatId, sessionId) => bumpPlanForChat(chatId, sessionId),
+  onScroll: () => {
+    void scrollMessages()
+  },
+})
+
+const showTpsLive = computed(() => agentProgressActive.value)
+
+const pendingAssigneeUserId = computed(() => {
+  const id = activeId.value
+  return id ? getRunState(id).pendingAssigneeUserId : ''
 })
 
 const onChatModePick = (id: ChatModeId) => {
@@ -569,6 +596,81 @@ const persist = async (opts?: { skipTitleSuggest?: boolean }) => {
   syncMetaFromActive()
   emit('sessionsChanged')
   if (!opts?.skipTitleSuggest) void maybeRefreshSessionTitle()
+}
+
+const getChatSession = (chatId: string): ChatSession | null => {
+  if (activeId.value === chatId && activeSession.value) return activeSession.value
+  return sessionCache.value[chatId] ?? null
+}
+
+const persistForChat = async (chatId: string, opts?: { skipTitleSuggest?: boolean }) => {
+  if (chatId === activeId.value) {
+    await persist(opts)
+    return
+  }
+  const s = sessionCache.value[chatId]
+  if (!s || !hasProject.value) return
+  const res = await window.axecoder.saveChatSession(props.projectRoot, {
+    id: s.id,
+    title: s.title,
+    updatedAt: s.updatedAt,
+    messages: s.messages.map((m) => ({
+      role: m.role,
+      text: m.text,
+      ...(m.filePaths?.length ? { filePaths: [...m.filePaths] } : {}),
+      ...(m.imageRefs?.length
+        ? { imageRefs: JSON.parse(JSON.stringify(m.imageRefs)) }
+        : {}),
+      ...(m.imagePreviews?.length ? { imagePreviews: [...m.imagePreviews] } : {}),
+      ...(m.apiContent ? { apiContent: m.apiContent } : {}),
+      ...(m.slashInvoke ? { slashInvoke: m.slashInvoke } : {}),
+      ...(m.slashOnly ? { slashOnly: true } : {}),
+      ...(m.assistantContent !== undefined ? { assistantContent: m.assistantContent } : {}),
+      ...(m.reasoningContent ? { reasoningContent: m.reasoningContent } : {}),
+      ...(m.speakerUserId ? { speakerUserId: m.speakerUserId } : {}),
+      ...(m.roleMentionUserId ? { roleMentionUserId: m.roleMentionUserId } : {}),
+      ...(m.roleMentionCommand ? { roleMentionCommand: m.roleMentionCommand } : {}),
+    })),
+  })
+  if (res.ok) cacheSession(s)
+}
+
+const startRunUi = (
+  chatId: string,
+  opts?: { assigneeUserId?: string; agentSessionId?: string; idleHints?: boolean },
+) => {
+  beginRun(chatId)
+  const run = getRunState(chatId)
+  if (opts?.assigneeUserId) run.pendingAssigneeUserId = opts.assigneeUserId
+  if (opts?.agentSessionId) linkAgentSession(chatId, opts.agentSessionId)
+  if (!agentMode.value && opts?.idleHints !== false) startIdleHintTimer()
+}
+
+const startPendingRunUi = (
+  chatId: string,
+  agentSessionId: string,
+  assigneeUserId?: string,
+) => {
+  setPendingBusy(chatId, true)
+  const run = getRunState(chatId)
+  clearRunProgress(chatId)
+  run.pendingAssigneeUserId = assigneeUserId?.trim() ?? ''
+  linkAgentSession(chatId, agentSessionId)
+}
+
+const finishRunUi = async (chatId: string, opts?: { skipTitleSuggest?: boolean }) => {
+  stopIdleHintTimer()
+  unbindAiStream()
+  endRun(chatId, chatId !== activeId.value)
+  await persistForChat(chatId, opts)
+}
+
+const finishPendingRunUi = async (chatId: string) => {
+  setPendingBusy(chatId, false)
+  stopIdleHintTimer()
+  unbindAiStream()
+  clearRunProgress(chatId)
+  await persistForChat(chatId)
 }
 
 const reset = () => {
@@ -738,6 +840,7 @@ const selectSession = async (id: string): Promise<boolean> => {
   activeSession.value = session
   activeId.value = id
   setActiveTab(id, 'agent')
+  clearUnread(id)
   input.value = ''
   await scrollMessages(session.messages.length > 0)
   return true
@@ -976,80 +1079,9 @@ const startIdleHintTimer = () => {
   }, 2200)
 }
 
-const unbindAgentProgress = () => {
-  agentProgressActive.value = false
-  progressUnsub?.()
-  progressUnsub = null
-}
-
-const bindAgentProgress = (initialSessionId?: string, assigneeUserId?: string) => {
-  unbindAgentProgress()
-  if (assigneeUserId) setPendingAssignee(assigneeUserId)
-  progressSteps.value = []
-  streamText.value = ''
-  loopGuardNotice.value = ''
-  runningAgentSessionId.value = initialSessionId ?? ''
-  agentProgressActive.value = true
-  progressUnsub = window.axecoder.onAgentProgress((payload) => {
-    if (!agentProgressActive.value) return
-    // 过滤 sessionId：只处理属于当前 session 的进度消息
-    if (payload.sessionId && runningAgentSessionId.value && payload.sessionId !== runningAgentSessionId.value) {
-      return
-    }
-    if (payload.sessionId) runningAgentSessionId.value = payload.sessionId
-    if (payload.kind === 'delta') {
-      streamText.value += payload.delta
-    } else if (payload.kind === 'thinking_delta') {
-      // 处理思考流增量
-      agentStore.appendThinking(payload.delta)
-      agentStore.setThinkingType(detectThinkingType(agentStore.currentThinking))
-    } else if (payload.kind === 'content_delta') {
-      // 处理内容流增量
-      streamText.value += payload.delta
-    } else if (payload.kind === 'subagent') {
-      const next = new Map(subagentTasks.value)
-      next.set(payload.taskId, {
-        id: payload.taskId,
-        description: payload.description,
-        status: payload.status,
-      })
-      subagentTasks.value = next
-    } else if (payload.kind === 'loop_guard') {
-      loopGuardNotice.value = payload.text
-    } else if (payload.kind === 'chat_mode') {
-      if (canPickChatMode(chatModeId.value, payload.chatMode, hasSessionMessagesForModeLock.value)) {
-        chatModeId.value = payload.chatMode
-        saveStoredChatMode(payload.chatMode)
-      }
-    } else if (payload.kind === 'tool' && payload.status === 'done' && payload.ok) {
-      bumpPlanBuildProgress(payload.sessionId)
-      progressSteps.value = applyProgressPayload(progressSteps.value, payload)
-    } else {
-      progressSteps.value = applyProgressPayload(progressSteps.value, payload)
-    }
-    if (payload.kind !== 'thinking_delta') void scrollMessages()
-  })
-}
-
 const unbindAiStream = () => {
   aiStreamUnsub?.()
   aiStreamUnsub = null
-}
-
-const clearProgressUi = () => {
-  stopIdleHintTimer()
-  unbindAgentProgress()
-  unbindAiStream()
-  progressSteps.value = []
-  streamText.value = ''
-  subagentTasks.value = new Map()
-  runningAgentSessionId.value = ''
-  pendingAssigneeUserId.value = ''
-  agentStore.clearThinking()
-}
-
-const setPendingAssignee = (userId?: string) => {
-  pendingAssigneeUserId.value = userId?.trim() ?? ''
 }
 
 const progressAssigneeUser = computed(() => {
@@ -1120,12 +1152,16 @@ const assistantBubbleText = (msg: ChatMessage) => {
 }
 
 const pushAssistantFromAgent = (
+  chatId: string,
   res: AgentSendResult | AgentContinueResult,
   model?: ModelEntry,
 ) => {
-  if (!activeSession.value) return
+  const session = getChatSession(chatId)
+  if (!session) return
+  if (res.ok && res.status === 'pending' && res.sessionId) linkAgentSession(chatId, res.sessionId)
+  const streamFallback = getRunState(chatId).streamText
   if (!res.ok) {
-    activeSession.value.messages.push({
+    session.messages.push({
       role: 'assistant',
       text: formatAiChatRequestError(res.error, model),
     })
@@ -1133,9 +1169,9 @@ const pushAssistantFromAgent = (
   }
   const suffix = formatToolLog(res.toolLog)
   const speakerUserId = res.speakerUserId
-  const body = resolveAgentReplyBody(res, streamText.value)
+  const body = resolveAgentReplyBody(res, streamFallback)
   if (res.status === 'done') {
-    activeSession.value.messages.push({
+    session.messages.push({
       role: 'assistant',
       text: (body + suffix).trim() || '(done)',
       toolLog: res.toolLog,
@@ -1148,7 +1184,7 @@ const pushAssistantFromAgent = (
     emit('filesChanged')
     return
   }
-  activeSession.value.messages.push({
+  session.messages.push({
     role: 'assistant',
     text: (body + suffix).trim() || 'Please confirm the following changes:',
     toolLog: res.toolLog,
@@ -1198,62 +1234,58 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
 }
 
 const onConfirmPending = async (msg: ChatMessage, pendingId: string) => {
-  if (!msg.agentSessionId || pendingBusy.value) return
-  pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
+  const chatId = activeId.value
+  if (!msg.agentSessionId || !chatId || isRunning(chatId)) return
+  startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentConfirmWrite(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
-    activeSession.value!.updatedAt = Date.now()
-    await persist()
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
   } finally {
-    pendingBusy.value = false
-    clearProgressUi()
+    await finishPendingRunUi(chatId)
   }
 }
 
 const onRejectPending = async (msg: ChatMessage, pendingId: string) => {
-  if (!msg.agentSessionId || pendingBusy.value) return
-  pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
+  const chatId = activeId.value
+  if (!msg.agentSessionId || !chatId || isRunning(chatId)) return
+  startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentRejectWrite(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
-    activeSession.value!.updatedAt = Date.now()
-    await persist()
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
   } finally {
-    pendingBusy.value = false
-    clearProgressUi()
+    await finishPendingRunUi(chatId)
   }
 }
 
 const onConfirmBashPending = async (msg: ChatMessage, pendingId: string) => {
-  if (!msg.agentSessionId || pendingBusy.value) return
-  pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
+  const chatId = activeId.value
+  if (!msg.agentSessionId || !chatId || isRunning(chatId)) return
+  startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentConfirmBash(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
-    activeSession.value!.updatedAt = Date.now()
-    await persist()
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
   } finally {
-    pendingBusy.value = false
-    clearProgressUi()
+    await finishPendingRunUi(chatId)
   }
 }
 
 const onRejectBashPending = async (msg: ChatMessage, pendingId: string) => {
-  if (!msg.agentSessionId || pendingBusy.value) return
-  pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
+  const chatId = activeId.value
+  if (!msg.agentSessionId || !chatId || isRunning(chatId)) return
+  startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentRejectBash(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
-    activeSession.value!.updatedAt = Date.now()
-    await persist()
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
   } finally {
-    pendingBusy.value = false
-    clearProgressUi()
+    await finishPendingRunUi(chatId)
   }
 }
 
@@ -1262,13 +1294,13 @@ const onAnswerPending = async (
   pendingId: string,
   answers: Record<string, string | string[]>,
 ) => {
-  if (!msg.agentSessionId || pendingBusy.value) return
+  const chatId = activeId.value
+  if (!msg.agentSessionId || !chatId || isRunning(chatId)) return
   if (msg.pendingAsks?.length) {
     const next = msg.pendingAsks.filter((p) => p.id !== pendingId)
     msg.pendingAsks = next.length ? next : undefined
   }
-  pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
+  startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentAnswerQuestions(
       msg.agentSessionId,
@@ -1276,11 +1308,10 @@ const onAnswerPending = async (
       answers,
     )
     applyContinueToMessage(msg, res)
-    activeSession.value!.updatedAt = Date.now()
-    await persist()
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
   } finally {
-    pendingBusy.value = false
-    clearProgressUi()
+    await finishPendingRunUi(chatId)
   }
 }
 
@@ -1298,8 +1329,10 @@ const ensurePlanBuildTrack = (msg: ChatMessage, pp: AgentPendingPlan) => {
   msg.planBuildTracks.push(track)
 }
 
-const bumpPlanBuildProgress = (sessionId: string) => {
-  for (const msg of activeSession.value?.messages ?? []) {
+bumpPlanForChat = (chatId: string, sessionId: string) => {
+  const session = getChatSession(chatId)
+  if (!session) return
+  for (const msg of session.messages) {
     if (msg.agentSessionId && msg.agentSessionId !== sessionId) continue
     for (const track of msg.planBuildTracks ?? []) {
       if (!track.building) continue
@@ -1384,7 +1417,8 @@ const markBuiltPlanFile = async (relPath: string) => {
 }
 
 const onBuildPlanPending = async (msg: ChatMessage, pendingId: string) => {
-  if (!msg.agentSessionId || pendingBusy.value) return
+  const chatId = activeId.value
+  if (!msg.agentSessionId || !chatId || isRunning(chatId)) return
   const pp = msg.pendingPlans?.find((p) => p.id === pendingId)
   if (!pp) return
   const root = props.projectRoot?.trim()
@@ -1397,8 +1431,7 @@ const onBuildPlanPending = async (msg: ChatMessage, pendingId: string) => {
     }
   }
   ensurePlanBuildTrack(msg, pp)
-  pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
+  startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
   try {
     if (chatModeId.value !== 'agent') {
       chatModeId.value = 'agent'
@@ -1410,32 +1443,31 @@ const onBuildPlanPending = async (msg: ChatMessage, pendingId: string) => {
       await markBuiltPlanFile(pp.filePath)
     }
     applyContinueToMessage(msg, res)
-    activeSession.value!.updatedAt = Date.now()
-    await persist()
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
   } finally {
-    pendingBusy.value = false
-    clearProgressUi()
+    await finishPendingRunUi(chatId)
   }
 }
 
 const onDismissPlanPending = async (msg: ChatMessage, pendingId: string) => {
-  if (!msg.agentSessionId || pendingBusy.value) return
-  pendingBusy.value = true
-  bindAgentProgress(msg.agentSessionId, msg.speakerUserId)
+  const chatId = activeId.value
+  if (!msg.agentSessionId || !chatId || isRunning(chatId)) return
+  startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentDismissPlan(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
-    activeSession.value!.updatedAt = Date.now()
-    await persist()
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
   } finally {
-    pendingBusy.value = false
-    clearProgressUi()
+    await finishPendingRunUi(chatId)
   }
 }
 
 const buildPlanFromPath = async (absolutePlanPath: string): Promise<boolean> => {
   const root = props.projectRoot?.trim()
-  if (!root || loading.value || pendingBusy.value) return false
+  const chatId = activeId.value
+  if (!root || !chatId || isRunning(chatId)) return false
   try {
     const { content } = await window.axecoder.readFile(absolutePlanPath)
     if (isPlanBuiltContent(content)) return false
@@ -1462,13 +1494,13 @@ const buildPlanFromPath = async (absolutePlanPath: string): Promise<boolean> => 
   }
   session.messages.push({ role: 'user', text: `Build plan: ${rel}`, apiContent: composed.text })
   session.updatedAt = Date.now()
-  loading.value = true
-  bindAgentProgress()
+  cacheSession(session)
+  startRunUi(chatId)
   try {
-    await persist()
+    await persistForChat(chatId)
     const apiMessages = await buildApiMessages(session.messages)
     const res = await sendAgent(props.projectRoot, modelId, apiMessages)
-    pushAssistantFromAgent(res, model)
+    pushAssistantFromAgent(chatId, res, model)
     session.updatedAt = Date.now()
     if (res.ok && res.status === 'done') {
       await markPlanFileBuilt(absolutePlanPath)
@@ -1483,9 +1515,7 @@ const buildPlanFromPath = async (absolutePlanPath: string): Promise<boolean> => 
     })
     return false
   } finally {
-    loading.value = false
-    clearProgressUi()
-    await persist()
+    await finishRunUi(chatId)
   }
 }
 
@@ -1556,10 +1586,12 @@ const applyContinueAcrossSession = (sessionId: string, anchor: ChatMessage, res:
 }
 
 const onConfirmAllPending = async () => {
+  const chatId = activeId.value
   const { sessionIds, msgBySession } = sessionPendingState.value
-  if (!sessionIds.length || pendingBusy.value) return
-  pendingBusy.value = true
-  bindAgentProgress(sessionIds[0])
+  if (!chatId || !sessionIds.length || isRunning(chatId)) return
+  const firstMsg = msgBySession.get(sessionIds[0]!)
+  if (!firstMsg?.agentSessionId) return
+  startPendingRunUi(chatId, firstMsg.agentSessionId, firstMsg.speakerUserId)
   try {
     for (const sessionId of sessionIds) {
       const msg = msgBySession.get(sessionId)
@@ -1568,19 +1600,20 @@ const onConfirmAllPending = async () => {
       applyContinueAcrossSession(sessionId, msg, res)
       if (!res.ok) break
     }
-    activeSession.value!.updatedAt = Date.now()
-    await persist()
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
   } finally {
-    pendingBusy.value = false
-    clearProgressUi()
+    await finishPendingRunUi(chatId)
   }
 }
 
 const onRejectAllPending = async () => {
+  const chatId = activeId.value
   const { sessionIds, msgBySession } = sessionPendingState.value
-  if (!sessionIds.length || pendingBusy.value) return
-  pendingBusy.value = true
-  bindAgentProgress(sessionIds[0])
+  if (!chatId || !sessionIds.length || isRunning(chatId)) return
+  const firstMsg = msgBySession.get(sessionIds[0]!)
+  if (!firstMsg?.agentSessionId) return
+  startPendingRunUi(chatId, firstMsg.agentSessionId, firstMsg.speakerUserId)
   try {
     for (const sessionId of sessionIds) {
       const msg = msgBySession.get(sessionId)
@@ -1589,11 +1622,10 @@ const onRejectAllPending = async () => {
       applyContinueAcrossSession(sessionId, msg, res)
       if (!res.ok) break
     }
-    activeSession.value!.updatedAt = Date.now()
-    await persist()
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
   } finally {
-    pendingBusy.value = false
-    clearProgressUi()
+    await finishPendingRunUi(chatId)
   }
 }
 
@@ -1608,15 +1640,22 @@ const onAgentAutoPlanToggle = (on: boolean) => {
   emit('update:agentAutoPlanOn', on)
 }
 
-const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiChatMessage[]) => {
+const runPlainChat = async (
+  chatId: string,
+  model: ModelEntry,
+  modelId: string,
+  apiMessages: AiChatMessage[],
+) => {
+  const session = getChatSession(chatId)
+  if (!session) return
   const useSse = providerSupportsSseStream(model.provider)
   let streamId = ''
   if (useSse) {
-    streamText.value = ''
+    clearRunProgress(chatId)
     streamId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     aiStreamUnsub = window.axecoder.onAiStream((p) => {
       if (p.streamId !== streamId) return
-      streamText.value += p.delta
+      appendStreamText(chatId, p.delta)
       void scrollMessages()
     })
   }
@@ -1628,14 +1667,14 @@ const runPlainChat = async (model: ModelEntry, modelId: string, apiMessages: AiC
   )
   if (res.ok) {
     const replyText = res.text.trim() || '(Model returned no content; check model ID or API settings)'
-    activeSession.value!.messages.push({
+    session.messages.push({
       role: 'assistant',
       text: replyText,
       assistantContent: res.content,
       ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
     })
   } else {
-    activeSession.value!.messages.push({
+    session.messages.push({
       role: 'assistant',
       text: formatAiChatRequestError(res.error, model),
     })
@@ -1777,9 +1816,11 @@ const send = async () => {
   if (!(await ensureChatSession())) return
   const session = activeSession.value
   if (!session) return
+  const chatId = session.id
+  cacheSession(session)
 
   if (text.startsWith('!')) {
-    if (loading.value || pendingBusy.value) {
+    if (isRunning(chatId)) {
       session.messages.push({
         role: 'assistant',
         text: 'Wait for the current reply to finish before running shell commands.',
@@ -1794,7 +1835,7 @@ const send = async () => {
     await nextTick()
     resizeInput()
     session.messages.push({ role: 'user', text })
-    loading.value = true
+    beginRun(chatId)
     try {
       const res = await window.axecoder.agentRunUserShell(props.projectRoot, cmd)
       session.messages.push({
@@ -1804,15 +1845,15 @@ const send = async () => {
           : `Command failed: ${res.error ?? 'unknown'}`,
       })
       session.updatedAt = Date.now()
-      await persist()
+      await persistForChat(chatId)
     } finally {
-      loading.value = false
+      endRun(chatId, chatId !== activeId.value)
     }
     return
   }
 
   if (text.startsWith('/')) {
-    if (loading.value || pendingBusy.value || hasPendingAgentInteraction()) {
+    if (isRunning(chatId) || hasPendingAgentInteraction()) {
       session.messages.push({
         role: 'assistant',
         text: 'Wait for the current reply or pending Agent confirmations before slash commands.',
@@ -1870,11 +1911,10 @@ const send = async () => {
         session.title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
       }
       session.updatedAt = Date.now()
-      loading.value = true
-      if (agentMode.value) bindAgentProgress()
-      else startIdleHintTimer()
+      if (agentMode.value) startRunUi(chatId)
+      else startRunUi(chatId, { idleHints: true })
       try {
-        await persist()
+        await persistForChat(chatId)
         const apiMessages = await buildApiMessages(session.messages)
         if (agentMode.value) {
           const res = await sendAgent(
@@ -1884,9 +1924,9 @@ const send = async () => {
             undefined,
             slashResult.roleWorkflowInvoke === true,
           )
-          pushAssistantFromAgent(res, model)
+          pushAssistantFromAgent(chatId, res, model)
         } else {
-          await runPlainChat(model, modelId, apiMessages)
+          await runPlainChat(chatId, model, modelId, apiMessages)
         }
         session.updatedAt = Date.now()
       } catch (e) {
@@ -1897,15 +1937,13 @@ const send = async () => {
         })
         session.updatedAt = Date.now()
       } finally {
-        loading.value = false
-        clearProgressUi()
-        await persist()
+        await finishRunUi(chatId)
       }
     }
     return
   }
 
-  if (loading.value) return
+  if (isRunning(chatId)) return
   const mentionValidation = validateRoleMentionText(text, mentionUsers.value)
   if (!mentionValidation.ok) {
     session.messages.push({
@@ -1958,9 +1996,11 @@ const send = async () => {
     }
   }
 
-  loading.value = true
-  if (agentMode.value) bindAgentProgress(undefined, roleMentionUserId ?? mention?.userId)
-  else startIdleHintTimer()
+  if (agentMode.value) {
+    startRunUi(chatId, { assigneeUserId: roleMentionUserId ?? mention?.userId })
+  } else {
+    startRunUi(chatId, { idleHints: true })
+  }
   try {
     const plainImageRefs = imageRefs.length
       ? (JSON.parse(JSON.stringify(imageRefs)) as import('../../types/axecoder').ChatImageRef[])
@@ -1977,19 +2017,15 @@ const send = async () => {
       ...(roleMentionCommand ? { roleMentionCommand } : {}),
       ...(roleMentionCommand ? { slashOnly: true } : {}),
     }
-    activeSession.value!.messages.push(userMsg)
+    session.messages.push(userMsg)
     void scrollMessages(true)
     attachedFiles.value = []
     clearAttachedImages()
     includeContextFile.value = false
-    if (
-      activeSession.value!.title === 'New Agent' ||
-      activeSession.value!.title === 'New chat'
-    ) {
-      activeSession.value!.title =
-        displayText.slice(0, 24) + (displayText.length > 24 ? '…' : '')
+    if (session.title === 'New Agent' || session.title === 'New chat') {
+      session.title = displayText.slice(0, 24) + (displayText.length > 24 ? '…' : '')
     }
-    activeSession.value!.updatedAt = Date.now()
+    session.updatedAt = Date.now()
 
     const baseApiText =
       roleMentionCommand || (apiText && apiText !== displayText) ? apiText : apiText || displayText
@@ -1999,8 +2035,8 @@ const send = async () => {
       filePaths,
       mentionUsers.value,
     )
-    await persist()
-    const apiMessages = await buildApiMessages(activeSession.value!.messages)
+    await persistForChat(chatId)
+    const apiMessages = await buildApiMessages(session.messages)
     if (agentMode.value) {
       const res = await sendAgent(
         props.projectRoot,
@@ -2009,22 +2045,20 @@ const send = async () => {
         roleMentionUserId ?? mention?.userId,
         !!roleMentionCommand,
       )
-      pushAssistantFromAgent(res, model)
+      pushAssistantFromAgent(chatId, res, model)
     } else {
-      await runPlainChat(model, modelId, apiMessages)
+      await runPlainChat(chatId, model, modelId, apiMessages)
     }
-    activeSession.value!.updatedAt = Date.now()
+    session.updatedAt = Date.now()
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Request error'
-    activeSession.value?.messages.push({
+    session.messages.push({
       role: 'assistant',
       text: formatAiChatRequestError(msg, model),
     })
-    if (activeSession.value) activeSession.value.updatedAt = Date.now()
+    session.updatedAt = Date.now()
   } finally {
-    loading.value = false
-    clearProgressUi()
-    await persist()
+    await finishRunUi(chatId)
   }
 }
 
@@ -2061,11 +2095,13 @@ const copyLastReply = async () => {
 }
 
 const regenerateLastReply = async () => {
-  if (!hasProject.value || !activeSession.value || loading.value) return
+  const session = activeSession.value
+  const chatId = activeId.value
+  if (!hasProject.value || !session || !chatId || isRunning(chatId)) return
   const modelId = modelsFile.value.activeModelId
   const model = activeModel.value
   if (!modelId || !model) return
-  const msgs = activeSession.value.messages
+  const msgs = session.messages
   let assistIdx = -1
   for (let i = msgs.length - 1; i >= 0; i--) {
     if (msgs[i].role === 'assistant') {
@@ -2083,9 +2119,9 @@ const regenerateLastReply = async () => {
   }
   if (userIdx < 0) return
   msgs.splice(assistIdx, 1)
-  loading.value = true
-  if (agentMode.value) bindAgentProgress()
-  else startIdleHintTimer()
+  cacheSession(session)
+  if (agentMode.value) startRunUi(chatId)
+  else startRunUi(chatId, { idleHints: true })
   try {
     const apiMessages = await buildApiMessages(msgs.slice(0, userIdx + 1))
     const userMsg = msgs[userIdx]
@@ -2096,22 +2132,20 @@ const regenerateLastReply = async () => {
         apiMessages,
         userMsg ? assigneeFromUserMessage(userMsg) : undefined,
       )
-      pushAssistantFromAgent(res, model)
+      pushAssistantFromAgent(chatId, res, model)
     } else {
-      await runPlainChat(model, modelId, apiMessages)
+      await runPlainChat(chatId, model, modelId, apiMessages)
     }
-    activeSession.value.updatedAt = Date.now()
+    session.updatedAt = Date.now()
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Request error'
-    activeSession.value.messages.push({
+    session.messages.push({
       role: 'assistant',
       text: formatAiChatRequestError(msg, model),
     })
-    activeSession.value.updatedAt = Date.now()
+    session.updatedAt = Date.now()
   } finally {
-    loading.value = false
-    clearProgressUi()
-    await persist()
+    await finishRunUi(chatId)
   }
 }
 
@@ -2267,6 +2301,7 @@ watch(workshopMessageCount, (n, prev) => {
 })
 
 onMounted(async () => {
+  setupProgressListener()
   void loadModels()
   await load()
   void loadWsMetas()
@@ -2290,7 +2325,9 @@ watch(
 )
 
 onUnmounted(() => {
-  clearProgressUi()
+  teardownProgressListener()
+  stopIdleHintTimer()
+  unbindAiStream()
 })
 
 const showProgressBubble = computed(() => loading.value || pendingBusy.value)
@@ -2305,7 +2342,7 @@ const isEmptyChat = computed(
     !!activeSession.value &&
     messages.value.length === 0 &&
     !streamText.value.trim() &&
-    !agentStore.currentThinking.trim() &&
+    !thinkingText.value.trim() &&
     !progressSteps.value.length &&
     !loading.value &&
     !pendingBusy.value,
@@ -2651,8 +2688,8 @@ defineExpose({
             :subagent-tasks="subagentTaskList"
             :agent-mode="agentMode"
             :fallback-headline="progressHeadline"
-            :thinking-text="agentStore.currentThinking"
-            :thinking-type="agentStore.thinkingType"
+            :thinking-text="thinkingText"
+            :thinking-type="thinkingType"
             :loop-guard-notice="loopGuardNotice"
           />
         </div>

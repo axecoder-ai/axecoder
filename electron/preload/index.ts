@@ -593,6 +593,10 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('agent:initAgentsMd', cloneForIpc(projectRoot)) as Promise<
       { ok: true; path: string; created: boolean } | { ok: false; error: string }
     >,
+  agentDesignSlash: (projectRoot: string, args: string) =>
+    ipcRenderer.invoke('agent:designSlash', cloneForIpc(projectRoot), cloneForIpc(args)) as Promise<
+      { ok: true; message: string } | { ok: false; error: string }
+    >,
   agentConfirmWrite: (sessionId: string, pendingId: string) =>
     ipcRenderer.invoke('agent:confirmWrite', sessionId, pendingId) as Promise<
       import('../../src/types/axecoder').AgentContinueResult
@@ -669,6 +673,8 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('terminal:resize', cols, rows) as Promise<{ ok: boolean }>,
   terminalInterrupt: () => ipcRenderer.invoke('terminal:interrupt') as Promise<{ ok: boolean }>,
   terminalStop: () => ipcRenderer.invoke('terminal:stop') as Promise<{ ok: true }>,
+  terminalSetFocused: (focused: boolean) =>
+    ipcRenderer.invoke('terminal:setFocused', focused) as Promise<{ ok: true }>,
   onTerminalData: (callback: (text: string) => void) => {
     const listener = (_: unknown, text: string) => callback(text)
     ipcRenderer.on('terminal:data', listener)

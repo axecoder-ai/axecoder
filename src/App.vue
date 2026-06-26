@@ -812,11 +812,11 @@ onMounted(async () => {
   })
   await wb.loadSettings()
   const applyGlobalTheme = (theme: AppTheme) => {
+    settings.value = { ...settings.value, theme }
     if (workbenchWindowRole.value === 'metrics') {
       const effective = applyMetricsWindowTheme(theme)
       void window.axecoder.setWindowBackgroundTheme(effective)
     } else {
-      settings.value = { ...settings.value, theme }
       applyTheme(theme)
     }
   }

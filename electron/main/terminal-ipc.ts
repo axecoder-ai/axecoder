@@ -1,6 +1,7 @@
 import { ipcMain, type BrowserWindow } from 'electron'
 import * as pty from 'node-pty'
 import fs from 'node:fs'
+import { applyTerminalFocusShortcuts } from '../../shared/terminal-readline-keys'
 
 let ptyProc: pty.IPty | null = null
 
@@ -82,6 +83,11 @@ export const registerTerminalIpc = (getWin: () => BrowserWindow | null) => {
 
   ipcMain.handle('terminal:stop', async () => {
     killTerminalPty()
+    return { ok: true as const }
+  })
+
+  ipcMain.handle('terminal:setFocused', async (_, focused: boolean) => {
+    applyTerminalFocusShortcuts(getWin()?.webContents ?? null, focused)
     return { ok: true as const }
   })
 }

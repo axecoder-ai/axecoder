@@ -4,7 +4,12 @@ import { t } from '../i18n'
 import { modelSupportsAgentTools, runAgentLoopUntilDoneOrPending } from '../agent/agent-loop'
 import type { AgentLoopMessage } from '../agent/agent-types'
 import { buildAgentSystemPrompt } from '../agent/agent-system-prompt'
-import { chatModeSystemAddon, applyChatModeToNewSession } from '../agent/chat-mode'
+import {
+  chatModeSystemAddon,
+  applyChatModeToNewSession,
+  DRAW_IO_TOOL_NAMES,
+  filterToolsForDrawIo,
+} from '../agent/chat-mode'
 import { ensureScratchpadDir } from '../agent/agent-scratchpad'
 import { refreshCustomOutputStylesCache } from '../agent/agent-output-styles-custom'
 import { createLoopGuardState } from '../agent/agent-loop-guard'
@@ -14,8 +19,6 @@ import {
   type StoredAgentSession,
 } from '../agent/agent-session-store'
 import { buildFullAgentTools } from '../agent/agent-tool-registry'
-import { getSessionActiveTools } from '../agent/agent-ext-executor'
-import type { AgentToolName } from '../agent/agent-types'
 import type { AgentContext } from '../agent/tool-executor'
 import { buildWorkshopStreamId } from '../workshop/workshop-stream'
 import type {
@@ -26,12 +29,6 @@ import { saveWorkshopSession } from '../workshop/workshop-store'
 import { DRAW_IO_SYSTEM_ADDON } from './draw-io-prompt'
 import { bindDrawIoWorkshopSession } from './draw-io-session-cache'
 import { getWorkshopDiagramXml } from './draw-io-store'
-
-const DRAW_IO_TOOL_NAMES = new Set<AgentToolName>([
-  'DisplayDiagram',
-  'EditDiagram',
-  'GetDiagram',
-])
 
 export type SendDrawIoWorkshopOptions = {
   displayText?: string
@@ -70,11 +67,9 @@ export const sendDrawIoWorkshopMessage = async (
   onProgress('manager', 'thinking')
   const sid = buildWorkshopStreamId(session.id, 'drawio')
   const cfg = await getConfig()
-  const revealedToolNames = new Set<AgentToolName>(['DisplayDiagram', 'EditDiagram', 'GetDiagram'])
+  const revealedToolNames = new Set(DRAW_IO_TOOL_NAMES)
   const allTools = buildFullAgentTools()
-  const activeTools = getSessionActiveTools(allTools, revealedToolNames).filter((t) =>
-    DRAW_IO_TOOL_NAMES.has(t.name),
-  )
+  const activeTools = filterToolsForDrawIo(allTools)
   const scratchpadDir = await ensureScratchpadDir(sid)
   const ctx: AgentContext = {
     projectRoot: root,

@@ -1,6 +1,6 @@
 {
   "name": "axecoder",
-  "version": "0.9.1",
+  "version": "0.9.3",
   "main": "dist-electron/main/index.js",
   "description": "代码编写桌面 IDE — Electron + Vue 3 + Monaco",
   "author": "崔老六 <cuiyunfeng@huazhengit.com>",
@@ -22,7 +22,8 @@
   "scripts": {
     "dev": "npm run codegraph:build && node scripts/patch-electron-plist.mjs && vite",
     "icon:gen": "node scripts/gen-icon.mjs",
-    "build": "npm run codegraph:build && vue-tsc --noEmit && vite build && electron-builder",
+    "build": "npm run codegraph:build && vue-tsc --noEmit && vite build && node scripts/electron-builder.mjs",
+    "build:publish": "npm run codegraph:build && vue-tsc --noEmit && vite build && node scripts/electron-builder.mjs --publish",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

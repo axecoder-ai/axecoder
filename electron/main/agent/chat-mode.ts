@@ -1,4 +1,4 @@
-import type { AgentToolDef } from './agent-types'
+import type { AgentToolDef, AgentToolName } from './agent-types'
 import { filterToolsForSubagent, getSessionActiveTools } from './agent-ext-executor'
 import { buildFullAgentTools } from './agent-tool-registry'
 import type { StoredAgentSession } from './agent-session-store'
@@ -69,7 +69,7 @@ export const chatModeSystemAddon = (mode: ChatModeId): string => {
     return '\n\n<chat-mode>Software Company: MetaGPT SOP (PRD → Design → Tasks → Code → QA) with dedicated roles. Each role runs one continuous Agent session (full tools, same loop as Agent mode). Deliver structured artifacts to docs/deliverables/{slug}/_artifacts/. Task sub-agents allowed when helpful.</chat-mode>'
   }
   if (mode === 'draw-io') {
-    return '\n\n<chat-mode>Draw.IO: AI diagram editing in the Workshop panel with an embedded draw.io canvas. Use DisplayDiagram, EditDiagram, and GetDiagram tools only. Do not use Task/Agent/Coordinator or file mutation tools here.</chat-mode>'
+    return '\n\n<chat-mode>Draw.IO: AI diagram editing in the Workshop panel with an embedded draw.io canvas. Use DisplayDiagram, EditDiagram, and GetDiagram for diagram changes. You may use Read/Grep/Glob/CodeGraph tools to inspect the codebase and label layers with accurate file paths and symbols. Do not use Task/Agent/Coordinator or file mutation tools here.</chat-mode>'
   }
   return ''
 }
@@ -90,6 +90,26 @@ export const resolveSwitchModeTarget = (raw: string): ChatModeId | null => {
   return null
 }
 
+const DRAW_IO_DIAGRAM_TOOLS = ['DisplayDiagram', 'EditDiagram', 'GetDiagram'] as const
+const DRAW_IO_READ_TOOLS = [
+  'Read',
+  'Grep',
+  'Glob',
+  'ReadLints',
+  'CodeGraphExplore',
+  'CodeGraphSearch',
+  'CodeGraphNode',
+  'LSP',
+] as const
+
+export const DRAW_IO_TOOL_NAMES = new Set<AgentToolName>([
+  ...DRAW_IO_DIAGRAM_TOOLS,
+  ...DRAW_IO_READ_TOOLS,
+])
+
+export const filterToolsForDrawIo = (tools: readonly AgentToolDef[]) =>
+  tools.filter((t) => DRAW_IO_TOOL_NAMES.has(t.name))
+
 const applyChatModeEffects = (session: StoredAgentSession, mode: ChatModeId) => {
   const allTools = buildFullAgentTools()
   if (mode === 'plan' || mode === 'planning' || mode === 'planning-only') {
@@ -106,8 +126,7 @@ const applyChatModeEffects = (session: StoredAgentSession, mode: ChatModeId) => 
   if (mode === 'multi-agent' || mode === 'software-company' || mode === 'draw-io') {
     session.activeTools = getSessionActiveTools(allTools, session.revealedToolNames)
     if (mode === 'draw-io') {
-      const allowed = new Set(['DisplayDiagram', 'EditDiagram', 'GetDiagram'])
-      session.activeTools = session.activeTools.filter((t) => allowed.has(t.name))
+      session.activeTools = filterToolsForDrawIo(allTools)
     }
     return
   }

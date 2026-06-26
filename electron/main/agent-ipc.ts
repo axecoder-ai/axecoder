@@ -39,6 +39,7 @@ import {
   readCustomCommandContent,
 } from './agent/agent-custom-commands'
 import { listBuiltinCommands, loadBuiltinCommand } from './agent/agent-builtin-commands'
+import { runDesignSlash } from './design/design-slash'
 import { listBuiltinSkills, loadBuiltinSkill } from './agent/agent-builtin-skills'
 import { discoverSkills, findSkillByName, readSkillContent } from './agent/agent-skills'
 import {
@@ -401,6 +402,10 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
       await fs.writeFile(filePath, AGENTS_MD_TEMPLATE, 'utf-8')
       return { ok: true as const, path: filePath, created: true }
     }
+  })
+
+  ipcMain.handle('agent:designSlash', async (_, projectRoot: string, args: string) => {
+    return runDesignSlash(typeof projectRoot === 'string' ? projectRoot : '', typeof args === 'string' ? args : '')
   })
 
   ipcMain.handle(

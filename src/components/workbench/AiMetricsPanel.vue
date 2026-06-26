@@ -8,12 +8,7 @@ import type {
   AiMetricsSource,
   AppTheme,
 } from '../../types/axecoder'
-import {
-  applyMetricsWindowTheme,
-  getMetricsWindowThemeMode,
-  setMetricsWindowThemeMode,
-  type MetricsWindowThemeMode,
-} from '../../utils/metrics-window-theme'
+import { applyMetricsWindowTheme } from '../../utils/metrics-window-theme'
 
 const props = defineProps<{
   expanded?: boolean
@@ -33,7 +28,6 @@ const filterModelId = ref('')
 const filterSource = ref<AiMetricsSource | ''>('')
 const filterProvider = ref('')
 const filterTimeRange = ref<'session' | '1h'>('session')
-const themeMode = ref<MetricsWindowThemeMode>(getMetricsWindowThemeMode())
 const chartTtft = ref<HTMLCanvasElement | null>(null)
 const chartTps = ref<HTMLCanvasElement | null>(null)
 const chartErr = ref<HTMLCanvasElement | null>(null)
@@ -141,6 +135,12 @@ const chartUiColors = () => {
     muted: s.getPropertyValue('--wc-text-muted').trim() || '#969696',
     text: s.getPropertyValue('--wc-text').trim() || '#cccccc',
     grid: s.getPropertyValue('--wc-muted-border').trim() || 'rgba(128,128,128,0.2)',
+    accent: s.getPropertyValue('--wc-accent').trim() || '#3794ff',
+    success: s.getPropertyValue('--wc-metrics-success').trim() || '#7ee787',
+    danger: s.getPropertyValue('--wc-metrics-danger').trim() || '#ff7b72',
+    warn: s.getPropertyValue('--wc-metrics-warn').trim() || '#cca700',
+    hunk: s.getPropertyValue('--wc-diff-hunk-fg').trim() || '#3794ff',
+    toolCall: s.getPropertyValue('--wc-metrics-tool-call').trim() || '#dcdcaa',
   }
 }
 
@@ -203,14 +203,14 @@ const drawLineChart = (
 
   if (sloThreshold && sloThreshold > 0 && sloThreshold <= maxV) {
     const sy = pad.t + plotH - ((sloThreshold - minV) / range) * plotH
-    ctx.strokeStyle = '#ef4444'
+    ctx.strokeStyle = ui.danger
     ctx.setLineDash([5, 4])
     ctx.beginPath()
     ctx.moveTo(pad.l, sy)
     ctx.lineTo(pad.l + plotW, sy)
     ctx.stroke()
     ctx.setLineDash([])
-    ctx.fillStyle = '#ef4444'
+    ctx.fillStyle = ui.danger
     ctx.font = '9px sans-serif'
     ctx.fillText(`${t('metrics.sloLine')} ${sloThreshold}ms`, pad.l + 2, sy - 3)
   }
@@ -244,7 +244,7 @@ const drawLineChart = (
         const y = pad.t + plotH - ((v - minV) / range) * plotH
         ctx.beginPath()
         ctx.arc(x, y, large ? 4 : 3, 0, Math.PI * 2)
-        ctx.fillStyle = '#ef4444'
+        ctx.fillStyle = ui.danger
         ctx.fill()
       })
     }
@@ -316,12 +316,12 @@ const drawErrorRatePie = (
   }
 
   if (errPct >= 100) {
-    drawWedge(startA, 0, '#ef4444')
+    drawWedge(startA, 0, ui.danger)
   } else if (errPct <= 0) {
-    drawWedge(startA, 0, '#22c55e')
+    drawWedge(startA, 0, ui.success)
   } else {
-    drawWedge(startA + errSweep, 0, '#22c55e')
-    drawWedge(startA, startA + errSweep, '#ef4444')
+    drawWedge(startA + errSweep, 0, ui.success)
+    drawWedge(startA, startA + errSweep, ui.danger)
   }
 
   ctx.strokeStyle = ui.grid
@@ -341,8 +341,8 @@ const drawErrorRatePie = (
   ctx.fillText(t('metrics.errorRate'), cx, labelY + (large ? 16 : 14))
 
   const items = [
-    { color: '#ef4444', label: t('metrics.errorRate'), pct: errPct },
-    { color: '#22c55e', label: t('metrics.successRate'), pct: okPct },
+    { color: ui.danger, label: t('metrics.errorRate'), pct: errPct },
+    { color: ui.success, label: t('metrics.successRate'), pct: okPct },
   ]
   ctx.font = `${large ? 11 : 10}px sans-serif`
   ctx.textAlign = 'center'
@@ -412,9 +412,9 @@ const drawTpsGauge = (
     ctx.closePath()
     ctx.fill()
   }
-  fillGaugeZone(0, 60, '#22c55e')
-  fillGaugeZone(60, 90, '#eab308')
-  fillGaugeZone(90, 120, '#ef4444')
+  fillGaugeZone(0, 60, ui.success)
+  fillGaugeZone(60, 90, ui.warn)
+  fillGaugeZone(90, 120, ui.danger)
   ctx.strokeStyle = 'rgba(0,0,0,0.25)'
   ctx.lineWidth = 1
   ctx.beginPath()
@@ -450,7 +450,7 @@ const drawTpsGauge = (
   const needleLen = r - (large ? 20 : 16)
   const nx = cx + Math.cos(needleA) * needleLen
   const ny = cy + Math.sin(needleA) * needleLen
-  const needleColor = labelClamped < 60 ? '#22c55e' : labelClamped < 90 ? '#eab308' : '#ef4444'
+  const needleColor = labelClamped < 60 ? ui.success : labelClamped < 90 ? ui.warn : ui.danger
   ctx.strokeStyle = needleColor
   ctx.lineWidth = large ? 3 : 2.5
   ctx.lineCap = 'round'
@@ -530,8 +530,8 @@ const redrawCharts = () => {
   drawLineChart(
     chartTtft.value,
     [
-      { label: 'P50', color: '#38bdf8', values: pts.map((p) => p.ttftP50) },
-      { label: 'P95', color: '#f59e0b', values: pts.map((p) => p.ttftP95), markSlo: true },
+      { label: 'P50', color: ui.accent, values: pts.map((p) => p.ttftP50) },
+      { label: 'P95', color: ui.toolCall, values: pts.map((p) => p.ttftP95), markSlo: true },
     ],
     hasActivity,
     large,
@@ -541,8 +541,8 @@ const redrawCharts = () => {
   drawLineChart(
     chartTps.value,
     [
-      { label: 'TPS', color: '#22c55e', values: pts.map((p) => p.tps) },
-      { label: 'QPS', color: '#a78bfa', values: pts.map((p) => p.qps) },
+      { label: 'TPS', color: ui.success, values: pts.map((p) => p.tps) },
+      { label: 'QPS', color: ui.hunk, values: pts.map((p) => p.qps) },
     ],
     hasActivity,
     large,
@@ -557,7 +557,7 @@ const redrawCharts = () => {
   )
   drawLineChart(
     chartE2e.value,
-    [{ label: 'E2E P95', color: '#8b5cf6', values: pts.map((p) => p.e2eP95) }],
+    [{ label: 'E2E P95', color: ui.hunk, values: pts.map((p) => p.e2eP95) }],
     hasActivity,
     large,
     ui,
@@ -614,17 +614,9 @@ const syncDetachedTheme = () => {
   void nextTick().then(redrawCharts)
 }
 
-watch(themeMode, (mode) => {
-  setMetricsWindowThemeMode(mode)
-  syncDetachedTheme()
+watch(() => props.globalTheme, () => {
+  if (props.detached) syncDetachedTheme()
 })
-
-watch(
-  () => props.globalTheme,
-  () => {
-    if (props.detached && themeMode.value === 'follow') syncDetachedTheme()
-  },
-)
 
 watch([filterModelId, filterSource, filterProvider, filterTimeRange], () => {
   void loadSnapshot()
@@ -705,15 +697,6 @@ onUnmounted(() => {
         <select v-model="filterTimeRange">
           <option value="session">{{ t('metrics.timeSession') }}</option>
           <option value="1h">{{ t('metrics.time1h') }}</option>
-        </select>
-      </label>
-      <label v-if="detached" class="filter-field">
-        <span>{{ t('metrics.themeFilter') }}</span>
-        <select v-model="themeMode">
-          <option value="follow">{{ t('metrics.themeFollow') }}</option>
-          <option value="vscode">{{ t('settings.theme.vscode') }}</option>
-          <option value="aura-light">{{ t('settings.theme.auraLight') }}</option>
-          <option value="aura-dark">{{ t('settings.theme.auraDark') }}</option>
         </select>
       </label>
       <div class="toolbar-right">
@@ -872,14 +855,14 @@ onUnmounted(() => {
   height: 100%;
   min-height: 0;
   color: var(--wc-text);
-  font-family: var(--wc-font-ui, system-ui, sans-serif);
+  font-family: var(--wc-font-ui);
   background: transparent;
 }
 
 .metrics-root.expanded {
   padding: 8px 12px;
   gap: 6px;
-  background: var(--wc-panel);
+  background: var(--wc-bg);
 }
 
 .metrics-toolbar,
@@ -920,7 +903,7 @@ onUnmounted(() => {
 }
 
 .live-dot {
-  color: #16a34a;
+  color: var(--wc-metrics-success);
   font-size: 11px;
 }
 
@@ -940,7 +923,7 @@ onUnmounted(() => {
 .kpi {
   flex: 1 1 0;
   min-width: 0;
-  background: var(--wc-input-bg);
+  background: var(--wc-bg-dark);
   border: 1px solid var(--wc-border);
   border-radius: 6px;
   padding: 6px 8px;
@@ -1164,7 +1147,7 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  background: var(--wc-input-bg);
+  background: var(--wc-bg-dark);
 }
 
 .chart-title {

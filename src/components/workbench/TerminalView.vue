@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { AppTheme } from '../../types/axecoder'
 import { terminalThemeFor } from '../../utils/terminal-theme'
+import { terminalCustomKeyHandlerAllowsXterm } from '../../../shared/terminal-readline-keys'
 
 const props = defineProps<{
   projectRoot: string
@@ -16,6 +17,7 @@ const container = ref<HTMLElement | null>(null)
 let term: Terminal | null = null
 let fitAddon: FitAddon | null = null
 let offData: (() => void) | null = null
+let offFocus: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let sessionReady = false
 
@@ -75,6 +77,22 @@ const initXterm = () => {
     void window.axecoder.terminalWrite(data)
   })
 
+  term.attachCustomKeyEventHandler((ev) => terminalCustomKeyHandlerAllowsXterm(ev))
+
+  const el = container.value
+  const onFocusIn = () => {
+    void window.axecoder.terminalSetFocused(true)
+  }
+  const onFocusOut = () => {
+    void window.axecoder.terminalSetFocused(false)
+  }
+  el.addEventListener('focusin', onFocusIn)
+  el.addEventListener('focusout', onFocusOut)
+  offFocus = () => {
+    el.removeEventListener('focusin', onFocusIn)
+    el.removeEventListener('focusout', onFocusOut)
+  }
+
   offData = window.axecoder.onTerminalData((data) => {
     term?.write(data)
   })
@@ -95,9 +113,12 @@ const stopTerminal = () => {
 }
 
 const disposeXterm = () => {
+  void window.axecoder.terminalSetFocused(false)
   detachResizeObserver()
   offData?.()
   offData = null
+  offFocus?.()
+  offFocus = null
   term?.dispose()
   term = null
   fitAddon = null
@@ -111,6 +132,7 @@ watch(
   () => props.active,
   async (active) => {
     if (!active) {
+      void window.axecoder.terminalSetFocused(false)
       detachResizeObserver()
       return
     }

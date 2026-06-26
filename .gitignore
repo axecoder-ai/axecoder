@@ -12,6 +12,7 @@ dist
 dist-ssr
 dist-electron
 release
+build/.claude-icon.png
 *.local
 
 # Editor directories and files

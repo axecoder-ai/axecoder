@@ -78,6 +78,9 @@
   --wc-diff-hunk-fg: #3794ff;
   --wc-diff-hunk-bg: rgba(55, 148, 255, 0.12);
   --wc-metrics-tool-call: #dcdcaa;
+  --wc-metrics-success: var(--wc-diff-add-fg);
+  --wc-metrics-danger: var(--wc-diff-del-fg);
+  --wc-metrics-warn: #cca700;
   --wc-user-bubble-bg: var(--wc-accent);
   --wc-user-bubble-fg: #ffffff;
 }
@@ -151,6 +154,9 @@
   --wc-diff-hunk-fg: #0550ae;
   --wc-diff-hunk-bg: rgba(37, 99, 235, 0.14);
   --wc-metrics-tool-call: #9a6700;
+  --wc-metrics-success: var(--wc-diff-add-fg);
+  --wc-metrics-danger: var(--wc-diff-del-fg);
+  --wc-metrics-warn: #9a6700;
   --wc-user-bubble-bg: rgb(169, 234, 122);
   --wc-user-bubble-fg: #000000;
 }
@@ -224,6 +230,9 @@
   --wc-diff-hunk-fg: #3b82f6;
   --wc-diff-hunk-bg: rgba(59, 130, 246, 0.12);
   --wc-metrics-tool-call: #dcdcaa;
+  --wc-metrics-success: var(--wc-diff-add-fg);
+  --wc-metrics-danger: var(--wc-diff-del-fg);
+  --wc-metrics-warn: #cca700;
   --wc-user-bubble-bg: var(--wc-accent);
   --wc-user-bubble-fg: #ffffff;
 }
@@ -232,6 +241,7 @@
   /* Cursor-like: SF Pro UI + JetBrains Mono monospace */
   --wc-font-sans: 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
     sans-serif;
+  --wc-font-ui: var(--wc-font-sans);
   --wc-font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
   --wc-font-size-ui: 13px;
   --wc-font-size-caption: 11px;

@@ -330,6 +330,15 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
     },
   },
   {
+    name: 'design',
+    description: 'Show project DESIGN.md colors, list built-in themes, or copy design/<theme>/DESIGN.md',
+    run: async (ctx, args) => {
+      const res = await window.axecoder.agentDesignSlash(ctx.projectRoot, args)
+      if (!res.ok) return { ok: false, message: res.error ?? 'design command failed' }
+      return { ok: true, message: res.message }
+    },
+  },
+  {
     name: 'style',
     aliases: ['output-style'],
     description: 'List or switch Agent output style (incl. custom output-styles)',

@@ -1144,6 +1144,10 @@ export type AxeCoderFs = {
   ) => Promise<
     { ok: true; path: string; created: boolean } | { ok: false; error: string }
   >
+  agentDesignSlash: (
+    projectRoot: string,
+    args: string,
+  ) => Promise<{ ok: true; message: string } | { ok: false; error: string }>
   agentConfirmWrite: (sessionId: string, pendingId: string) => Promise<AgentContinueResult>
   agentConfirmAllWrites: (sessionId: string) => Promise<AgentContinueResult>
   agentRejectWrite: (
@@ -1183,6 +1187,7 @@ export type AxeCoderFs = {
   terminalResize: (cols: number, rows: number) => Promise<{ ok: boolean }>
   terminalInterrupt: () => Promise<{ ok: boolean }>
   terminalStop: () => Promise<{ ok: true }>
+  terminalSetFocused: (focused: boolean) => Promise<{ ok: true }>
   onTerminalData: (callback: (text: string) => void) => () => void
   listAllSessions: (projectRoot: string) => Promise<{ sessions: SessionListItem[] }>
   suggestChatSessionTitle: (

@@ -211,10 +211,10 @@ onUnmounted(() => {
 }
 
 .footer-tps.live {
-  color: #86efac;
-  border-color: rgba(34, 197, 94, 0.28);
-  background: rgba(34, 197, 94, 0.1);
-  box-shadow: 0 0 12px rgba(34, 197, 94, 0.12);
+  color: var(--wc-metrics-success, var(--wc-diff-add-fg));
+  border-color: color-mix(in srgb, var(--wc-metrics-success, var(--wc-diff-add-fg)) 28%, transparent);
+  background: color-mix(in srgb, var(--wc-metrics-success, var(--wc-diff-add-fg)) 10%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--wc-metrics-success, var(--wc-diff-add-fg)) 12%, transparent);
 }
 
 .footer-tps-dot {
@@ -283,7 +283,7 @@ onUnmounted(() => {
   font-size: 22px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: #22c55e;
+  color: var(--wc-metrics-success, var(--wc-diff-add-fg));
   line-height: 1;
 }
 

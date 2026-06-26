@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { loadAlwaysApplyRulesPrompt } from '../rules/rules-store'
+import { buildDesignMdAgentRule } from '../design/design-slash'
 import {
   type AgentBuiltInOutputStyleId,
   type AgentOutputStyleConfig,
@@ -351,6 +352,7 @@ export const buildAgentSystemPrompt = async (
     memory = await loadProjectMemoryPrompt(root)
   }
   const workspaceRules = await loadAlwaysApplyRulesPrompt(root)
+  const designMdRule = await buildDesignMdAgentRule(root)
   const envInfo = await computeSimpleEnvInfo(root, options.modelId)
   const cfg = await getConfig()
   const forgeCtx = await buildGitForgeContext(root, cfg)
@@ -388,6 +390,7 @@ export const buildAgentSystemPrompt = async (
     getAgentDelegationSection(enabled),
     memory ?? null,
     workspaceRules,
+    designMdRule,
     envInfo,
     language,
     outputStyleSection,

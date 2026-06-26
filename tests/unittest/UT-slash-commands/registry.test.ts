@@ -10,6 +10,7 @@ describe('findCommand', () => {
     expect(names).toContain('plan')
     expect(names).toContain('skills')
     expect(names).toContain('style')
+    expect(names).toContain('design')
     expect(names).toContain('model')
     expect(names).toContain('research-codebase')
     expect(names).toContain('make-proposals')
