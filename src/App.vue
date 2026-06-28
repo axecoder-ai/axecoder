@@ -51,6 +51,7 @@ import {
 } from './utils/command-registry'
 import { useI18n } from './i18n'
 import { appT } from './i18n/translate'
+import { appConfirm } from './utils/appConfirm'
 
 const { t } = useI18n()
 
@@ -717,7 +718,7 @@ const onSearch = async (query: string, opts: SearchOptions, gen: number) => {
 }
 
 const onSearchReplace = async (query: string, replacement: string, opts: SearchOptions) => {
-  const ok = window.confirm(appT('searchPanel.replaceConfirm', { query }))
+  const ok = await appConfirm(appT('searchPanel.replaceConfirm', { query }))
   if (!ok) return
   const result = await wb.replaceInProject(query, replacement, opts)
   window.alert(

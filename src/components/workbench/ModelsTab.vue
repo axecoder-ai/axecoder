@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import type { ModelEntry, ModelSaveInput } from '../../types/axecoder'
+import { appConfirm } from '../../utils/appConfirm'
 import ModelFormDialog from './ModelFormDialog.vue'
 import SwitchToggle from './SwitchToggle.vue'
 
@@ -74,7 +75,7 @@ const onToggle = async (m: ModelEntry, enabled: boolean) => {
 }
 
 const onDelete = async (m: ModelEntry) => {
-  if (!confirm(`Delete model "${m.name}"?`)) return
+  if (!(await appConfirm(`Delete model "${m.name}"?`))) return
   const res = await window.axecoder.deleteModel(m.id)
   if (!res.ok) {
     alert(res.error)

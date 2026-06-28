@@ -74,10 +74,15 @@ import {
 import {
   canPickChatMode,
   loadStoredChatMode,
-  resolveSessionChatMode,
   saveStoredChatMode,
   type ChatModeId,
 } from '../../utils/chat-modes'
+import {
+  newSessionPreferences,
+  resolveSessionChatModeOnSwitch,
+  resolveSessionModelIdOnSwitch,
+  stampSessionPreferences,
+} from '../../utils/session-preferences'
 import { workshopIdForAgentChat } from '../../utils/workshop-agent-link'
 import { providerSupportsSseStream } from '@shared/ai/provider-capabilities'
 import { formatAiChatRequestError, visionUnsupportedMessage } from '../../utils/ai-chat-error'
@@ -240,7 +245,6 @@ const removeUnifiedTab = (id: string, kind: SessionKind) => {
 const switchUnifiedTab = async (t: OpenChatTab) => {
   if (isActiveTab(t)) return
   if (activeTabKind.value === 'agent' && activeSession.value && activeId.value) {
-    syncChatModeToSession(activeSession.value)
     cacheSession(activeSession.value)
     void persistForChat(activeId.value)
   }
@@ -409,6 +413,8 @@ const roleAvatarUrls = ref<Record<string, string>>({})
 const { scrollEl: messagesEl, onScrollContainer, scrollToBottom: scrollMessages } =
   useStickToBottomScroll()
 const modelsFile = ref<ModelsFile>({ schemaVersion: 1, activeModelId: '', models: [] })
+/** 磁盘 models 文件中的全局默认模型（loadModels / 用户 setActiveModel 时更新） */
+const globalDefaultModelId = ref('')
 const attachedFiles = ref<ChatFileRef[]>([])
 const chatSessionId = computed(
   () => activeSession.value?.id ?? `draft-${Date.now()}`,
@@ -429,13 +435,17 @@ const aiStreamUnsubs = new Map<string, () => void>()
 
 const chatModeId = ref<ChatModeId>(loadStoredChatMode())
 
-const syncChatModeToSession = (session: ChatSession | null) => {
+const applySessionPreferencesOnSwitch = (session: ChatSession | null) => {
   if (!session) return
-  session.chatMode = chatModeId.value
+  chatModeId.value = resolveSessionChatModeOnSwitch(session, chatModeId.value)
+  const nextModelId = resolveSessionModelIdOnSwitch(session, modelsFile.value.activeModelId)
+  if (nextModelId && nextModelId !== modelsFile.value.activeModelId) {
+    modelsFile.value = { ...modelsFile.value, activeModelId: nextModelId }
+  }
 }
 
-const applyChatModeFromSession = (session: ChatSession | null) => {
-  chatModeId.value = resolveSessionChatMode(session)
+const stampActiveSessionPreferences = (session: ChatSession) => {
+  stampSessionPreferences(session, chatModeId.value, modelsFile.value.activeModelId)
 }
 const workshopMessageCount = ref(0)
 
@@ -487,7 +497,6 @@ const {
   setChatModeId: (id) => {
     chatModeId.value = id
     saveStoredChatMode(id)
-    syncChatModeToSession(activeSession.value)
   },
   onToolProgressDone: (chatId, sessionId) => bumpPlanForChat(chatId, sessionId),
   onScroll: () => {
@@ -506,7 +515,6 @@ const onChatModePick = (id: ChatModeId) => {
   if (!canPickChatMode(chatModeId.value, id, hasSessionMessagesForModeLock.value)) return
   chatModeId.value = id
   saveStoredChatMode(id)
-  syncChatModeToSession(activeSession.value)
   if (id !== 'multi-agent' && id !== 'software-company' && id !== 'draw-io') {
     lastMultiAgentSyncKey = ''
     return
@@ -589,12 +597,12 @@ const maybeRefreshSessionTitle = async () => {
 const persist = async (opts?: { skipTitleSuggest?: boolean }) => {
   if (!hasProject.value || !activeSession.value) return
   const s = activeSession.value
-  syncChatModeToSession(s)
   const res = await window.axecoder.saveChatSession(props.projectRoot, {
     id: s.id,
     title: s.title,
     updatedAt: s.updatedAt,
     chatMode: s.chatMode,
+    modelId: s.modelId,
     messages: s.messages.map((m) => ({
       role: m.role,
       text: m.text,
@@ -637,6 +645,7 @@ const persistForChat = async (chatId: string, opts?: { skipTitleSuggest?: boolea
     title: s.title,
     updatedAt: s.updatedAt,
     chatMode: s.chatMode,
+    modelId: s.modelId,
     messages: s.messages.map((m) => ({
       role: m.role,
       text: m.text,
@@ -846,7 +855,6 @@ const selectSession = async (id: string): Promise<boolean> => {
   }
   if (activeSession.value && activeId.value) {
     const prevId = activeId.value
-    syncChatModeToSession(activeSession.value)
     cacheSession(activeSession.value)
     void persistForChat(prevId)
   }
@@ -867,10 +875,13 @@ const selectSession = async (id: string): Promise<boolean> => {
   addUnifiedTab(id, 'agent')
   activeSession.value = session
   activeId.value = id
-  applyChatModeFromSession(session)
+  applySessionPreferencesOnSwitch(session)
   setActiveTab(id, 'agent')
   clearUnread(id)
   input.value = ''
+  if (isWorkshopEmbeddedInAgentChat.value) {
+    await syncMultiAgentWorkshop()
+  }
   await scrollMessages(session.messages.length > 0)
   return true
 }
@@ -878,6 +889,7 @@ const selectSession = async (id: string): Promise<boolean> => {
 
 const loadModels = async () => {
   modelsFile.value = await window.axecoder.listModels()
+  globalDefaultModelId.value = modelsFile.value.activeModelId
 }
 
 const load = async () => {
@@ -923,12 +935,14 @@ const load = async () => {
 
 const newChat = async () => {
   if (!hasProject.value) return
+  const prefs = newSessionPreferences(globalDefaultModelId.value)
   const s: ChatSession = {
     id: newId(),
     title: 'New Agent',
     updatedAt: Date.now(),
     messages: [],
-    chatMode: chatModeId.value,
+    chatMode: prefs.chatMode,
+    ...(prefs.modelId ? { modelId: prefs.modelId } : {}),
   }
   const res = await window.axecoder.saveChatSession(props.projectRoot, s)
   if (!res.ok) return
@@ -940,6 +954,10 @@ const newChat = async () => {
   addUnifiedTab(s.id, 'agent')
   activeSession.value = s
   activeId.value = s.id
+  chatModeId.value = prefs.chatMode
+  if (prefs.modelId) {
+    modelsFile.value = { ...modelsFile.value, activeModelId: prefs.modelId }
+  }
   setActiveTab(s.id, 'agent')
   emit('sessionsChanged')
 }
@@ -983,7 +1001,10 @@ const closeTab = async (id: string) => {
 
 const onModelPick = async (id: string) => {
   const res = await window.axecoder.setActiveModel(id)
-  if (res.ok) modelsFile.value = res.data
+  if (res.ok) {
+    modelsFile.value = res.data
+    globalDefaultModelId.value = res.data.activeModelId
+  }
 }
 
 const addAttachedPath = (filePath: string) => {
@@ -1497,7 +1518,6 @@ const onBuildPlanPending = async (msg: ChatMessage, pendingId: string) => {
     if (chatModeId.value !== 'agent') {
       chatModeId.value = 'agent'
       saveStoredChatMode('agent')
-      syncChatModeToSession(getChatSession(chatId))
     }
     const res = await window.axecoder.agentBuildPlan(msg.agentSessionId, pendingId)
     if (res.ok && res.status === 'done') {
@@ -1553,8 +1573,8 @@ const buildPlanFromPath = async (absolutePlanPath: string): Promise<boolean> => 
   if (chatModeId.value !== 'agent') {
     chatModeId.value = 'agent'
     saveStoredChatMode('agent')
-    syncChatModeToSession(session)
   }
+  stampActiveSessionPreferences(session)
   session.messages.push({ role: 'user', text: `Build plan: ${rel}`, apiContent: composed.text })
   session.updatedAt = Date.now()
   cacheSession(session)
@@ -1745,7 +1765,7 @@ const buildSlashContext = (): SlashContext => ({
   getSession: () => activeSession.value,
   setSession: (s) => {
     activeSession.value = s
-    applyChatModeFromSession(s)
+    applySessionPreferencesOnSwitch(s)
   },
   persist,
   newChat,
@@ -1849,6 +1869,7 @@ const send = async () => {
     includeContextFile.value = false
     await nextTick()
     resizeInput()
+    if (activeSession.value) stampActiveSessionPreferences(activeSession.value)
     const res = await workshopSectionRef.value?.sendWithPayload({
       text: apiText || displayText,
       apiText,
@@ -1894,6 +1915,7 @@ const send = async () => {
     input.value = ''
     await nextTick()
     resizeInput()
+    stampActiveSessionPreferences(session)
     session.messages.push({ role: 'user', text })
     beginRun(chatId)
     try {
@@ -1967,6 +1989,7 @@ const send = async () => {
         slashOnly: true,
         apiContent: prompt,
       })
+      stampActiveSessionPreferences(session)
       if (session.title === 'New Agent' || session.title === 'New chat') {
         session.title = text.slice(0, 24) + (text.length > 24 ? '…' : '')
       }
@@ -2079,6 +2102,7 @@ const send = async () => {
       ...(roleMentionCommand ? { slashOnly: true } : {}),
     }
     session.messages.push(userMsg)
+    stampActiveSessionPreferences(session)
     void scrollMessages(true)
     attachedFiles.value = []
     clearAttachedImages()
@@ -2149,6 +2173,19 @@ const lastAssistantText = computed(() => {
   }
   return ''
 })
+
+const lastAssistantIndex = computed(() => {
+  const msgs = messages.value
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === 'assistant') return i
+  }
+  return -1
+})
+
+const showReplyActions = (index: number) =>
+  index === lastAssistantIndex.value &&
+  !loading.value &&
+  !!assistantBubbleText(messages.value[index]).trim()
 
 const copyLastReply = async () => {
   const text = lastAssistantText.value
@@ -2395,6 +2432,10 @@ onUnmounted(() => {
 
 const showProgressBubble = computed(() => loading.value || pendingBusy.value)
 
+const agentActivityRunning = computed(
+  () => agentMode.value && (loading.value || pendingBusy.value),
+)
+
 const showNoSessionLanding = computed(
   () => hasProject.value && !activeSession.value && !props.hasOpenEditorTabs,
 )
@@ -2512,10 +2553,7 @@ defineExpose({
         title="Show session history"
         @click="emit('showAgentsSidebar')"
       >
-        <svg class="sidebar-toggle-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" />
-          <rect x="9" y="4.5" width="3.5" height="7" rx="0.5" fill="currentColor" stroke="none" />
-        </svg>
+        <span class="codicon codicon-layout-sidebar-right" aria-hidden="true" />
       </button>
     </div>
     <WorkshopChatSection
@@ -2698,6 +2736,20 @@ defineExpose({
             class="assistant-text"
             v-html="renderMarkdown(assistantBubbleText(msg))"
           />
+          <div v-if="showReplyActions(i)" class="reply-actions">
+            <button type="button" class="icon-btn" title="Copy reply" @click="copyLastReply">
+              <span class="codicon codicon-copy" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="icon-btn"
+              title="Regenerate"
+              :disabled="!enabledModels.length"
+              @click="regenerateLastReply"
+            >
+              <span class="codicon codicon-refresh" aria-hidden="true" />
+            </button>
+          </div>
           <ChatAskUserCard
             v-for="pa in msg.pendingAsks ?? []"
             :key="pa.id"
@@ -2745,74 +2797,18 @@ defineExpose({
           />
         </template>
       </div>
-      <div v-if="showProgressBubble" class="message assistant">
-        <div v-if="progressAssigneeUser" class="assistant-role-header">
-          <div class="assistant-role-avatar">
-            <img
-              v-if="roleAvatarUrls[pendingAssigneeUserId]"
-              :src="roleAvatarUrls[pendingAssigneeUserId]"
-              alt=""
-            />
-            <span v-else>{{ progressAssigneeUser.displayName.slice(0, 1) }}</span>
-          </div>
-          <div class="assistant-role-meta">
-            <span class="assistant-role-name">{{ progressAssigneeUser.displayName }}</span>
-            <span class="assistant-role-title">{{ progressAssigneeUser.role }}</span>
-          </div>
-        </div>
-        <div class="assistant-text loading-bubble agent-progress-bubble">
-          <AgentProgressStream
-            :steps="progressSteps"
-            :stream-text="streamText"
-            :subagent-tasks="subagentTaskList"
-            :agent-mode="agentMode"
-            :fallback-headline="progressHeadline"
-            :thinking-text="thinkingText"
-            :thinking-type="thinkingType"
-            :loop-guard-notice="loopGuardNotice"
-          />
-        </div>
+      <div v-if="showProgressBubble" class="agent-activity-feed">
+        <AgentProgressStream
+          :steps="progressSteps"
+          :stream-text="streamText"
+          :subagent-tasks="subagentTaskList"
+          :agent-mode="agentMode"
+          :fallback-headline="progressHeadline"
+          :thinking-text="thinkingText"
+          :thinking-type="thinkingType"
+          :loop-guard-notice="loopGuardNotice"
+        />
       </div>
-    </div>
-    <div v-if="lastAssistantText && !loading" class="reply-actions">
-      <button type="button" class="icon-btn" title="Copy reply" @click="copyLastReply">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-          <rect
-            x="5.5"
-            y="5.5"
-            width="7"
-            height="7"
-            rx="1"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.2"
-          />
-          <path
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.2"
-            stroke-linecap="round"
-            d="M5.5 10.5H4.5a1.5 1.5 0 0 1-1.5-1.5V4.5A1.5 1.5 0 0 1 4.5 3h4.5a1.5 1.5 0 0 1 1.5 1.5V5.5"
-          />
-        </svg>
-      </button>
-      <button
-        type="button"
-        class="icon-btn"
-        title="Regenerate"
-        :disabled="!enabledModels.length"
-        @click="regenerateLastReply"
-      >
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-          <path
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.2"
-            stroke-linecap="round"
-            d="M8 3a5 5 0 1 0 4.2 7.6M8 1.5v3M8 4.5H5.5"
-          />
-        </svg>
-      </button>
     </div>
     <div v-if="sessionPendingState.count > 0" class="pending-bulk-bar">
       <div class="pending-bulk-left">
@@ -2950,12 +2946,12 @@ defineExpose({
             class="chat-input"
             rows="1"
             :placeholder="
-              inputSlash
-                ? 'Add details…'
-                : inputAtMention
-                  ? 'Add task details…'
-                  : isMultiAgentInAgentChat
-                    ? 'Plan, Build, /commands, @file or @role'
+              agentActivityRunning
+                ? 'Queue another message…'
+                : inputSlash
+                  ? 'Add details…'
+                  : inputAtMention
+                    ? 'Add task details…'
                     : 'Plan, Build, /commands, @file or @role'
             "
             @input="(e) => { onInputField(e); syncInputCursor() }"
@@ -2966,50 +2962,57 @@ defineExpose({
             @paste="onPasteImage"
           />
         </div>
-        <div class="chat-input-footer">
+        <div class="chat-input-footer" :class="{ 'chat-input-footer--running': agentActivityRunning }">
           <div class="footer-left">
-            <ChatModePickerDropdown
-              :active-mode-id="chatModeId"
-              :has-session-messages="hasSessionMessagesForModeLock"
-              :agent-auto-plan-on="!!agentAutoPlanOn"
-              @select="onChatModePick"
-              @toggle-auto-plan="onAgentAutoPlanToggle"
-            />
-            <ModelPickerDropdown
-              v-if="enabledModels.length"
-              :models="enabledModels"
-              :active-model-id="modelsFile.activeModelId"
-              :effort="chatEffort"
-              :effort-disabled="loading"
-              @select="onModelPick"
-              @update:effort="onChatEffortPick"
-              @add-models="emit('openModelsSettings')"
-            />
-            <button
-              v-if="showFooterPlanBuild"
-              type="button"
-              class="footer-plan-build-btn"
-              :class="{ built: footerPlanBuilt }"
-              :disabled="footerPlanBuildDisabled"
-              :title="footerPlanBuilt ? '此计划已执行过 Build' : '按当前计划开始实现'"
-              @click="onFooterPlanBuild"
-            >
-              {{ footerPlanBuilt ? 'Built' : 'Build' }}
-            </button>
-            <button
-              v-else-if="!enabledModels.length"
-              type="button"
-              class="add-models-link"
-              @click="emit('openModelsSettings')"
-            >
-              Add model
-            </button>
+            <span v-if="agentActivityRunning" class="wandering-status" role="status">
+              <span class="wandering-icon" aria-hidden="true">✦</span>
+              Wandering…
+            </span>
+            <template v-else>
+              <ChatModePickerDropdown
+                :active-mode-id="chatModeId"
+                :has-session-messages="hasSessionMessagesForModeLock"
+                :agent-auto-plan-on="!!agentAutoPlanOn"
+                @select="onChatModePick"
+                @toggle-auto-plan="onAgentAutoPlanToggle"
+              />
+              <ModelPickerDropdown
+                v-if="enabledModels.length"
+                :models="enabledModels"
+                :active-model-id="modelsFile.activeModelId"
+                :effort="chatEffort"
+                :effort-disabled="loading"
+                @select="onModelPick"
+                @update:effort="onChatEffortPick"
+                @add-models="emit('openModelsSettings')"
+              />
+              <button
+                v-if="showFooterPlanBuild"
+                type="button"
+                class="footer-plan-build-btn"
+                :class="{ built: footerPlanBuilt }"
+                :disabled="footerPlanBuildDisabled"
+                :title="footerPlanBuilt ? '此计划已执行过 Build' : '按当前计划开始实现'"
+                @click="onFooterPlanBuild"
+              >
+                {{ footerPlanBuilt ? 'Built' : 'Build' }}
+              </button>
+              <button
+                v-else-if="!enabledModels.length"
+                type="button"
+                class="add-models-link"
+                @click="emit('openModelsSettings')"
+              >
+                Add model
+              </button>
+            </template>
           </div>
           <div class="footer-right">
             <FooterTpsBadge v-if="agentMode" :live="showTpsLive" />
             <label
               v-if="agentMode"
               class="auto-apply-toggle"
+              :class="{ compact: agentActivityRunning }"
               title="When on, Agent file changes and Bash run without Apply/Reject prompts"
             >
               <SwitchToggle
@@ -3245,9 +3248,8 @@ defineExpose({
   color: var(--wc-text);
 }
 
-.agents-expand .sidebar-toggle-icon {
-  width: 16px;
-  height: 16px;
+.agents-expand .codicon {
+  font-size: 16px;
 }
 
 .chat-tab {
@@ -3604,6 +3606,39 @@ defineExpose({
   overflow-x: auto;
 }
 
+.agent-activity-feed {
+  max-width: 100%;
+  padding: 2px 2px 4px;
+}
+
+.wandering-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--wc-text-muted);
+  animation: wandering-pulse 1.6s ease-in-out infinite;
+}
+
+.wandering-icon {
+  font-size: 11px;
+  color: #c9922e;
+}
+
+@keyframes wandering-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.chat-input-footer--running .auto-apply-toggle.compact {
+  font-size: 12px;
+}
+
 .loading-bubble {
   display: inline-block;
   padding: 10px 14px;
@@ -3624,15 +3659,20 @@ defineExpose({
 
 .reply-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 2px;
-  padding: 0 12px 4px;
+  margin-top: 4px;
   flex-shrink: 0;
 }
 
 .reply-actions .icon-btn {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+
+.reply-actions .icon-btn .codicon {
+  font-size: 14px;
 }
 
 .pending-bulk-bar {

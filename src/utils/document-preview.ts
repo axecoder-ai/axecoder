@@ -1,4 +1,6 @@
-export type DocumentPreviewKind = 'pdf' | 'docx' | 'doc'
+export type DocumentPreviewKind = 'pdf' | 'docx' | 'doc' | 'image'
+
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'])
 
 const fileExt = (path: string): string => {
   const base = path.split(/[/\\]/).pop() ?? path
@@ -27,12 +29,29 @@ export const isDocPath = (path: string | null): boolean => {
 export const isWordPath = (path: string | null): boolean =>
   isDocxPath(path) || isDocPath(path)
 
+export const isImagePath = (path: string | null): boolean => {
+  if (!path) return false
+  return IMAGE_EXTS.has(fileExt(path))
+}
+
+export const imageMimeForPath = (path: string): string => {
+  const ext = fileExt(path)
+  if (ext === 'png') return 'image/png'
+  if (ext === 'gif') return 'image/gif'
+  if (ext === 'webp') return 'image/webp'
+  if (ext === 'svg') return 'image/svg+xml'
+  if (ext === 'bmp') return 'image/bmp'
+  if (ext === 'ico') return 'image/x-icon'
+  return 'image/jpeg'
+}
+
 export const documentPreviewKind = (path: string | null): DocumentPreviewKind | null => {
   if (!path) return null
   const ext = fileExt(path)
   if (ext === 'pdf') return 'pdf'
   if (ext === 'docx') return 'docx'
   if (ext === 'doc') return 'doc'
+  if (IMAGE_EXTS.has(ext)) return 'image'
   return null
 }
 

@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from '../../i18n'
 import type { SearchHit, SearchOptions } from '../../types/axecoder'
+import FileIcon from './FileIcon.vue'
 
 defineProps<{
   visible: boolean
@@ -73,16 +74,6 @@ const resultsSummary = computed(() => {
     files: groups.value.length,
   })
 })
-
-const fileKind = (name: string) => {
-  const n = name.toLowerCase()
-  if (n.endsWith('.md')) return 'kind-md'
-  if (/\.(png|jpe?g|gif|webp|ico|svg)$/.test(n)) return 'kind-image'
-  if (n.endsWith('.vue')) return 'kind-vue'
-  if (n.endsWith('.ts')) return 'kind-ts'
-  if (n.endsWith('.sh')) return 'kind-sh'
-  return 'kind-file'
-}
 
 const isExpanded = (file: string) => !!expandedFiles.value[file]
 
@@ -217,10 +208,10 @@ defineExpose({ setHits, focusInput, setQuery })
       <div class="toolbar">
         <span class="toolbar-spacer" />
         <button type="button" class="tb-btn" :title="t('searchPanel.clearSearch')" @click="clearSearch">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M12 2H8.5L8 1H5l-.5 1H2v1h10V2zm-1 2H5l1 9h4l1-9z"/></svg>
+          <span class="codicon codicon-clear-all" aria-hidden="true" />
         </button>
         <button type="button" class="tb-btn" :title="t('searchPanel.refreshSearch')" @click="refreshSearch">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M11.5 2a4.5 4.5 0 0 1 3.2 7.7L13 11h2.5v1H10v-3.5h1v2.2l1.2-1.2A3.5 3.5 0 1 0 8 11.5H7a4.5 4.5 0 0 1 4.5-9.5zM4.5 14A4.5 4.5 0 0 1 1.3 6.3L3 5H.5V4H5v3.5H4V5.3L2.8 6.5A3.5 3.5 0 1 0 8 4.5h1A4.5 4.5 0 0 1 4.5 14z"/></svg>
+          <span class="codicon codicon-refresh" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -229,34 +220,38 @@ defineExpose({ setHits, focusInput, setQuery })
           :disabled="!groups.length"
           @click="toggleAllResults"
         >
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 5.5 8 10l5-4.5v1.8L8 11.7 3 7.3V5.5zm10 5L8 10 3 10.5V8.7L8 13.1l5-4.4v1.8z"/></svg>
+          <span
+            class="codicon"
+            :class="anyResultExpanded ? 'codicon-collapse-all' : 'codicon-expand-all'"
+            aria-hidden="true"
+          />
         </button>
         <button
           type="button"
-          class="tb-btn text"
+          class="tb-btn"
           :class="{ on: caseSensitive }"
           :title="t('searchPanel.matchCase')"
           @click="caseSensitive = !caseSensitive"
         >
-          Aa
+          <span class="codicon codicon-case-sensitive" aria-hidden="true" />
         </button>
         <button
           type="button"
-          class="tb-btn text whole"
+          class="tb-btn"
           :class="{ on: wholeWord }"
           :title="t('searchPanel.matchWholeWord')"
           @click="wholeWord = !wholeWord"
         >
-          ab
+          <span class="codicon codicon-whole-word" aria-hidden="true" />
         </button>
         <button
           type="button"
-          class="tb-btn text"
+          class="tb-btn"
           :class="{ on: useRegex }"
           :title="t('searchPanel.useRegex')"
           @click="useRegex = !useRegex"
         >
-          .*
+          <span class="codicon codicon-regex" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -264,7 +259,7 @@ defineExpose({ setHits, focusInput, setQuery })
           :class="{ on: includeGlob.trim() || excludeGlob.trim() }"
           :title="t('searchPanel.excludeGlob')"
         >
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 3.5h12v1H2v-1zm0 3h12v1H2v-1zm0 3h8v1H2v-1z"/></svg>
+          <span class="codicon codicon-list-filter" aria-hidden="true" />
         </button>
       </div>
 
@@ -276,7 +271,7 @@ defineExpose({ setHits, focusInput, setQuery })
           :title="t('searchPanel.toggleReplace')"
           @click.stop="replaceExpanded = !replaceExpanded"
         >
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 4.5 10 8l-4 3.5V4.5z"/></svg>
+          <span class="codicon codicon-chevron-right" aria-hidden="true" />
         </button>
         <input
           ref="searchInput"
@@ -299,15 +294,15 @@ defineExpose({ setHits, focusInput, setQuery })
           />
           <div class="row-actions">
             <button type="button" class="tb-btn" :title="t('searchPanel.replaceOne')" @click="onReplaceAll">
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 3h5.5L12 5.5V12H4V3zm1 1v7h6V6H9V4H5zm7.5-.5L11 2H6L5.5 2.5H3v1h9.5z"/></svg>
+              <span class="codicon codicon-replace" aria-hidden="true" />
             </button>
             <button type="button" class="tb-btn" :title="t('searchPanel.replaceAll')" @click="onReplaceAll">
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M11.5 2a4.5 4.5 0 0 1 3.2 7.7L13 11h2.5v1H10v-3.5h1v2.2l1.2-1.2A3.5 3.5 0 1 0 8 11.5H7a4.5 4.5 0 0 1 4.5-9.5zM4.5 14A4.5 4.5 0 0 1 1.3 6.3L3 5H.5V4H5v3.5H4V5.3L2.8 6.5A3.5 3.5 0 1 0 8 4.5h1A4.5 4.5 0 0 1 4.5 14z"/></svg>
+              <span class="codicon codicon-replace-all" aria-hidden="true" />
             </button>
           </div>
         </div>
       <div class="field-row glob">
-          <svg class="field-glyph" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 2h8l3 3v9H3V2zm7 1v3h3M5 8h6M5 10h4"/></svg>
+          <span class="codicon codicon-file field-glyph" aria-hidden="true" />
           <input
             v-model="includeGlob"
             type="text"
@@ -316,7 +311,7 @@ defineExpose({ setHits, focusInput, setQuery })
           />
         </div>
         <div class="field-row glob">
-          <svg class="field-glyph exclude" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 3h12v1H2V3zm0 3h8.5L8.8 8.8 8 8l-.8.8L5.5 7H2V6zm0 3h4.5L5.2 11.8 4.4 12.6 3.6 11.8 2 10.2V9zm12 4H2v-1h12v1z"/></svg>
+          <span class="codicon codicon-exclude field-glyph" aria-hidden="true" />
           <input
             v-model="excludeGlob"
             type="text"
@@ -344,9 +339,9 @@ defineExpose({ setHits, focusInput, setQuery })
           @click="toggleFile(group.file)"
         >
           <span class="file-chevron" :class="{ open: isExpanded(group.file) }">
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 4.5 10 8l-4 3.5V4.5z"/></svg>
+            <span class="codicon codicon-chevron-right" aria-hidden="true" />
           </span>
-          <span class="file-icon" :class="fileKind(group.fileName)" />
+          <FileIcon :name="group.fileName" />
           <span class="file-name">{{ group.fileName }}</span>
           <span class="match-badge">{{ group.hits.length }}</span>
         </button>
@@ -358,7 +353,7 @@ defineExpose({ setHits, focusInput, setQuery })
             @click="emit('open', hit)"
           >
             <button type="button" class="tb-btn replace-one" :title="t('searchPanel.replaceOne')" @click.stop="onReplaceOneHit(hit)">
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 3h5.5L12 5.5V12H4V3zm1 1v7h6V6H9V4H5zm7.5-.5L11 2H6L5.5 2.5H3v1h9.5z"/></svg>
+              <span class="codicon codicon-replace" aria-hidden="true" />
             </button>
             <span class="match-loc">{{ hit.line }}</span>
             <span class="match-text" v-html="highlightLine(hit.text, query)" />
@@ -417,22 +412,19 @@ defineExpose({ setHits, focusInput, setQuery })
   cursor: pointer;
 }
 
-.tb-btn svg {
-  width: 16px;
-  height: 16px;
+.tb-btn .codicon {
+  font-size: 16px;
 }
 
-.tb-btn.text {
-  width: auto;
-  min-width: 22px;
-  padding: 0 3px;
-  font-size: 11px;
-  font-weight: 500;
-  font-family: var(--wc-font-sans);
+.field-chevron .codicon,
+.file-chevron .codicon {
+  font-size: 14px;
+  transition: transform 0.12s ease;
 }
 
-.tb-btn.whole.on {
-  box-shadow: inset 0 -1px 0 var(--wc-search-toggle-on-fg);
+.field-chevron.open .codicon,
+.file-chevron.open .codicon {
+  transform: rotate(90deg);
 }
 
 .tb-btn:hover {
@@ -470,18 +462,8 @@ defineExpose({ setHits, focusInput, setQuery })
   cursor: pointer;
 }
 
-.field-chevron svg {
-  width: 14px;
-  height: 14px;
-  transition: transform 0.12s ease;
-}
-
 .field-chevron:hover {
   color: var(--wc-search-toggle-hover-fg);
-}
-
-.field-chevron.open svg {
-  transform: rotate(90deg);
 }
 
 .field-indent {
@@ -514,9 +496,8 @@ defineExpose({ setHits, focusInput, setQuery })
 }
 
 .field-glyph {
-  width: 16px;
-  height: 16px;
   flex-shrink: 0;
+  font-size: 16px;
   color: var(--wc-search-glyph-fg);
 }
 
@@ -570,16 +551,6 @@ defineExpose({ setHits, focusInput, setQuery })
   color: var(--wc-search-toggle-fg);
 }
 
-.file-chevron svg {
-  width: 14px;
-  height: 14px;
-  transition: transform 0.12s ease;
-}
-
-.file-chevron.open svg {
-  transform: rotate(90deg);
-}
-
 .file-row {
   width: 100%;
   display: flex;
@@ -615,69 +586,6 @@ defineExpose({ setHits, focusInput, setQuery })
   width: 1px;
   background: var(--wc-search-tree-guide);
   pointer-events: none;
-}
-
-.file-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.file-icon.kind-file {
-  background: var(--wc-search-toggle-fg);
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M4 1h6l4 4v10H4V1zm5 1v3h3'/%3E%3C/svg%3E")
-    center/contain no-repeat;
-}
-
-.file-icon.kind-md {
-  border-radius: 2px;
-  background-color: #519aba;
-}
-
-.file-icon.kind-ts {
-  border-radius: 2px;
-  background-color: #3178c6;
-  position: relative;
-}
-
-.file-icon.kind-ts::after {
-  content: 'TS';
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 7px;
-  font-weight: 700;
-  color: #fff;
-}
-
-.file-icon.kind-sh {
-  border-radius: 2px;
-  background-color: #6b8e23;
-  position: relative;
-}
-
-.file-icon.kind-sh::after {
-  content: '$';
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 700;
-  color: #fff;
-}
-
-.file-icon.kind-vue {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%2342b883' d='M8 2.5L2 13h3.5l.5-1h4l.5 1H14L8 2.5zm0 3.2l2.8 5.3H5.2L8 5.7z'/%3E%3C/svg%3E")
-    center/contain no-repeat;
-}
-
-.file-icon.kind-image {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='2' y='5' width='7' height='7' rx='1' fill='none' stroke='%23a855f7' stroke-width='1'/%3E%3C/svg%3E")
-    center/contain no-repeat;
 }
 
 .file-name {

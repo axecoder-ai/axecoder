@@ -1,6 +1,6 @@
 {
   "name": "axecoder",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "main": "dist-electron/main/index.js",
   "description": "代码编写桌面 IDE — Electron + Vue 3 + Monaco",
   "author": "崔老六 <cuiyunfeng@huazhengit.com>",
@@ -50,6 +50,7 @@
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@vscode/codicons": "^0.0.45",
     "@vscode/ripgrep": "^1.15.11",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
@@ -61,6 +62,7 @@
     "ignore": "^7.0.5",
     "mammoth": "^1.12.0",
     "markdown-it": "^14.2.0",
+    "material-icon-theme": "^5.36.1",
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
     "picomatch": "^4.0.3",

@@ -25,4 +25,4 @@ execSync(`magick -size 1024x1024 xc:none "${tmpRounded}" -gravity center -compos
 
 fs.unlinkSync(tmpBase)
 fs.unlinkSync(tmpRounded)
-console.log('[gen-claude-icon] 开发图标已生成（圆角 + 留白）')
+console.log('[gen-claude-icon] 开发应用图标已生成（claudelogo）')

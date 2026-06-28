@@ -40,6 +40,8 @@ export type ChatSessionMeta = {
 export type ChatSession = ChatSessionMeta & {
   messages: ChatMessage[]
   chatMode?: string
+  /** 该会话最后一次发送消息时使用的模型 */
+  modelId?: string
 }
 
 type StoreResult = { ok: true } | { ok: false; error: string }

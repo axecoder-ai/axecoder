@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { ConflictAction, FileNode } from '../../types/axecoder'
+import { appConfirm } from '../../utils/appConfirm'
+import FileIcon from './FileIcon.vue'
 const props = defineProps<{
   visible: boolean
   activeFilePath: string | null
@@ -160,16 +162,6 @@ const toggleExpand = (node: FileNode) => {
 const collapseAll = () => {
   if (!rootPath.value) return
   expanded.value = new Set([rootPath.value])
-}
-
-const fileKind = (name: string) => {
-  const n = name.toLowerCase()
-  if (n.endsWith('.md')) return 'kind-md'
-  if (n.endsWith('.pdf')) return 'kind-pdf'
-  if (/\.(docx?|doc)$/.test(n)) return 'kind-word'
-  if (/\.(png|jpe?g|gif|webp|ico|svg)$/.test(n)) return 'kind-image'
-  if (n.endsWith('.vue')) return 'kind-vue'
-  return 'kind-file'
 }
 
 const onFileClick = async (node: FileNode, e?: MouseEvent) => {
@@ -455,7 +447,7 @@ const onDelete = async () => {
   const target = menuTarget.value
   closeMenu()
   if (!target) return
-  if (!window.confirm(`Delete "${target.name}"?`)) return
+  if (!(await appConfirm(`Delete "${target.name}"?`))) return
   try {
     await fs.delete(target.path)
     await refresh()
@@ -691,8 +683,12 @@ onUnmounted(() => {
         @drop.stop="!pending && onDrop($event, dropTargetDir(node))"
       >
         <span v-if="node.type === 'directory'" class="chevron" :class="{ open: expanded.has(node.path) }">›</span>
-        <span v-else class="chevron placeholder" />
-        <span v-if="node.type !== 'directory'" class="file-icon" :class="fileKind(node.name)" />
+        <span v-else-if="depth > 0" class="chevron placeholder" />
+        <FileIcon
+          :name="node.name"
+          :folder="node.type === 'directory'"
+          :open="node.type === 'directory' && expanded.has(node.path)"
+        />
         <input
           v-if="pending === 'file' && creatingFile"
           ref="newFileInput"
@@ -980,51 +976,6 @@ onUnmounted(() => {
 
 .chevron.placeholder {
   visibility: hidden;
-}
-
-.file-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.file-icon.kind-file {
-  background: #8b8b8b;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M4 1h6l4 4v10H4V1zm5 1v3h3'/%3E%3C/svg%3E")
-    center/contain no-repeat;
-}
-
-.file-icon.kind-md {
-  border-radius: 2px;
-  background-color: #519aba;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='white' d='M8 11.5 4.5 8h7L8 11.5z'/%3E%3C/svg%3E");
-  background-size: 10px 10px;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-
-.file-icon.kind-pdf {
-  border-radius: 2px;
-  background-color: #e74c3c;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M4 1h6l4 4v10H4V1zm5 1v3h3'/%3E%3C/svg%3E")
-    center/contain no-repeat;
-}
-
-.file-icon.kind-word {
-  border-radius: 2px;
-  background-color: #2b579a;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M4 1h6l4 4v10H4V1zm5 1v3h3'/%3E%3C/svg%3E")
-    center/contain no-repeat;
-}
-
-.file-icon.kind-image {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='2' y='5' width='7' height='7' rx='1' fill='none' stroke='%23a855f7' stroke-width='1'/%3E%3Crect x='5' y='2' width='7' height='7' rx='1' fill='%23252526' stroke='%23a855f7' stroke-width='1'/%3E%3Cpath d='M6.5 7.5l1.2-1.2L9 7.5l.8-1 1.7 1.2V8.5H6.5v-1z' fill='%23c4b5fd'/%3E%3Ccircle cx='9.5' cy='4.5' r='.6' fill='%23c4b5fd'/%3E%3C/svg%3E")
-    center/contain no-repeat;
-}
-
-.file-icon.kind-vue {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%2342b883' d='M8 2.5L2 13h3.5l.5-1h4l.5 1H14L8 2.5zm0 3.2l2.8 5.3H5.2L8 5.7z'/%3E%3C/svg%3E")
-    center/contain no-repeat;
 }
 
 .file-name {

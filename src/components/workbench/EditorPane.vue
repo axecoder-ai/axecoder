@@ -277,6 +277,7 @@ defineExpose({
           :kind="previewKind"
           :preview-base64="activePreviewFile?.previewBase64"
           :preview-html="activePreviewFile?.previewHtml"
+          :file-path="activePath"
         />
       </template>
       <template v-else-if="activePath && (isMarkdown ? mode === 'markdown' : true)">

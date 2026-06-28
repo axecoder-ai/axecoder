@@ -20,3 +20,16 @@ if (!fs.existsSync(plist)) {
 execSync(`plutil -replace CFBundleName -string "${name}" "${plist}"`)
 execSync(`plutil -replace CFBundleDisplayName -string "${name}" "${plist}"`)
 console.log(`[patch-electron] 菜单栏名称已改为 ${name}`)
+
+const devIcon = path.join(root, 'build/.claude-icon.png')
+const electronIcns = path.join(root, 'node_modules/electron/dist/Electron.app/Contents/Resources/electron.icns')
+const tmpIcns = path.join(root, 'build/.dev-electron.icns')
+
+if (fs.existsSync(devIcon) && fs.existsSync(electronIcns)) {
+  execSync(`magick "${devIcon}" -define icon:auto-resize=16,32,64,128,256,512 "${tmpIcns}"`)
+  fs.copyFileSync(tmpIcns, electronIcns)
+  fs.unlinkSync(tmpIcns)
+  console.log('[patch-electron] Electron.app 图标已改为 claudelogo')
+} else {
+  console.log('[patch-electron] 跳过图标替换（缺少 .claude-icon.png 或 electron.icns）')
+}

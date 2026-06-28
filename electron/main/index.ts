@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, screen, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, Menu, nativeImage, screen, dialog, type MenuItemConstructorOptions } from 'electron'
 import { registerFsIpc, getRecentProjects } from './fs-ipc'
 import { registerCodeGraphIpc } from './codegraph-ipc'
 import { registerMarkdownExportIpc } from './markdown-export-ipc'
@@ -57,6 +57,8 @@ const appIconPath = () =>
   VITE_DEV_SERVER_URL
     ? path.join(process.env.APP_ROOT!, 'build', '.claude-icon.png')
     : path.join(process.env.APP_ROOT!, 'build', 'icon.png')
+
+const confirmIconPath = () => path.join(process.env.APP_ROOT!, 'build', 'icon.png')
 
 if (os.release().startsWith('6.1')) app.disableHardwareAcceleration()
 
@@ -515,6 +517,18 @@ app.whenReady().then(async () => {
   registerAiMetricsIpc()
   registerAiTraceIpc()
   ipcMain.handle('app:getStartupProjectPath', () => startupProjectPath ?? null)
+  ipcMain.handle('app:confirm', async (event, message: string) => {
+    const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const icon = nativeImage.createFromPath(confirmIconPath())
+    const { response } = await dialog.showMessageBox(parent, {
+      message,
+      buttons: ['Cancel', 'OK'],
+      defaultId: 1,
+      cancelId: 0,
+      icon: icon.isEmpty() ? undefined : icon,
+    })
+    return response === 1
+  })
   ipcMain.handle('window:getLayout', () => getWindowLayout())
   ipcMain.handle('window:getRole', (event) => {
     if (companionWin && !companionWin.isDestroyed() && event.sender === companionWin.webContents) {

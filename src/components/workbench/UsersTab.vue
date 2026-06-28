@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import type { UserEntry, UserSaveInput } from '../../types/axecoder'
+import { appConfirm } from '../../utils/appConfirm'
 import UserFormDialog from './UserFormDialog.vue'
 
 const emit = defineEmits<{
@@ -88,7 +89,7 @@ const onPickAvatar = async (userId: string) => {
 
 const onDelete = async (u: UserEntry) => {
   if (u.isBuiltin) return
-  if (!confirm(`Delete user "${u.displayName}"?`)) return
+  if (!(await appConfirm(`Delete user "${u.displayName}"?`))) return
   const res = await window.axecoder.deleteUser(u.id)
   if (!res.ok) {
     alert(res.error)

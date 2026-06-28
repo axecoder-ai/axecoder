@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import {
   activeProgressHeadline,
   sliceProgressStepsForDisplay,
@@ -34,16 +34,55 @@ const safeThinkingType = computed(() => {
 })
 
 const expanded = ref(false)
+const thinkingExpanded = ref(false)
 const thinkingTextEl = ref<HTMLElement | null>(null)
+const thinkingStartedAt = ref<number | null>(null)
+const thinkingTick = ref(0)
+let thinkingTimer: ReturnType<typeof setInterval> | undefined
 /** 用户手动展开的已完成 step */
 const stepDetailExpanded = ref<Set<string>>(new Set())
 
-watch(safeThinkingText, () => {
+const syncThinkingTimer = (active: boolean) => {
+  if (active) {
+    if (!thinkingTimer) {
+      thinkingTimer = setInterval(() => {
+        thinkingTick.value++
+      }, 1000)
+    }
+    return
+  }
+  if (thinkingTimer) {
+    clearInterval(thinkingTimer)
+    thinkingTimer = undefined
+  }
+}
+
+watch(safeThinkingText, (text, prev) => {
+  const has = !!text.trim()
+  const had = !!prev?.trim()
+  if (has && !had) {
+    thinkingStartedAt.value = Date.now()
+    thinkingExpanded.value = false
+  }
+  if (!has) thinkingStartedAt.value = null
+  syncThinkingTimer(has)
   nextTick(() => {
+    if (!thinkingExpanded.value) return
     const el = thinkingTextEl.value
     if (el) el.scrollTop = el.scrollHeight
   })
 })
+
+onUnmounted(() => syncThinkingTimer(false))
+
+const thinkingSeconds = computed(() => {
+  void thinkingTick.value
+  if (!thinkingStartedAt.value) return 0
+  return Math.max(1, Math.round((Date.now() - thinkingStartedAt.value) / 1000))
+})
+
+const isBashStep = (step: AgentProgressStep) =>
+  step.phase === 'tool' && step.toolName?.toLowerCase() === 'bash'
 
 watch(
   () => props.steps,
@@ -68,25 +107,11 @@ const sliced = computed(() =>
 const visibleSteps = computed(() => sliced.value.visible)
 const hiddenCount = computed(() => sliced.value.hiddenCount)
 
-const glyphForStep = (step: AgentProgressStep) => {
-  if (step.status === 'error') return '✗'
-  if (step.status === 'done') return '✓'
-  if (step.phase === 'model') return '◐'
-  return '●'
-}
-
 const primaryForStep = (step: AgentProgressStep) => {
   if (step.phase === 'tool' && step.toolName) return step.toolName
   if (step.phase === 'model' && step.status === 'active') return 'Model Call'
   if (step.phase === 'model') return 'Model Result'
   return step.label
-}
-
-const thinkingTypeLabel = (raw?: string) => {
-  if (raw === 'tool_call') return '工具调用'
-  if (raw === 'tool_result') return '返回结果'
-  if (raw === 'reasoning') return 'Thinking'
-  return raw?.trim() || 'Thinking'
 }
 
 const isStepDetailOpen = (step: AgentProgressStep) => {
@@ -113,11 +138,6 @@ const secondaryForStep = (step: AgentProgressStep) => {
   return ''
 }
 
-const subagentGlyph = (status: SubagentTaskView['status']) => {
-  if (status === 'completed') return '✓'
-  if (status === 'failed' || status === 'stopped') return '✗'
-  return '●'
-}
 </script>
 
 <template>
@@ -126,7 +146,27 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
       ⚠ {{ loopGuardNotice }}
     </div>
 
-    <div class="stream-headline" :class="{ shimmer: agentMode && steps.some((s) => s.status === 'active') }">
+    <button
+      v-if="safeThinkingText.trim()"
+      type="button"
+      class="thought-toggle"
+      :aria-expanded="thinkingExpanded"
+      @click="thinkingExpanded = !thinkingExpanded"
+    >
+      Thought for {{ thinkingSeconds }}s
+      <span class="thought-chevron" aria-hidden="true">{{ thinkingExpanded ? '▾' : '▸' }}</span>
+    </button>
+    <pre
+      v-if="safeThinkingText.trim() && thinkingExpanded"
+      ref="thinkingTextEl"
+      class="thinking-text"
+    >{{ safeThinkingText }}</pre>
+
+    <div
+      v-if="!(agentMode && visibleSteps.length)"
+      class="stream-headline"
+      :class="{ shimmer: agentMode && steps.some((s) => s.status === 'active') }"
+    >
       <span class="headline-glyph" aria-hidden="true">›</span>
       <span class="headline-text">{{ displayHeadline }}</span>
     </div>
@@ -149,14 +189,33 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
           :class="{ clickable: step.detail?.trim() && step.status !== 'active' }"
           @click="toggleStepDetail(step)"
         >
-          <span class="row-glyph" :class="step.status">{{ glyphForStep(step) }}</span>
+          <span class="row-indicator" :class="step.status" aria-hidden="true">
+            <span v-if="step.status === 'error'" class="indicator-char">✗</span>
+            <span v-else-if="step.status === 'done'" class="dot dot-done" />
+            <span v-else-if="step.phase === 'model'" class="dot dot-model">
+              <span class="dot-model-arc" />
+            </span>
+            <span v-else class="dot dot-active">
+              <span class="dot-pulse" />
+            </span>
+          </span>
           <span v-if="step.detail?.trim() && step.status !== 'active'" class="row-chevron" aria-hidden="true">
             {{ isStepDetailOpen(step) ? '▾' : '▸' }}
           </span>
           <span class="row-primary">{{ primaryForStep(step) }}</span>
           <span v-if="secondaryForStep(step)" class="row-secondary">{{ secondaryForStep(step) }}</span>
         </div>
-        <pre v-if="isStepDetailOpen(step)" class="step-detail">{{ step.detail }}</pre>
+        <div v-if="isStepDetailOpen(step) && isBashStep(step)" class="bash-io-block">
+          <div v-if="step.summary?.trim()" class="bash-io-row">
+            <span class="io-label">IN</span>
+            <pre class="io-body">{{ step.summary }}</pre>
+          </div>
+          <div v-if="step.detail?.trim()" class="bash-io-row">
+            <span class="io-label">OUT</span>
+            <pre class="io-body">{{ step.detail }}</pre>
+          </div>
+        </div>
+        <pre v-else-if="isStepDetailOpen(step)" class="step-detail">{{ step.detail }}</pre>
       </div>
     </div>
 
@@ -167,36 +226,31 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
         class="stream-row subagent"
         :class="task.status"
       >
-        <span class="row-glyph" :class="task.status">{{ subagentGlyph(task.status) }}</span>
-        <span class="row-primary">Task</span>
-        <span class="row-secondary">{{ task.description }}</span>
+        <span class="row-indicator" :class="task.status" aria-hidden="true">
+          <span v-if="task.status === 'failed' || task.status === 'stopped'" class="indicator-char">✗</span>
+          <span v-else-if="task.status === 'completed'" class="dot dot-done" />
+          <span v-else class="dot dot-active">
+            <span class="dot-pulse" />
+          </span>
+        </span>
+        <span class="row-primary">Agent: {{ task.description }}</span>
       </div>
     </div>
 
     <div v-if="streamText.trim()" class="reasoning-block">
       <pre class="reasoning-text">{{ streamText }}</pre>
     </div>
-
-    <div v-if="safeThinkingText.trim()" class="thinking-block">
-      <div class="thinking-header">
-        <span class="thinking-label">{{ thinkingTypeLabel(safeThinkingType) }}</span>
-      </div>
-      <pre ref="thinkingTextEl" class="thinking-text">{{ safeThinkingText }}</pre>
-    </div>
   </div>
 </template>
 
 <style scoped>
 .agent-progress-stream {
-  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--wc-text-dim);
-  background: var(--wc-chat-box-bg, var(--wc-input-bg));
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: inset 0 0 0 1px var(--wc-border);
-  padding: 10px 12px;
+  font-family: var(--wc-font-sans, system-ui, sans-serif);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--wc-text-muted);
+  background: transparent;
+  padding: 2px 0 10px;
   max-width: 100%;
 }
 
@@ -210,13 +264,36 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
   line-height: 1.4;
 }
 
+.thought-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--wc-text-muted);
+  cursor: pointer;
+}
+
+.thought-toggle:hover {
+  color: var(--wc-text);
+}
+
+.thought-chevron {
+  font-size: 10px;
+  opacity: 0.75;
+}
+
 .stream-headline {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--wc-text);
+  color: var(--wc-text-muted);
   font-size: 12px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .stream-headline.shimmer .headline-text {
@@ -234,8 +311,7 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
 }
 
 .headline-glyph {
-  color: var(--wc-accent, #7aa2f7);
-  font-weight: 600;
+  display: none;
 }
 
 .stream-expand {
@@ -259,7 +335,7 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
 .stream-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
 .stream-step {
@@ -292,31 +368,61 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
 }
 
 .step-detail {
-  margin: 0 0 0 18px;
-  padding: 6px 8px;
-  max-height: 200px;
+  margin: 4px 0 0 18px;
+  padding: 8px 10px;
+  max-height: 220px;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: inherit;
-  font-size: 10px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
   line-height: 1.45;
   color: var(--wc-text);
-  background: color-mix(in srgb, var(--wc-input-bg) 70%, transparent);
-  border-left: 2px solid var(--wc-border-light, var(--wc-border));
-  border-radius: 0 4px 4px 0;
+  background: color-mix(in srgb, var(--wc-input-bg) 55%, var(--wc-panel));
+  border-radius: 6px;
 }
 
-.stream-row.active .row-glyph {
-  color: var(--wc-accent, #7aa2f7);
-  animation: glyph-pulse 0.9s ease-in-out infinite;
+.bash-io-block {
+  margin: 4px 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
 }
 
-.stream-row.done .row-glyph {
-  color: #3d9a5f;
+.bash-io-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--wc-input-bg) 55%, var(--wc-panel));
 }
 
-.stream-row.error .row-glyph {
+.io-label {
+  flex-shrink: 0;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--wc-text-dim);
+  padding-top: 2px;
+}
+
+.io-body {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--wc-text);
+}
+
+.stream-row.error .indicator-char {
   color: #c45c5c;
 }
 
@@ -324,25 +430,118 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
   color: var(--wc-accent, #7aa2f7);
 }
 
-@keyframes glyph-pulse {
+.row-indicator {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.indicator-char {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.dot {
+  position: relative;
+  display: block;
+}
+
+.dot-done {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3ecf8e;
+  box-shadow: 0 0 6px color-mix(in srgb, #3ecf8e 45%, transparent);
+  animation: dot-pop 0.35s ease-out;
+}
+
+.dot-active {
+  width: 8px;
+  height: 8px;
+}
+
+.dot-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--wc-accent, #7aa2f7);
+  animation: dot-breathe 1.2s ease-in-out infinite;
+}
+
+.dot-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid var(--wc-accent, #7aa2f7);
+  animation: dot-ring 1.2s ease-out infinite;
+}
+
+.dot-model {
+  width: 10px;
+  height: 10px;
+}
+
+.dot-model-arc {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid color-mix(in srgb, var(--wc-accent, #7aa2f7) 22%, transparent);
+  border-top-color: var(--wc-accent, #7aa2f7);
+  border-radius: 50%;
+  animation: dot-spin 0.75s linear infinite;
+}
+
+@keyframes dot-breathe {
   0%,
   100% {
-    opacity: 0.45;
+    transform: scale(0.82);
+    opacity: 0.55;
   }
   50% {
+    transform: scale(1);
     opacity: 1;
   }
 }
 
-.row-glyph {
-  width: 12px;
-  flex-shrink: 0;
-  text-align: center;
+@keyframes dot-ring {
+  0% {
+    transform: scale(0.75);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.65);
+    opacity: 0;
+  }
+}
+
+@keyframes dot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dot-pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .row-primary {
   flex-shrink: 0;
   font-weight: 600;
+  font-size: 13px;
   color: var(--wc-text);
 }
 
@@ -372,45 +571,25 @@ const subagentGlyph = (status: SubagentTaskView['status']) => {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: inherit;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   line-height: 1.5;
   color: var(--wc-text-dim);
 }
 
-.thinking-block {
-  margin-top: 8px;
-  padding: 8px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--wc-accent, #7aa2f7) 8%, var(--wc-input-bg));
-  border: 1px solid color-mix(in srgb, var(--wc-accent, #7aa2f7) 20%, var(--wc-border));
-}
-
-.thinking-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.thinking-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--wc-accent, #7aa2f7);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
 .thinking-text {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: inherit;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--wc-text);
-  height: 180px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  max-height: 180px;
   overflow-y: auto;
   overflow-anchor: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--wc-text-dim);
+  background: color-mix(in srgb, var(--wc-input-bg) 55%, var(--wc-panel));
+  border-radius: 6px;
 }
 </style>

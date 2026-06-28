@@ -19,6 +19,7 @@ import { findUserById, inferWorkshopRoleId } from '../../utils/workshop-user-bin
 import { useWorkbenchSession } from '../../composables/useWorkbenchSession'
 import { useChatAttachedImages } from '../../composables/useChatAttachedImages'
 import { workshopIdForAgentChat } from '../../utils/workshop-agent-link'
+import { resolveSessionModelIdOnSwitch } from '../../utils/session-preferences'
 import {
   clearWorkshopLiveTurnState,
   createWorkshopLiveTurnState,
@@ -71,6 +72,82 @@ const embeddedDefaultTitle = computed(() => {
 
 const isDrawIoMode = computed(() => props.orchestrationChatMode === 'draw-io')
 const isSplitPanelMode = computed(() => isDrawIoMode.value)
+
+const DRAW_IO_CHAT_MIN = 280
+const DRAW_IO_DIAGRAM_MIN = 280
+const DRAW_IO_CHAT_DEFAULT = 360
+const workshopBodyRef = ref<HTMLElement | null>(null)
+const chatPaneWidth = ref(DRAW_IO_CHAT_DEFAULT)
+const splitDragging = ref(false)
+
+const clampChatPaneWidth = (w: number) => {
+  const body = workshopBodyRef.value
+  if (!body) return Math.max(DRAW_IO_CHAT_MIN, w)
+  const max = body.getBoundingClientRect().width - DRAW_IO_DIAGRAM_MIN - 5
+  return Math.min(Math.max(w, DRAW_IO_CHAT_MIN), Math.max(DRAW_IO_CHAT_MIN, max))
+}
+
+const splitListStyle = computed(() => {
+  if (!isSplitPanelMode.value) return undefined
+  return { width: `${chatPaneWidth.value}px`, flex: '0 0 auto' }
+})
+
+const trackColumnDrag = (
+  handle: HTMLElement,
+  e: PointerEvent,
+  onMove: (ev: PointerEvent) => void,
+  onEnd: () => void,
+) => {
+  e.preventDefault()
+  const pointerId = e.pointerId
+  handle.setPointerCapture(pointerId)
+  const move = (ev: PointerEvent) => {
+    if (ev.pointerId !== pointerId) return
+    onMove(ev)
+  }
+  const end = (ev: PointerEvent) => {
+    if (ev.pointerId !== pointerId) return
+    handle.removeEventListener('pointermove', move)
+    handle.removeEventListener('pointerup', end)
+    handle.removeEventListener('pointercancel', end)
+    handle.removeEventListener('lostpointercapture', end)
+    try {
+      handle.releasePointerCapture(pointerId)
+    } catch {
+      /* already released */
+    }
+    onEnd()
+  }
+  handle.addEventListener('pointermove', move)
+  handle.addEventListener('pointerup', end)
+  handle.addEventListener('pointercancel', end)
+  handle.addEventListener('lostpointercapture', end)
+}
+
+const onSplitPointerDown = (e: PointerEvent) => {
+  if (!isSplitPanelMode.value) return
+  const handle = e.currentTarget
+  if (!(handle instanceof HTMLElement)) return
+  splitDragging.value = true
+  const startX = e.clientX
+  const startW = chatPaneWidth.value
+  trackColumnDrag(
+    handle,
+    e,
+    (ev) => {
+      chatPaneWidth.value = clampChatPaneWidth(startW + (ev.clientX - startX))
+    },
+    () => {
+      splitDragging.value = false
+    },
+  )
+}
+
+const onLayoutResize = () => {
+  if (isSplitPanelMode.value) {
+    chatPaneWidth.value = clampChatPaneWidth(chatPaneWidth.value)
+  }
+}
 const BLANK_DRAW_IO_XML =
   '<mxfile host="app.diagrams.net"><diagram id="blank" name="Page-1"><mxGraphModel grid="0" page="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>'
 const diagramXml = ref('')
@@ -131,6 +208,7 @@ const thinkingTypeLabel = ref('')
 const streamRoleId = ref<WorkshopRoleId | null>(null)
 const streamSpeakerUserId = ref<string | null>(null)
 const modelId = ref('')
+const globalDefaultModelId = ref('')
 const enabledModels = ref<ModelEntry[]>([])
 const { scrollEl: listEl, onScrollContainer, scrollToBottom: scrollBottom } =
   useStickToBottomScroll()
@@ -329,12 +407,14 @@ const loadWorkshopUsers = async () => {
 const loadModels = async () => {
   const data = await window.axecoder.listModels()
   enabledModels.value = data.models.filter((m) => m.enabled)
-  const preferred = props.preferredModelId?.trim()
-  modelId.value =
-    (preferred && enabledModels.value.find((m) => m.id === preferred)?.id) ||
+  globalDefaultModelId.value =
     enabledModels.value.find((m) => m.id === data.activeModelId)?.id ||
     enabledModels.value[0]?.id ||
     ''
+  const preferred = props.preferredModelId?.trim()
+  modelId.value =
+    (preferred && enabledModels.value.find((m) => m.id === preferred)?.id) ||
+    globalDefaultModelId.value
 }
 
 watch(
@@ -704,7 +784,10 @@ const hydrateWorkshopImagePreviews = async (messages: WorkshopMessage[]) => {
 const selectSession = async (id: string) => {
   locallyDismissedAskIds.value = new Set()
   const session = await loadWorkshop(id)
-  if (session) await hydrateWorkshopImagePreviews(session.messages)
+  if (session) {
+    await hydrateWorkshopImagePreviews(session.messages)
+    modelId.value = resolveSessionModelIdOnSwitch(session, modelId.value)
+  }
   active.value = session
   activePersisted = !!session
   if (session) emitWorkshopActive(session.id)
@@ -722,7 +805,7 @@ const openForAgentChat = async (agentChatId: string) => {
     await hydrateWorkshopImagePreviews(session.messages)
     active.value = session
     activePersisted = true
-    modelId.value = session.modelId || modelId.value
+    modelId.value = resolveSessionModelIdOnSwitch(session, modelId.value)
     emitWorkshopActive(id)
     await syncDiagramFromSession()
     await scrollBottom(true)
@@ -751,16 +834,18 @@ const newSession = () => {
   locallyDismissedAskIds.value = new Set()
   const id = newLocalWorkshopId()
   const now = Date.now()
+  const defaultModel = globalDefaultModelId.value || modelId.value
   active.value = {
     id,
     title: 'Multi-Agent',
     updatedAt: now,
     userBrief: '',
-    modelId: modelId.value,
+    modelId: defaultModel,
     messages: [],
     phase: 'idle',
     mountedFiles: [],
   }
+  modelId.value = defaultModel
   activePersisted = false
   briefInput.value = ''
   answerInput.value = ''
@@ -783,6 +868,7 @@ watch(
 )
 
 onMounted(async () => {
+  window.addEventListener('resize', onLayoutResize)
   await loadModels()
   await loadWorkshopUsers()
   offProgress = window.axecoder.onWorkshopProgress((p) => {
@@ -846,6 +932,7 @@ watch(
 )
 
 onUnmounted(() => {
+  window.removeEventListener('resize', onLayoutResize)
   offProgress?.()
   offDrawIo?.()
   unbindWorkshopAgentProgress()
@@ -891,8 +978,21 @@ defineExpose({
       :task-total="active.sopTaskTotal"
     />
     <div v-if="!hasProject" class="workshop-empty">Open a project first</div>
-    <div v-else class="workshop-body" :class="{ 'workshop-body--split': isSplitPanelMode }">
-    <div ref="listEl" class="message-list" @scroll="onScrollContainer">
+    <div
+      v-else
+      ref="workshopBodyRef"
+      class="workshop-body"
+      :class="{
+        'workshop-body--split': isSplitPanelMode,
+        'workshop-body--split-dragging': splitDragging,
+      }"
+    >
+    <div
+      ref="listEl"
+      class="message-list"
+      :style="splitListStyle"
+      @scroll="onScrollContainer"
+    >
       <div v-if="showEmptyHint" class="workshop-empty-hint">
         <p class="workshop-empty-title">{{ isDrawIoMode ? 'Draw.IO' : 'Multi-Agent 协作' }}</p>
         <p class="workshop-empty-desc">
@@ -940,9 +1040,16 @@ defineExpose({
         v-bind="roleProps(thinkingRole, thinkingSpeakerUserId)"
       />
     </div>
+    <div
+      v-if="isSplitPanelMode"
+      class="workshop-split-handle"
+      :class="{ dragging: splitDragging }"
+      @pointerdown="onSplitPointerDown"
+    />
     <div v-if="isDrawIoMode" class="side-panel">
       <DrawIoEmbed :key="activeId" :xml="diagramXml" @export-xml="onDiagramExport" />
     </div>
+    <div v-if="splitDragging" class="workshop-split-shield" />
     </div>
     <div v-if="hasProject && !embeddedInAgentChat" class="composer">
       <template v-if="pendingQuestion">
@@ -1032,12 +1139,44 @@ defineExpose({
 .workshop-body--split,
 .workshop-body--draw-io {
   flex-direction: row;
+  position: relative;
+}
+.workshop-split-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  cursor: col-resize;
+}
+.workshop-body--split-dragging {
+  user-select: none;
 }
 .workshop-body--split .message-list,
 .workshop-body--draw-io .message-list {
-  flex: 0 0 42%;
-  max-width: 480px;
-  border-right: 1px solid var(--wc-border);
+  min-width: 0;
+}
+.workshop-split-handle {
+  flex-shrink: 0;
+  width: 5px;
+  margin: 0 -2px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  position: relative;
+  z-index: 21;
+  background: transparent;
+}
+.workshop-split-handle::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--wc-border);
+}
+.workshop-split-handle:hover::before,
+.workshop-split-handle.dragging::before {
+  background: var(--wc-border-light);
 }
 .side-panel,
 .draw-io-panel {

@@ -93,6 +93,7 @@ contextBridge.exposeInMainWorld('axecoder', {
   },
   getStartupProjectPath: () =>
     ipcRenderer.invoke('app:getStartupProjectPath') as Promise<string | null>,
+  confirm: (message: string) => ipcRenderer.invoke('app:confirm', message) as Promise<boolean>,
   getLastProject: () => ipcRenderer.invoke('fs:getLastProject') as Promise<string | null>,
   openProject: (rootPath?: string) =>
     ipcRenderer.invoke('fs:openProject', rootPath) as Promise<{ rootPath: string; tree: import('../main/fs-ipc').FileNode } | null>,

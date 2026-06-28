@@ -640,6 +640,8 @@ export type ChatSession = ChatSessionMeta & {
   messages: ChatMessage[]
   /** 该会话最后使用的聊天模式（Agent / Plan / Workshop 等） */
   chatMode?: ChatModeId
+  /** 该会话最后一次发送消息时使用的模型 */
+  modelId?: string
 }
 
 export type GitStatusResult =
@@ -857,6 +859,7 @@ export type AxeCoderFs = {
   saveAiTrace: () => Promise<{ ok: true; path: string } | { ok: false; error: string }>
   onAiTraceUpdate: (callback: (state: AiTraceState) => void) => () => void
   getStartupProjectPath: () => Promise<string | null>
+  confirm: (message: string) => Promise<boolean>
   getLastProject: () => Promise<string | null>
   openProject: (rootPath?: string) => Promise<{ rootPath: string; tree: FileNode } | null>
   openFolder: () => Promise<{ rootPath: string; tree: FileNode } | null>

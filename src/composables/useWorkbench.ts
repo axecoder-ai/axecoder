@@ -19,6 +19,7 @@ import {
   type SaveStatus,
 } from './workbench-state'
 import { documentPreviewKind } from '../utils/document-preview'
+import { appConfirm } from '../utils/appConfirm'
 
 export const useWorkbench = () => {
   const { t } = useI18n()
@@ -160,10 +161,10 @@ export const useWorkbench = () => {
     return true
   }
 
-  const confirmDirty = (message: string): 'save' | 'discard' | 'cancel' => {
-    const choice = window.confirm(t('explorer.confirmSaveContinue', { message }))
+  const confirmDirty = async (message: string): Promise<'save' | 'discard' | 'cancel'> => {
+    const choice = await appConfirm(t('explorer.confirmSaveContinue', { message }))
     if (choice) return 'save'
-    const discard = window.confirm(t('explorer.confirmDiscard'))
+    const discard = await appConfirm(t('explorer.confirmDiscard'))
     if (discard) return 'discard'
     return 'cancel'
   }
@@ -209,6 +210,16 @@ export const useWorkbench = () => {
         dirty: false,
         previewKind: 'doc',
       }
+    } else if (previewKind === 'image') {
+      const { base64 } = await fs.readFileBase64(path)
+      file = {
+        path,
+        name: fileNameFromPath(path),
+        content: '',
+        dirty: false,
+        previewKind: 'image',
+        previewBase64: base64,
+      }
     } else {
       let text: string
       if (content !== undefined) {
@@ -247,7 +258,7 @@ export const useWorkbench = () => {
     if (file.dirty) {
       const prevActive = activePath.value
       activePath.value = path
-      const action = confirmDirty(t('explorer.unsavedFile', { name: file.name }))
+      const action = await confirmDirty(t('explorer.unsavedFile', { name: file.name }))
       if (action === 'cancel') {
         activePath.value = prevActive
         return false
@@ -318,7 +329,7 @@ export const useWorkbench = () => {
     const { content: diskContent } = await fs.readFile(filePath)
     if (diskContent === open.content) return
     if (open.dirty) {
-      const choice = window.confirm(
+      const choice = await appConfirm(
         t('explorer.externalChangeDirty', {
           name: open.name,
           default: `${open.name} changed on disk. Reload and discard your edits?`,
@@ -352,7 +363,7 @@ export const useWorkbench = () => {
       fs.confirmQuit()
       return
     }
-    const action = confirmDirty(t('explorer.unsavedFiles'))
+    const action = await confirmDirty(t('explorer.unsavedFiles'))
     if (action === 'cancel') return
     if (action === 'save') {
       const ok = await saveAllDirty()

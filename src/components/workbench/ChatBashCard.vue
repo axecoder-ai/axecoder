@@ -21,7 +21,7 @@ const emit = defineEmits<{
         pending.runInBackground ? 'Pending (background)' : 'Pending execution'
       }}</span>
     </div>
-    <pre class="bash-command">{{ pending.command }}</pre>
+    <pre class="bash-command"><span class="io-label">IN</span><span class="bash-command-body">{{ pending.command }}</span></pre>
     <div class="bash-actions">
       <button type="button" class="btn-run" :disabled="busy" @click="emit('confirm')">
         Run
@@ -75,6 +75,26 @@ const emit = defineEmits<{
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--wc-text);
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--wc-input-bg) 55%, var(--wc-panel));
+}
+
+.io-label {
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--wc-text-dim);
+  padding-top: 2px;
+}
+
+.bash-command-body {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .bash-actions {

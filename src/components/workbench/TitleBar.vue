@@ -45,10 +45,11 @@ defineEmits<{
         :title="t('titlebar.toggleSidebar')"
         @click="$emit('togglePrimarySidebar')"
       >
-        <svg class="sidebar-toggle-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" />
-          <rect x="3.5" y="4.5" width="3.5" height="7" rx="0.5" fill="currentColor" stroke="none" />
-        </svg>
+        <span
+          class="codicon"
+          :class="primarySidebarVisible ? 'codicon-layout-sidebar-left' : 'codicon-layout-sidebar-left-off'"
+          aria-hidden="true"
+        />
       </button>
       <span v-if="companionMode" class="companion-label">{{ t('titlebar.companionTitle') }}</span>
       <span v-if="metricsMode" class="companion-label">{{ t('titlebar.metricsTitle') }}</span>
@@ -62,11 +63,7 @@ defineEmits<{
       :title="projectName ? t('titlebar.projectLabel', { name: projectName }) : t('titlebar.openProjectHint')"
       @click="$emit('openProject')"
     >
-      <svg class="icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-        <path
-          d="M2.5 3.5A1.5 1.5 0 0 1 4 2h5l3.5 3.5V12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12V3.5zm2 0V6h5V3.5H4.5z"
-        />
-      </svg>
+      <span class="codicon codicon-root-folder project-icon" aria-hidden="true" />
       <span class="search-text">{{
         projectName ? t('titlebar.projectLabel', { name: projectName }) : t('titlebar.openProject')
       }}</span>
@@ -81,22 +78,7 @@ defineEmits<{
         :title="t('titlebar.swapCompanionLayout')"
         @click="$emit('toggleCompanionLayout')"
       >
-        <svg
-          class="title-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.65"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M8 7H4l3-3" />
-          <path d="M4 7v10" />
-          <path d="M16 17h4l-3 3" />
-          <path d="M20 17V7" />
-          <path d="M10 12h4" />
-        </svg>
+        <span class="codicon codicon-arrow-swap" aria-hidden="true" />
       </button>
       <button
         v-if="!companionMode && !metricsMode && !traceMode"
@@ -106,21 +88,7 @@ defineEmits<{
         :title="t('titlebar.toggleBottomPanel')"
         @click="$emit('toggleBottomPanel')"
       >
-        <svg
-          class="title-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.65"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M3 20h18" />
-          <path d="M7 16V9" />
-          <path d="M12 16V6" />
-          <path d="M17 16v-7" />
-        </svg>
+        <span class="codicon codicon-graph" aria-hidden="true" />
       </button>
       <button
         v-if="!companionMode && !metricsMode && !traceMode"
@@ -130,19 +98,7 @@ defineEmits<{
         :title="dualWindowActive ? t('titlebar.closeDualWindow') : t('titlebar.toggleDualWindow')"
         @click="$emit('toggleDualWindow')"
       >
-        <svg
-          class="title-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.65"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <rect x="3" y="4" width="8" height="16" rx="1.5" />
-          <rect x="13" y="4" width="8" height="16" rx="1.5" />
-        </svg>
+        <span class="codicon codicon-layout-sidebar-right" aria-hidden="true" />
       </button>
       <button
         v-if="!companionMode && !metricsMode && !traceMode"
@@ -152,20 +108,7 @@ defineEmits<{
         :title="t('titlebar.toggleAi')"
         @click="$emit('toggleAiPanel')"
       >
-        <svg
-          class="chat-toggle-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.65"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path
-            d="M6 5.5h11a2 2 0 0 1 2 2v6.5a2 2 0 0 1-2 2h-6.5L5 18.5V7.5a2 2 0 0 1 2-2z"
-          />
-        </svg>
+        <span class="codicon codicon-comment-discussion" aria-hidden="true" />
       </button>
       <button
         v-if="!companionMode && !metricsMode && !traceMode"
@@ -174,21 +117,7 @@ defineEmits<{
         :title="t('common.settings')"
         @click="$emit('openModelSettings')"
       >
-        <svg
-          class="title-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.65"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <path
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
-          />
-        </svg>
+        <span class="codicon codicon-gear" aria-hidden="true" />
       </button>
     </div>
   </header>
@@ -260,9 +189,8 @@ defineEmits<{
   background: var(--wc-hover);
 }
 
-.search-wrap .icon {
-  width: 14px;
-  height: 14px;
+.search-wrap .project-icon {
+  font-size: 14px;
   color: var(--wc-text-muted);
   flex-shrink: 0;
 }
@@ -298,16 +226,8 @@ defineEmits<{
   color: var(--wc-text);
 }
 
-.sidebar-toggle-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.chat-toggle-icon,
-.title-icon {
-  width: 18px;
-  height: 18px;
+.icon-btn .codicon {
+  font-size: 16px;
   flex-shrink: 0;
 }
 </style>

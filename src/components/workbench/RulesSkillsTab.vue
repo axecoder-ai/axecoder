@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import type { RuleDetail, RuleListItem, RuleScope, SkillDetail, SkillListItem } from '../../types/axecoder'
 import { fileNameFromPath } from '../../composables/workbench-state'
+import { appConfirm } from '../../utils/appConfirm'
 import RuleFormDialog from './RuleFormDialog.vue'
 import SkillFormDialog from './SkillFormDialog.vue'
 
@@ -178,7 +179,7 @@ const onSaved = async (payload: {
 }
 
 const onDelete = async (item: RuleListItem) => {
-  if (!confirm(`Delete rule "${item.description}"?`)) return
+  if (!(await appConfirm(`Delete rule "${item.description}"?`))) return
   const res = await window.axecoder.deleteRule(
     item.scope,
     item.fileName,
@@ -243,7 +244,7 @@ const onSkillSaved = async (payload: {
 
 const onDeleteSkill = async (item: SkillListItem) => {
   if (item.readOnly || item.scope === 'builtin') return
-  if (!confirm(`Delete skill "${item.description}"?`)) return
+  if (!(await appConfirm(`Delete skill "${item.description}"?`))) return
   const res = await window.axecoder.deleteSkill(
     item.scope,
     item.folderName,

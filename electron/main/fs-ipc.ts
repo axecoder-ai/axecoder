@@ -220,15 +220,20 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
       title: 'Open file',
       properties: ['openFile'],
       filters: [
-        { name: 'All supported', extensions: ['md', 'txt', 'json', 'pdf', 'docx', 'doc'] },
+        {
+          name: 'All supported',
+          extensions: ['md', 'txt', 'json', 'pdf', 'docx', 'doc', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'],
+        },
         { name: 'Documents', extensions: ['pdf', 'docx', 'doc'] },
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'] },
         { name: 'Text', extensions: ['md', 'txt', 'json'] },
       ],
     })
     if (result.canceled || !result.filePaths[0]) return null
     const filePath = result.filePaths[0]
     const ext = path.extname(filePath).toLowerCase()
-    if (ext === '.pdf' || ext === '.docx' || ext === '.doc') {
+    const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']
+    if (ext === '.pdf' || ext === '.docx' || ext === '.doc' || imageExts.includes(ext)) {
       await pushRecentFile(filePath)
       return { path: filePath, content: '', binary: true as const }
     }

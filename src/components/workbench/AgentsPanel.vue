@@ -90,10 +90,7 @@ defineExpose({ load })
     <div class="panel-top">
       <div class="panel-top-bar">
         <button type="button" class="panel-toggle" title="Hide session history" @click="emit('toggle')">
-          <svg class="sidebar-toggle-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <rect x="2.5" y="3.5" width="11" height="9" rx="1.5" stroke="currentColor" />
-            <rect x="9" y="4.5" width="3.5" height="7" rx="0.5" fill="currentColor" stroke="none" />
-          </svg>
+          <span class="codicon codicon-layout-sidebar-right-off" aria-hidden="true" />
         </button>
       </div>
       <div class="panel-top-box">
@@ -115,29 +112,10 @@ defineExpose({ load })
               @click="emit('selectSession', { id: s.id, kind: s.kind })"
             >
               <span class="agent-icon" aria-hidden="true">
-                <svg
-                  v-if="isActive(s)"
-                  viewBox="0 0 16 16"
-                  width="16"
-                  height="16"
-                >
-                  <circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-                  <path
-                    fill="currentColor"
-                    d="M8 4.5l.9 1.8 2 .3-1.45 1.4.35 2L8 8.9l-1.8.95.35-2L5.1 6.6l2-.3z"
-                  />
-                </svg>
-                <svg v-else viewBox="0 0 16 16" width="16" height="16">
-                  <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.2" />
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.4"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M5 8.2l2 2 4.2-4.4"
-                  />
-                </svg>
+                <span
+                  class="codicon"
+                  :class="isActive(s) ? 'codicon-star-full' : 'codicon-pass'"
+                />
               </span>
               <div class="agent-text">
                 <div class="agent-title">{{ s.title }}</div>
@@ -150,16 +128,7 @@ defineExpose({ load })
                 aria-label="Delete session"
                 @click.stop="emit('deleteSession', { id: s.id, kind: s.kind })"
               >
-                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M3.5 5.5h9M5.5 5.5V4.2a.8.8 0 0 1 .8-.8h3.4a.8.8 0 0 1 .8.8V5.5M6.2 7.6v3.2M8 7.6v3.2M9.8 7.6v3.2M4.8 5.5l.6 6.2a.9.9 0 0 0 .9.8h3.4a.9.9 0 0 0 .9-.8l.6-6.2"
-                  />
-                </svg>
+                <span class="codicon codicon-trash" aria-hidden="true" />
               </button>
             </li>
           </ul>
@@ -246,9 +215,8 @@ defineExpose({ load })
   color: var(--wc-text);
 }
 
-.panel-toggle .sidebar-toggle-icon {
-  width: 16px;
-  height: 16px;
+.panel-toggle .codicon {
+  font-size: 16px;
 }
 
 .new-agent {
@@ -314,7 +282,14 @@ defineExpose({ load })
   width: 16px;
   height: 16px;
   margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--wc-text-muted);
+}
+
+.agent-icon .codicon {
+  font-size: 16px;
 }
 
 .agent-item.active .agent-icon {
@@ -377,6 +352,10 @@ defineExpose({ load })
 .agent-item:hover .agent-delete,
 .agent-item.active .agent-delete {
   opacity: 1;
+}
+
+.agent-delete .codicon {
+  font-size: 14px;
 }
 
 .agent-delete:hover {

@@ -1,33 +1,47 @@
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount, computed } from 'vue'
 import type { DocumentPreviewKind } from '../../utils/document-preview'
+import { imageMimeForPath } from '../../utils/document-preview'
 import { useI18n } from '../../i18n'
 
 const props = defineProps<{
   kind: DocumentPreviewKind
   previewBase64?: string
   previewHtml?: string
+  filePath?: string
 }>()
 
 const { t } = useI18n()
 const pdfUrl = ref('')
+const imageUrl = ref('')
+
+const base64ToBlobUrl = (b64: string, mime: string): string => {
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return URL.createObjectURL(new Blob([bytes], { type: mime }))
+}
 
 watch(
-  () => props.previewBase64,
-  (b64) => {
+  () => [props.previewBase64, props.kind, props.filePath] as const,
+  ([b64, kind, filePath]) => {
     if (pdfUrl.value) URL.revokeObjectURL(pdfUrl.value)
+    if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
     pdfUrl.value = ''
-    if (!b64 || props.kind !== 'pdf') return
-    const binary = atob(b64)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-    pdfUrl.value = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+    imageUrl.value = ''
+    if (!b64) return
+    if (kind === 'pdf') {
+      pdfUrl.value = base64ToBlobUrl(b64, 'application/pdf')
+    } else if (kind === 'image' && filePath) {
+      imageUrl.value = base64ToBlobUrl(b64, imageMimeForPath(filePath))
+    }
   },
   { immediate: true },
 )
 
 onBeforeUnmount(() => {
   if (pdfUrl.value) URL.revokeObjectURL(pdfUrl.value)
+  if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
 })
 
 const docHtml = computed(() => props.previewHtml ?? '')
@@ -48,6 +62,9 @@ const docHtml = computed(() => props.previewHtml ?? '')
     />
     <div v-else-if="kind === 'doc'" class="doc-unsupported">
       {{ t('editor.docUnsupported') }}
+    </div>
+    <div v-else-if="kind === 'image' && imageUrl" class="image-preview">
+      <img :src="imageUrl" :alt="filePath ?? 'Image'" />
     </div>
   </div>
 </template>
@@ -111,5 +128,21 @@ const docHtml = computed(() => props.previewHtml ?? '')
   color: var(--wc-text-muted);
   font-size: 14px;
   line-height: 1.6;
+}
+
+.image-preview {
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.image-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 </style>
