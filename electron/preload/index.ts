@@ -422,6 +422,7 @@ contextBridge.exposeInMainWorld('axecoder', {
     assigneeUserId?: string,
     roleWorkflowInvoke?: boolean,
     reasoningEffort?: string,
+    clientChatId?: string,
   ) =>
     ipcRenderer.invoke(
       'agent:send',
@@ -432,6 +433,7 @@ contextBridge.exposeInMainWorld('axecoder', {
       cloneForIpc(assigneeUserId),
       roleWorkflowInvoke === true,
       reasoningEffort,
+      cloneForIpc(clientChatId),
     ) as Promise<import('../../src/types/axecoder').AgentSendResult>,
   agentStop: (sessionId: string) =>
     ipcRenderer.invoke('agent:stop', sessionId) as Promise<

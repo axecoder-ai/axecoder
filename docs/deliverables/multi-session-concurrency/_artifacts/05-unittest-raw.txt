@@ -1,0 +1,12 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm.
+
+ RUN  v3.2.4 /Users/cuiyunfeng/workspace/AxeCoder
+
+ ✓ tests/unittest/UT-chat-session-runs/chat-progress-route.test.ts (3 tests) 3ms
+ ✓ tests/unittest/UT-chat-session-run-state/chat-session-run-state.test.ts (3 tests) 3ms
+
+ Test Files  2 passed (2)
+      Tests  6 passed (6)
+   Start at  11:25:12
+   Duration  357ms (transform 63ms, setup 0ms, collect 66ms, tests 6ms, environment 0ms, prepare 171ms)
+

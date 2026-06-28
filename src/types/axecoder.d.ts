@@ -27,7 +27,7 @@ export type SearchReplaceResult = {
   replacements: number
 }
 
-export type AppTheme = 'vscode' | 'aura-light' | 'aura-dark'
+export type AppTheme = 'vscode' | 'aura-light' | 'aura-dark' | 'claude'
 
 export type AgentOutputStyleId = 'default' | 'Explanatory' | 'Learning'
 
@@ -634,6 +634,8 @@ export type ChatSessionMeta = {
 
 export type ChatSession = ChatSessionMeta & {
   messages: ChatMessage[]
+  /** 该会话最后使用的聊天模式（Agent / Plan / Workshop 等） */
+  chatMode?: ChatModeId
 }
 
 export type GitStatusResult =
@@ -1001,6 +1003,7 @@ export type AxeCoderFs = {
     assigneeUserId?: string,
     roleWorkflowInvoke?: boolean,
     reasoningEffort?: string,
+    clientChatId?: string,
   ) => Promise<AgentSendResult>
   agentStop: (sessionId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   agentRunUserShell: (

@@ -131,6 +131,7 @@ export const forkChatBranch = async (
     title,
     updatedAt: now,
     messages: forkedMessages,
+    ...(source.chatMode ? { chatMode: source.chatMode } : {}),
   }
   const saveRes = await saveChatSession(root, session)
   if (!saveRes.ok) return { ok: false, error: saveRes.error }

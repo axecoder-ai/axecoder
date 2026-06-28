@@ -1,7 +1,8 @@
-import { computed, reactive, ref, type Ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import type { ChatModeId } from '../utils/chat-modes'
 import { canPickChatMode } from '../utils/chat-modes'
 import { applyProgressPayload, type AgentProgressPayload } from '../utils/agent-progress'
+import { resolveProgressChatId } from '../utils/chat-progress-route'
 import { detectThinkingType } from '../utils/thinking-parser'
 import {
   createEmptyRunState,
@@ -26,7 +27,6 @@ type UseChatSessionRunsOpts = {
 export const useChatSessionRuns = (opts: UseChatSessionRunsOpts) => {
   const runStates = reactive<Record<string, ChatSessionRunState>>({})
   const agentToChat = ref<Record<string, string>>({})
-  const assignmentQueue = ref<string[]>([])
   let progressUnsub: (() => void) | null = null
 
   const ensureRunState = (chatId: string): ChatSessionRunState => {
@@ -61,18 +61,6 @@ export const useChatSessionRuns = (opts: UseChatSessionRunsOpts) => {
     agentToChat.value = { ...agentToChat.value, [agentSessionId]: chatId }
   }
 
-  const resolveChatIdForAgent = (agentSessionId: string): string | undefined => {
-    if (!agentSessionId) return undefined
-    const mapped = agentToChat.value[agentSessionId]
-    if (mapped) return mapped
-    const candidate = assignmentQueue.value.find((chatId) => {
-      const run = runStates[chatId]
-      return run?.loading && !run.runningAgentSessionId
-    })
-    if (candidate) linkAgentSession(candidate, agentSessionId)
-    return candidate
-  }
-
   const applyProgressToChat = (chatId: string, payload: AgentProgressPayload) => {
     const run = ensureRunState(chatId)
     if (payload.sessionId) linkAgentSession(chatId, payload.sessionId)
@@ -92,6 +80,7 @@ export const useChatSessionRuns = (opts: UseChatSessionRunsOpts) => {
       run.loopGuardNotice = payload.text
     } else if (payload.kind === 'chat_mode') {
       if (
+        chatId === opts.getActiveChatId() &&
         canPickChatMode(opts.getChatModeId(), payload.chatMode, opts.hasSessionMessagesForModeLock())
       ) {
         opts.setChatModeId(payload.chatMode)
@@ -103,14 +92,18 @@ export const useChatSessionRuns = (opts: UseChatSessionRunsOpts) => {
       run.progressSteps = applyProgressPayload(run.progressSteps, payload)
     }
 
-    if (payload.kind !== 'thinking_delta') opts.onScroll?.()
+    if (payload.kind !== 'thinking_delta' && chatId === opts.getActiveChatId()) {
+      opts.onScroll?.()
+    }
   }
 
   const handleAgentProgress = (payload: AgentProgressPayload) => {
     if (!('sessionId' in payload) || !payload.sessionId) return
-    const chatId =
-      agentToChat.value[payload.sessionId] ?? resolveChatIdForAgent(payload.sessionId)
+    const chatId = resolveProgressChatId(payload, agentToChat.value)
     if (!chatId) return
+    if (payload.clientChatId?.trim() && payload.sessionId) {
+      linkAgentSession(payload.clientChatId.trim(), payload.sessionId)
+    }
     applyProgressToChat(chatId, payload)
   }
 
@@ -119,20 +112,22 @@ export const useChatSessionRuns = (opts: UseChatSessionRunsOpts) => {
     resetRunProgress(run)
     run.loading = true
     run.completedUnread = false
-    if (!assignmentQueue.value.includes(chatId)) {
-      assignmentQueue.value = [...assignmentQueue.value, chatId]
-    }
   }
 
   const endRun = (chatId: string, markUnreadIfInactive = false) => {
     const run = runStates[chatId]
     if (!run) return
+    const agentSid = run.runningAgentSessionId
     run.loading = false
-    assignmentQueue.value = assignmentQueue.value.filter((id) => id !== chatId)
     if (markUnreadIfInactive && chatId !== opts.getActiveChatId()) {
       run.completedUnread = true
     }
     resetRunProgress(run)
+    if (agentSid) {
+      const next = { ...agentToChat.value }
+      delete next[agentSid]
+      agentToChat.value = next
+    }
   }
 
   const clearRunProgress = (chatId: string) => {

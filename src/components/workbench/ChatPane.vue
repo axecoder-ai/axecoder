@@ -74,6 +74,7 @@ import {
 import {
   canPickChatMode,
   loadStoredChatMode,
+  resolveSessionChatMode,
   saveStoredChatMode,
   type ChatModeId,
 } from '../../utils/chat-modes'
@@ -166,7 +167,11 @@ const wsTitleById = ref<Record<string, string>>({})
 
 const tabKey = (t: OpenChatTab) => `${t.kind}:${t.id}`
 
-const isActiveTab = (t: OpenChatTab) => t.id === activeTabId.value && t.kind === activeTabKind.value
+const isActiveTab = (t: OpenChatTab) => {
+  if (t.id !== activeTabId.value || t.kind !== activeTabKind.value) return false
+  if (t.kind === 'agent') return t.id === activeId.value && !!activeSession.value
+  return t.id === (workshopSectionRef.value?.activeId ?? activeTabId.value)
+}
 
 const emitActiveTab = () => {
   emit('activeChange', activeTabId.value)
@@ -235,12 +240,13 @@ const removeUnifiedTab = (id: string, kind: SessionKind) => {
 const switchUnifiedTab = async (t: OpenChatTab) => {
   if (isActiveTab(t)) return
   if (activeTabKind.value === 'agent' && activeSession.value && activeId.value) {
+    syncChatModeToSession(activeSession.value)
     cacheSession(activeSession.value)
-    await persist()
+    void persistForChat(activeId.value)
   }
-  setActiveTab(t.id, t.kind)
   if (t.kind === 'workshop') {
     await workshopSectionRef.value?.selectSession(t.id)
+    setActiveTab(t.id, t.kind)
     return
   }
   await selectSession(t.id)
@@ -419,9 +425,18 @@ const includeContextFile = ref(false)
 const dropActive = ref(false)
 const idleHintIdx = ref(0)
 let idleHintTimer: ReturnType<typeof setInterval> | null = null
-let aiStreamUnsub: (() => void) | null = null
+const aiStreamUnsubs = new Map<string, () => void>()
 
 const chatModeId = ref<ChatModeId>(loadStoredChatMode())
+
+const syncChatModeToSession = (session: ChatSession | null) => {
+  if (!session) return
+  session.chatMode = chatModeId.value
+}
+
+const applyChatModeFromSession = (session: ChatSession | null) => {
+  chatModeId.value = resolveSessionChatMode(session)
+}
 const workshopMessageCount = ref(0)
 
 const hasSessionMessagesForModeLock = computed(() => {
@@ -460,6 +475,7 @@ const {
   linkAgentSession,
   setupProgressListener,
   teardownProgressListener,
+  tabDotFor,
 } = useChatSessionRuns({
   getActiveChatId: () => activeId.value,
   getMessagesForChat: (chatId) => {
@@ -471,6 +487,7 @@ const {
   setChatModeId: (id) => {
     chatModeId.value = id
     saveStoredChatMode(id)
+    syncChatModeToSession(activeSession.value)
   },
   onToolProgressDone: (chatId, sessionId) => bumpPlanForChat(chatId, sessionId),
   onScroll: () => {
@@ -489,6 +506,7 @@ const onChatModePick = (id: ChatModeId) => {
   if (!canPickChatMode(chatModeId.value, id, hasSessionMessagesForModeLock.value)) return
   chatModeId.value = id
   saveStoredChatMode(id)
+  syncChatModeToSession(activeSession.value)
   if (id !== 'multi-agent' && id !== 'software-company' && id !== 'draw-io') {
     lastMultiAgentSyncKey = ''
     return
@@ -503,6 +521,7 @@ const sendAgent = (
   projectRoot: string,
   modelId: string,
   apiMessages: import('../../types/axecoder').AiChatMessage[],
+  clientChatId: string,
   assigneeUserId?: string,
   roleWorkflowInvoke?: boolean,
 ) =>
@@ -514,6 +533,7 @@ const sendAgent = (
     assigneeUserId,
     roleWorkflowInvoke,
     chatEffort.value,
+    clientChatId,
   )
 
 const messages = computed(() => activeSession.value?.messages ?? [])
@@ -569,10 +589,12 @@ const maybeRefreshSessionTitle = async () => {
 const persist = async (opts?: { skipTitleSuggest?: boolean }) => {
   if (!hasProject.value || !activeSession.value) return
   const s = activeSession.value
+  syncChatModeToSession(s)
   const res = await window.axecoder.saveChatSession(props.projectRoot, {
     id: s.id,
     title: s.title,
     updatedAt: s.updatedAt,
+    chatMode: s.chatMode,
     messages: s.messages.map((m) => ({
       role: m.role,
       text: m.text,
@@ -614,6 +636,7 @@ const persistForChat = async (chatId: string, opts?: { skipTitleSuggest?: boolea
     id: s.id,
     title: s.title,
     updatedAt: s.updatedAt,
+    chatMode: s.chatMode,
     messages: s.messages.map((m) => ({
       role: m.role,
       text: m.text,
@@ -660,7 +683,7 @@ const startPendingRunUi = (
 
 const finishRunUi = async (chatId: string, opts?: { skipTitleSuggest?: boolean }) => {
   stopIdleHintTimer()
-  unbindAiStream()
+  unbindAiStream(chatId)
   endRun(chatId, chatId !== activeId.value)
   await persistForChat(chatId, opts)
 }
@@ -668,7 +691,7 @@ const finishRunUi = async (chatId: string, opts?: { skipTitleSuggest?: boolean }
 const finishPendingRunUi = async (chatId: string) => {
   setPendingBusy(chatId, false)
   stopIdleHintTimer()
-  unbindAiStream()
+  unbindAiStream(chatId)
   clearRunProgress(chatId)
   await persistForChat(chatId)
 }
@@ -817,10 +840,15 @@ const renderMarkdown = (text: string) => md.render(text)
 
 const selectSession = async (id: string): Promise<boolean> => {
   if (!hasProject.value) return false
-  if (activeId.value === id) return true
+  if (activeId.value === id && activeSession.value?.id === id) {
+    setActiveTab(id, 'agent')
+    return true
+  }
   if (activeSession.value && activeId.value) {
+    const prevId = activeId.value
+    syncChatModeToSession(activeSession.value)
     cacheSession(activeSession.value)
-    await persist()
+    void persistForChat(prevId)
   }
   let session = sessionCache.value[id]
   if (!session) {
@@ -839,6 +867,7 @@ const selectSession = async (id: string): Promise<boolean> => {
   addUnifiedTab(id, 'agent')
   activeSession.value = session
   activeId.value = id
+  applyChatModeFromSession(session)
   setActiveTab(id, 'agent')
   clearUnread(id)
   input.value = ''
@@ -899,6 +928,7 @@ const newChat = async () => {
     title: 'New Agent',
     updatedAt: Date.now(),
     messages: [],
+    chatMode: chatModeId.value,
   }
   const res = await window.axecoder.saveChatSession(props.projectRoot, s)
   if (!res.ok) return
@@ -1079,9 +1109,24 @@ const startIdleHintTimer = () => {
   }, 2200)
 }
 
-const unbindAiStream = () => {
-  aiStreamUnsub?.()
-  aiStreamUnsub = null
+const unbindAiStream = (chatId?: string) => {
+  if (chatId) {
+    aiStreamUnsubs.get(chatId)?.()
+    aiStreamUnsubs.delete(chatId)
+    return
+  }
+  for (const unsub of aiStreamUnsubs.values()) unsub()
+  aiStreamUnsubs.clear()
+}
+
+const bindAiStream = (chatId: string, streamId: string) => {
+  unbindAiStream(chatId)
+  const unsub = window.axecoder.onAiStream((p) => {
+    if (p.streamId !== streamId) return
+    appendStreamText(chatId, p.delta)
+    if (activeId.value === chatId) void scrollMessages()
+  })
+  aiStreamUnsubs.set(chatId, unsub)
 }
 
 const progressAssigneeUser = computed(() => {
@@ -1103,10 +1148,26 @@ const stopAgentRun = async () => {
     await workshopSectionRef.value?.stopRun()
     return
   }
-  const sid = runningAgentSessionId.value
+  const chatId = activeId.value
+  if (chatId) await stopAgentRunForChat(chatId)
+}
+
+const stopAgentRunForChat = async (chatId: string) => {
+  const sid = getRunState(chatId).runningAgentSessionId
   if (!sid) return
   await window.axecoder.agentStop(sid)
 }
+
+const tabIsActive = (tab: OpenChatTab) =>
+  tab.id === activeTabId.value && tab.kind === activeTabKind.value
+
+const tabDotStatus = (tab: OpenChatTab) => {
+  if (tab.kind !== 'agent') return null
+  return tabDotFor(tab.id, tabIsActive(tab))
+}
+
+const tabShowsStop = (tab: OpenChatTab) =>
+  tab.kind === 'agent' && isRunning(tab.id) && !!getRunState(tab.id).runningAgentSessionId
 
 const formatToolLog = (_log: AgentToolLogEntry[]) => ''
 
@@ -1436,6 +1497,7 @@ const onBuildPlanPending = async (msg: ChatMessage, pendingId: string) => {
     if (chatModeId.value !== 'agent') {
       chatModeId.value = 'agent'
       saveStoredChatMode('agent')
+      syncChatModeToSession(getChatSession(chatId))
     }
     const res = await window.axecoder.agentBuildPlan(msg.agentSessionId, pendingId)
     if (res.ok && res.status === 'done') {
@@ -1491,6 +1553,7 @@ const buildPlanFromPath = async (absolutePlanPath: string): Promise<boolean> => 
   if (chatModeId.value !== 'agent') {
     chatModeId.value = 'agent'
     saveStoredChatMode('agent')
+    syncChatModeToSession(session)
   }
   session.messages.push({ role: 'user', text: `Build plan: ${rel}`, apiContent: composed.text })
   session.updatedAt = Date.now()
@@ -1499,7 +1562,7 @@ const buildPlanFromPath = async (absolutePlanPath: string): Promise<boolean> => 
   try {
     await persistForChat(chatId)
     const apiMessages = await buildApiMessages(session.messages)
-    const res = await sendAgent(props.projectRoot, modelId, apiMessages)
+    const res = await sendAgent(props.projectRoot, modelId, apiMessages, chatId)
     pushAssistantFromAgent(chatId, res, model)
     session.updatedAt = Date.now()
     if (res.ok && res.status === 'done') {
@@ -1653,11 +1716,7 @@ const runPlainChat = async (
   if (useSse) {
     clearRunProgress(chatId)
     streamId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    aiStreamUnsub = window.axecoder.onAiStream((p) => {
-      if (p.streamId !== streamId) return
-      appendStreamText(chatId, p.delta)
-      void scrollMessages()
-    })
+    bindAiStream(chatId, streamId)
   }
   const res = await window.axecoder.aiChat(
     modelId,
@@ -1686,6 +1745,7 @@ const buildSlashContext = (): SlashContext => ({
   getSession: () => activeSession.value,
   setSession: (s) => {
     activeSession.value = s
+    applyChatModeFromSession(s)
   },
   persist,
   newChat,
@@ -1921,6 +1981,7 @@ const send = async () => {
             props.projectRoot,
             modelId,
             apiMessages,
+            chatId,
             undefined,
             slashResult.roleWorkflowInvoke === true,
           )
@@ -2042,6 +2103,7 @@ const send = async () => {
         props.projectRoot,
         modelId,
         apiMessages,
+        chatId,
         roleMentionUserId ?? mention?.userId,
         !!roleMentionCommand,
       )
@@ -2130,6 +2192,7 @@ const regenerateLastReply = async () => {
         props.projectRoot,
         modelId,
         apiMessages,
+        chatId,
         userMsg ? assigneeFromUserMessage(userMsg) : undefined,
       )
       pushAssistantFromAgent(chatId, res, model)
@@ -2415,7 +2478,23 @@ defineExpose({
         :class="{ active: tab.id === activeTabId && tab.kind === activeTabKind }"
         @click="switchUnifiedTab({ id: tab.id, kind: tab.kind })"
       >
+        <span
+          v-if="tab.kind === 'agent' && tabDotStatus(tab)"
+          class="tab-dot"
+          :class="`tab-dot--${tabDotStatus(tab)}`"
+          aria-hidden="true"
+        />
         <span class="tab-label">{{ tab.title }}</span>
+        <button
+          v-if="tabShowsStop(tab)"
+          type="button"
+          class="tab-stop"
+          title="Stop agent"
+          aria-label="Stop agent"
+          @click.stop="stopAgentRunForChat(tab.id)"
+        >
+          ■
+        </button>
         <button
           type="button"
           class="tab-close"
@@ -3227,11 +3306,57 @@ defineExpose({
 }
 
 .tab-label {
-  min-width: 0;
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tab-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--wc-text-dim);
+}
+
+.tab-dot--running {
+  background: #3fb950;
+  animation: tab-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.tab-dot--pending {
+  background: #d29922;
+}
+
+.tab-dot--completed-unread {
+  background: #58a6ff;
+}
+
+@keyframes tab-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.tab-stop {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--wc-text-muted);
+}
+
+.tab-stop:hover {
+  background: var(--wc-hover);
+  color: #f85149;
 }
 
 .chat-messages {

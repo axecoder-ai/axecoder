@@ -66,6 +66,7 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
       assigneeUserId?: string,
       roleWorkflowInvoke?: boolean,
       reasoningEffort?: string,
+      clientChatId?: string,
     ) => {
       const history = (Array.isArray(messages) ? messages : [])
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -88,6 +89,7 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
         assigneeUserId,
         roleWorkflowInvoke === true,
         reasoningEffort,
+        clientChatId,
       )
     },
   )

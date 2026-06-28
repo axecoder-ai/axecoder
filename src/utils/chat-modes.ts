@@ -74,21 +74,39 @@ export const isChatModeId = (v: unknown): v is ChatModeId =>
     DISABLED_CHAT_MODES.has(v as ChatModeId) ||
     LEGACY_CHAT_MODE_IDS.has(v))
 
+/** 从 localStorage 或 session 文件中的原始值解析为当前可用模式 */
+export const normalizeChatModeFromStorage = (raw: unknown): ChatModeId | null => {
+  if (typeof raw !== 'string' || !raw) return null
+  let mode: ChatModeId
+  if (raw === 'auto-plan' || raw === 'reflection' || raw === 'rppit' || raw === 'understand')
+    mode = 'agent'
+  else if (raw === 'planning') mode = 'plan'
+  else if (isChatModeId(raw)) mode = raw
+  else return null
+  if (!isChatModeEnabled(mode)) return DEFAULT_CHAT_MODE
+  return mode
+}
+
 export const loadStoredChatMode = (): ChatModeId => {
   try {
     const raw = localStorage.getItem(CHAT_MODE_STORAGE_KEY)
     if (!raw) return DEFAULT_CHAT_MODE
-    let mode: ChatModeId
-    if (raw === 'auto-plan' || raw === 'reflection' || raw === 'rppit' || raw === 'understand') mode = 'agent'
-    else if (raw === 'planning') mode = 'plan'
-    else if (isChatModeId(raw)) mode = raw
-    else return DEFAULT_CHAT_MODE
-    if (!isChatModeEnabled(mode)) return DEFAULT_CHAT_MODE
+    const mode = normalizeChatModeFromStorage(raw)
+    if (!mode) return DEFAULT_CHAT_MODE
     if (mode !== raw) saveStoredChatMode(mode)
     return mode
   } catch {
     return DEFAULT_CHAT_MODE
   }
+}
+
+/** 切换 session 时：优先用该 session 记录的模式，否则回退全局默认 */
+export const resolveSessionChatMode = (
+  session: { chatMode?: unknown } | null | undefined,
+): ChatModeId => {
+  const fromSession =
+    session?.chatMode != null ? normalizeChatModeFromStorage(session.chatMode) : null
+  return fromSession ?? loadStoredChatMode()
 }
 
 export const saveStoredChatMode = (id: ChatModeId) => {

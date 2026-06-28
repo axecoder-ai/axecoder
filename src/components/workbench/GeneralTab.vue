@@ -29,6 +29,11 @@ const themes = computed(() => [
     label: t('settings.theme.auraDark'),
     desc: t('settings.theme.auraDarkDesc'),
   },
+  {
+    id: 'claude' as AppTheme,
+    label: t('settings.theme.claude'),
+    desc: t('settings.theme.claudeDesc'),
+  },
 ])
 
 const outputStyles = computed(() => [
@@ -627,6 +632,10 @@ h2 {
 
 .theme-preview[data-theme-preview='aura-dark'] {
   background: linear-gradient(90deg, #141414 28%, #242424 28%, #1c1c1c 28%);
+}
+
+.theme-preview[data-theme-preview='claude'] {
+  background: linear-gradient(90deg, #ebebeb 28%, #f5f5f5 28%, #f2efe9 28%);
 }
 
 .theme-label {

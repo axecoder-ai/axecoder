@@ -15,20 +15,8 @@ if (publish) {
   iconPath = path.join(root, 'build/icon.png')
   console.log('[build] 发布模式，图标: build/icon.png')
 } else {
-  const src = path.join(root, 'claudelogo.png')
-  const out = path.join(root, 'build/.claude-icon.png')
-  if (!fs.existsSync(src)) {
-    console.error('[build] 找不到 claudelogo.png')
-    process.exit(1)
-  }
-  const tmpBase = path.join(root, 'build/.claude-icon-base.png')
-  const size = 768
-  execSync(`magick "${src}" -filter Lanczos -resize ${size}x${size} "${tmpBase}"`)
-  execSync(
-    `magick -size 1024x1024 xc:none "${tmpBase}" -gravity center -composite "${out}"`,
-  )
-  fs.unlinkSync(tmpBase)
-  iconPath = out
+  execSync('node scripts/gen-claude-icon.mjs', { stdio: 'inherit', cwd: root })
+  iconPath = path.join(root, 'build/.claude-icon.png')
   console.log('[build] 非发布打包，图标: claudelogo.png')
 }
 

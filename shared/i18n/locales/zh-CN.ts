@@ -54,6 +54,8 @@ const zhCN: MessageTree = {
       auraLightDesc: '柔和浅灰背景',
       auraDark: 'Aura 深色',
       auraDarkDesc: '低对比度深色界面',
+      claude: 'Claude',
+      claudeDesc: '暖色浅色主题，米白表面',
     },
     agent: {
       title: 'Agent',

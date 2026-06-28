@@ -161,6 +161,82 @@
   --wc-user-bubble-fg: #000000;
 }
 
+/* Claude light — warm off-white surfaces (#f2efe9 / #f5f5f5 / #ebebeb) */
+[data-theme='claude'] {
+  --wc-bg: #f5f5f5;
+  --wc-bg-dark: #ebebeb;
+  --wc-sidebar: #ebebeb;
+  --wc-panel: #f5f5f5;
+  --wc-border: #c8c8c8;
+  --wc-border-light: #b0b0b0;
+  --wc-workbench-separator: #c8c8c8;
+  --wc-text: #333333;
+  --wc-text-muted: #6e6e6e;
+  --wc-text-dim: #999999;
+  --wc-landing-label: #6e6e6e;
+  --wc-kbd-bg: #f2efe9;
+  --wc-kbd-border: #c8c8c8;
+  --wc-kbd-fg: #333333;
+  --wc-accent: #2563eb;
+  --wc-hover: #e8e8e8;
+  --wc-active: #dedede;
+  --wc-input-bg: #f2efe9;
+  --wc-status-bg: #1d4ed8;
+  --wc-scrollbar: #c8c8c8;
+  --wc-scrollbar-hover: #b0b0b0;
+  --wc-chat-box-bg: #f2efe9;
+  --wc-chat-box-border: #b8b8b8;
+  --wc-muted-surface: rgba(0, 0, 0, 0.05);
+  --wc-muted-surface-hover: rgba(0, 0, 0, 0.08);
+  --wc-muted-surface-strong: rgba(0, 0, 0, 0.1);
+  --wc-muted-border: rgba(0, 0, 0, 0.16);
+  --wc-send-active-bg: #333333;
+  --wc-send-active-fg: #f2efe9;
+  --wc-send-active-hover: #1a1a1a;
+  --wc-code-block-bg: rgba(0, 0, 0, 0.06);
+  --wc-tag-bg: rgba(0, 0, 0, 0.06);
+  --wc-popover-bg: #f2efe9;
+  --wc-popover-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --wc-search-match-bg: rgba(37, 99, 235, 0.22);
+  --wc-search-badge-bg: #2563eb;
+  --wc-search-badge-fg: #f2efe9;
+  --wc-search-toolbar-h: 35px;
+  --wc-search-field-h: 26px;
+  --wc-search-field-indent: 18px;
+  --wc-search-glyph-fg: #999999;
+  --wc-search-toggle-fg: #6e6e6e;
+  --wc-search-toggle-hover-bg: var(--wc-hover);
+  --wc-search-toggle-hover-fg: var(--wc-text);
+  --wc-search-toggle-on-bg: var(--wc-active);
+  --wc-search-toggle-on-fg: var(--wc-text);
+  --wc-search-focus-border: var(--wc-accent);
+  --wc-search-field-border: #c8c8c8;
+  --wc-search-field-bg: #f2efe9;
+  --wc-search-field-gap: 4px;
+  --wc-search-field-radius: 4px;
+  --wc-search-tree-guide: rgba(0, 0, 0, 0.1);
+  --wc-search-meta-fg: var(--wc-text-muted);
+  --wc-search-result-fg: #6e6e6e;
+  --wc-search-result-hover-bg: var(--wc-hover);
+  --wc-search-result-hover-fg: var(--wc-text);
+  --wc-search-file-fg: var(--wc-text);
+  --wc-search-loc-fg: #999999;
+  --wc-search-match-hl-bg: rgba(37, 99, 235, 0.28);
+  --wc-search-match-hl-fg: var(--wc-text);
+  --wc-diff-add-fg: #116329;
+  --wc-diff-add-bg: #dafbe1;
+  --wc-diff-del-fg: #cf222e;
+  --wc-diff-del-bg: #ffebe9;
+  --wc-diff-hunk-fg: #0550ae;
+  --wc-diff-hunk-bg: rgba(37, 99, 235, 0.14);
+  --wc-metrics-tool-call: #9a6700;
+  --wc-metrics-success: var(--wc-diff-add-fg);
+  --wc-metrics-danger: var(--wc-diff-del-fg);
+  --wc-metrics-warn: #9a6700;
+  --wc-user-bubble-bg: rgb(169, 234, 122);
+  --wc-user-bubble-fg: #000000;
+}
+
 /* Aura dark */
 [data-theme='aura-dark'] {
   --wc-bg: #1c1c1c;

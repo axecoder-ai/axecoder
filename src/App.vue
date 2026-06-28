@@ -708,8 +708,6 @@ const onNewAgentSession = async () => {
 
 const onSelectSession = async (payload: { id: string; kind: SessionKind }) => {
   aiPanelVisible.value = true
-  activeSessionKind.value = payload.kind
-  activeChatSessionId.value = payload.id
   await nextTick()
   if (payload.kind === 'workshop') {
     await chatPaneRef.value?.loadWorkshop?.()

@@ -47,6 +47,8 @@ export type StoredAgentSession = {
   loopGuard: LoopGuardState
   /** 推理力度（OpenAI reasoning_effort） */
   reasoningEffort?: import('../../../shared/reasoning-effort').ReasoningEffortLevel
+  /** 渲染进程 chat session id，用于多 Tab 并发 progress 路由 */
+  clientChatId?: string
 }
 
 const sessions = new Map<string, StoredAgentSession>()

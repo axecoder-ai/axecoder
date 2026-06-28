@@ -50,6 +50,11 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(process.env.APP_ROOT, 'public')
   : RENDERER_DIST
 
+const appIconPath = () =>
+  VITE_DEV_SERVER_URL
+    ? path.join(process.env.APP_ROOT!, 'build', '.claude-icon.png')
+    : path.join(process.env.APP_ROOT!, 'build', 'icon.png')
+
 if (os.release().startsWith('6.1')) app.disableHardwareAcceleration()
 
 app.commandLine.appendSwitch('lang', 'en-US')
@@ -124,7 +129,7 @@ const createCompanionWindow = () => {
     x,
     y,
     backgroundColor: '#1e1e1e',
-    icon: path.join(process.env.APP_ROOT!, 'build', 'icon.png'),
+    icon: appIconPath(),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
     webPreferences: { preload },
@@ -173,7 +178,7 @@ const createMetricsWindow = async () => {
     x,
     y,
     backgroundColor,
-    icon: path.join(process.env.APP_ROOT!, 'build', 'icon.png'),
+    icon: appIconPath(),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
     webPreferences: { preload },
@@ -222,7 +227,7 @@ const createTraceWindow = async () => {
     x,
     y,
     backgroundColor,
-    icon: path.join(process.env.APP_ROOT!, 'build', 'icon.png'),
+    icon: appIconPath(),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
     webPreferences: { preload },
@@ -404,7 +409,7 @@ async function createWindow() {
     minWidth: 1024,
     minHeight: 640,
     backgroundColor: '#1e1e1e',
-    icon: path.join(process.env.APP_ROOT!, 'build', 'icon.png'),
+    icon: appIconPath(),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     trafficLightPosition: process.platform === 'darwin' ? { x: 12, y: 10 } : undefined,
     webPreferences: {
@@ -444,8 +449,8 @@ async function createWindow() {
 
 app.whenReady().then(async () => {
   await refreshMainLocale()
-  if (process.platform === 'darwin' && app.dock) {
-    const dockIcon = nativeImage.createFromPath(path.join(process.env.APP_ROOT!, 'build', 'icon.png'))
+  if (process.platform === 'darwin' && app.dock && VITE_DEV_SERVER_URL) {
+    const dockIcon = nativeImage.createFromPath(appIconPath())
     if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon)
   }
   if (process.platform === 'darwin' || process.platform === 'linux') {
@@ -459,7 +464,7 @@ app.whenReady().then(async () => {
       version: pkg.version,
       copyright: `Copyright © ${new Date().getFullYear()} ${author}`,
       credits: pkg.description ?? '',
-      iconPath: path.join(process.env.APP_ROOT!, 'build', 'icon.png'),
+      iconPath: appIconPath(),
     })
   }
   const legacyStore = new Store<{
@@ -539,7 +544,9 @@ app.whenReady().then(async () => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win || win.isDestroyed()) return false
     const t =
-      theme === 'aura-light' || theme === 'aura-dark' || theme === 'vscode' ? theme : 'vscode'
+      theme === 'aura-light' || theme === 'aura-dark' || theme === 'claude' || theme === 'vscode'
+        ? theme
+        : 'vscode'
     win.setBackgroundColor(themeBackgroundColor(t))
     return true
   })

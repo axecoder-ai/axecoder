@@ -81,7 +81,7 @@ const lightAnsi: Pick<
 }
 
 export const terminalThemeFor = (theme: AppTheme = 'vscode'): ITheme => {
-  const isLight = theme === 'aura-light'
+  const isLight = theme === 'aura-light' || theme === 'claude'
   const ansi = isLight ? lightAnsi : darkAnsi
   return {
     background: cssVar('--wc-panel', isLight ? '#f5f5f5' : '#1e1e1e'),

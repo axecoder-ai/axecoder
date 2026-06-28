@@ -16,9 +16,14 @@ export type AgentProgressStep = {
 
 export const PROGRESS_COLLAPSE_KEEP = 5
 
+type AgentProgressBase = {
+  sessionId: string
+  /** 渲染进程 chat session id，用于多 Tab 并发时精确路由 */
+  clientChatId?: string
+}
+
 export type AgentProgressPayload =
-  | {
-      sessionId: string
+  | (AgentProgressBase & {
       turn: number
       kind: 'model' | 'tool'
       status: 'start' | 'done'
@@ -26,40 +31,34 @@ export type AgentProgressPayload =
       summary?: string
       ok?: boolean
       detail?: string
-    }
-  | {
-      sessionId: string
+    })
+  | (AgentProgressBase & {
       kind: 'delta'
       delta: string
-    }
-  | {
-      sessionId: string
+    })
+  | (AgentProgressBase & {
       kind: 'content_delta'
       delta: string
-    }
-  | {
-      sessionId: string
+    })
+  | (AgentProgressBase & {
       kind: 'thinking_delta'
       delta: string
-    }
-  | {
-      sessionId: string
+    })
+  | (AgentProgressBase & {
       kind: 'subagent'
       taskId: string
       status: 'running' | 'completed' | 'failed' | 'stopped'
       description: string
-    }
-  | {
-      sessionId: string
+    })
+  | (AgentProgressBase & {
       kind: 'loop_guard'
       text: string
-    }
-  | {
-      sessionId: string
+    })
+  | (AgentProgressBase & {
       kind: 'chat_mode'
       chatMode: ChatModeId
       planMode: boolean
-    }
+    })
 
 export const labelForModelTurn = (turn: number) => `Turn ${turn}: calling model…`
 

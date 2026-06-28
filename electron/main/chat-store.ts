@@ -39,6 +39,7 @@ export type ChatSessionMeta = {
 
 export type ChatSession = ChatSessionMeta & {
   messages: ChatMessage[]
+  chatMode?: string
 }
 
 type StoreResult = { ok: true } | { ok: false; error: string }

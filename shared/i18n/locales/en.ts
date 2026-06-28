@@ -54,6 +54,8 @@ const en: MessageTree = {
       auraLightDesc: 'Soft light gray background',
       auraDark: 'Aura Dark',
       auraDarkDesc: 'Low-contrast dark interface',
+      claude: 'Claude',
+      claudeDesc: 'Warm light theme with cream surfaces',
     },
     agent: {
       title: 'Agent',

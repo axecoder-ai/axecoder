@@ -4,6 +4,8 @@ import {
   DEFAULT_CHAT_MODE,
   isChatModeId,
   loadStoredChatMode,
+  normalizeChatModeFromStorage,
+  resolveSessionChatMode,
 } from '../../../src/utils/chat-modes'
 
 describe('chat-modes UI', () => {
@@ -77,5 +79,27 @@ describe('chat-modes UI', () => {
     const maIdx = ids.indexOf('multi-agent')
     expect(drawIdx).toBeGreaterThan(planIdx)
     expect(maIdx).toBeGreaterThan(drawIdx)
+  })
+
+  it('resolveSessionChatMode 优先使用 session 记录的模式', () => {
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, v)
+      },
+      removeItem: (k: string) => {
+        store.delete(k)
+      },
+    })
+    store.set('axecoder.chatMode', 'agent')
+    expect(resolveSessionChatMode({ chatMode: 'plan' })).toBe('plan')
+    expect(resolveSessionChatMode({ chatMode: 'auto-plan' })).toBe('agent')
+    expect(resolveSessionChatMode(null)).toBe('agent')
+  })
+
+  it('normalizeChatModeFromStorage 迁移旧模式', () => {
+    expect(normalizeChatModeFromStorage('planning')).toBe('plan')
+    expect(normalizeChatModeFromStorage('bogus')).toBeNull()
   })
 })

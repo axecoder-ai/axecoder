@@ -367,6 +367,7 @@ export const runAgentLoopUntilDoneOrPending = async (
     await prepareSessionBeforeModel(sessionId, session)
     emitAgentProgress({
       sessionId,
+      ...(session.clientChatId ? { clientChatId: session.clientChatId } : {}),
       turn: session.turn,
       kind: 'model',
       status: 'start',
@@ -775,6 +776,7 @@ export const startAgentTurn = async (
   assigneeUserId?: string,
   roleWorkflowInvoke?: boolean,
   reasoningEffortRaw?: string,
+  clientChatId?: string,
 ): Promise<AgentSendResult> => {
   const chatMode = normalizeChatMode(chatModeRaw)
   if (!projectRoot.trim()) return { ok: false, error: t('errors.noProject') }
@@ -881,6 +883,7 @@ export const startAgentTurn = async (
     loopGuard: createLoopGuardState(),
     reasoningEffort: normalizeReasoningEffort(reasoningEffortRaw),
     ...(resolvedAssignee ? { assigneeUserId: resolvedAssignee } : {}),
+    ...(clientChatId?.trim() ? { clientChatId: clientChatId.trim() } : {}),
   }
   applyChatModeToNewSession(session, chatMode)
 

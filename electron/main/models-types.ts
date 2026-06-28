@@ -40,7 +40,7 @@ export type ModelsFile = {
 
 export type AppLocale = 'en' | 'zh-CN'
 
-export type AppTheme = 'vscode' | 'aura-light' | 'aura-dark'
+export type AppTheme = 'vscode' | 'aura-light' | 'aura-dark' | 'claude'
 
 /** Claude Code built-in output styles (`outputStyles.ts`) */
 export type AgentOutputStyleId = 'default' | 'Explanatory' | 'Learning'

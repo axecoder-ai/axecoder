@@ -17,7 +17,10 @@ let themeObs: MutationObserver | undefined
 
 const DRAWIO_ORIGIN = 'https://embed.diagrams.net'
 
-const isDarkTheme = () => document.documentElement.getAttribute('data-theme') !== 'aura-light'
+const isDarkTheme = () => {
+  const t = document.documentElement.getAttribute('data-theme')
+  return t !== 'aura-light' && t !== 'claude'
+}
 const dark = ref(isDarkTheme())
 
 const iframeSrc = computed(() => {
