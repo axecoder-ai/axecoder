@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch, onUnmounted, computed } from 'vue'
 import { useI18n } from '../../i18n'
+import { BY_EXT_FOR_STATUS } from '../../utils/editor-language'
 
 const { t } = useI18n()
 
@@ -8,13 +9,26 @@ const props = defineProps<{
   line: number
   col: number
   language: string
+  languageId?: string
   projectName?: string
   projectRoot?: string
   saveStatus?: 'idle' | 'saving' | 'saved' | 'error'
+  eol?: 'LF' | 'CRLF'
+  errorCount?: number
+  warningCount?: number
+}>()
+
+const emit = defineEmits<{
+  'show-problems': []
+  'language-change': [langId: string]
 }>()
 
 const cgLabel = ref('')
 let pollTimer: ReturnType<typeof setInterval> | undefined
+
+const langOptions = computed(() =>
+  Object.entries(BY_EXT_FOR_STATUS).map(([ext, v]) => ({ id: v.id, label: v.label, ext })),
+)
 
 const saveLabel = (s?: string) => {
   if (s === 'saving') return t('status.saving')
@@ -77,6 +91,11 @@ const onCodeGraphIndex = async () => {
   await window.axecoder.codeGraphIndex(root)
   await refreshCodeGraphStatus()
 }
+
+const onLangPick = (e: Event) => {
+  const id = (e.target as HTMLSelectElement).value
+  emit('language-change', id)
+}
 </script>
 
 <template>
@@ -84,6 +103,15 @@ const onCodeGraphIndex = async () => {
     <div class="status-left">
       <span v-if="projectName" class="project">{{ projectName }}</span>
       <span v-if="saveLabel(saveStatus)" class="save">{{ saveLabel(saveStatus) }}</span>
+      <button
+        v-if="(errorCount ?? 0) > 0 || (warningCount ?? 0) > 0"
+        type="button"
+        class="problems-btn"
+        @click="emit('show-problems')"
+      >
+        <span v-if="errorCount" class="err">{{ errorCount }} ✕</span>
+        <span v-if="warningCount" class="warn">{{ warningCount }} ⚠</span>
+      </button>
       <button
         v-if="projectRoot && cgLabel"
         type="button"
@@ -99,9 +127,12 @@ const onCodeGraphIndex = async () => {
       <span class="sep">|</span>
       <span>Ln {{ line }}, Col {{ col }}</span>
       <span class="sep">|</span>
-      <span>UTF-8</span>
+      <span>{{ eol ?? 'LF' }}</span>
       <span class="sep">|</span>
-      <span>{{ language }}</span>
+      <select class="lang-select" :value="languageId ?? 'plaintext'" @change="onLangPick">
+        <option v-for="opt in langOptions" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
+        <option value="plaintext">Plain Text</option>
+      </select>
     </div>
   </footer>
 </template>
@@ -125,6 +156,37 @@ const onCodeGraphIndex = async () => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.problems-btn {
+  display: flex;
+  gap: 8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.problems-btn .err {
+  color: #f48771;
+}
+
+.problems-btn .warn {
+  color: #cca700;
+}
+
+.lang-select {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.lang-select option {
+  color: #000;
 }
 
 .cg-btn {

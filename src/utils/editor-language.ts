@@ -67,3 +67,6 @@ export const isMarkdownPath = (path: string | null): boolean => {
   const ext = fileExt(path)
   return ext === 'md' || ext === 'markdown'
 }
+
+/** Status bar language picker options */
+export const BY_EXT_FOR_STATUS: Record<string, { id: string; label: string }> = BY_EXT

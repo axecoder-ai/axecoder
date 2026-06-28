@@ -28,6 +28,7 @@ export type LSPServerInstance = {
     method: string,
     handler: (params: TParams) => TResult | Promise<TResult>,
   ): void
+  onNotification(method: string, handler: (params: unknown) => void): void
 }
 
 export const createLSPServerInstance = (
@@ -142,5 +143,6 @@ export const createLSPServerInstance = (
     sendRequest,
     sendNotification: (m, p) => client.sendNotification(m, p),
     onRequest: (m, h) => client.onRequest(m, h),
+    onNotification: (m, h) => client.onNotification(m, h),
   }
 }

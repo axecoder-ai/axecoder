@@ -47,6 +47,10 @@ const defaults: AppConfig = {
   agentLoopGuardStormThreshold: 3,
   agentLoopGuardRepeatSuccessThreshold: 2,
   agentMaxToolRounds: 0,
+  terminalShell: '',
+  terminalShellArgs: [] as string[],
+  editorMinimap: false,
+  editorSemanticHighlighting: true,
 }
 
 const configPath = () => axecoderPath('config.json')
@@ -123,6 +127,11 @@ export const getConfig = async (): Promise<AppConfig> => {
     agentLoopGuardRepeatSuccessThreshold:
       raw.agentLoopGuardRepeatSuccessThreshold ?? defaults.agentLoopGuardRepeatSuccessThreshold,
     agentMaxToolRounds: raw.agentMaxToolRounds ?? defaults.agentMaxToolRounds,
+    terminalShell: raw.terminalShell ?? defaults.terminalShell,
+    terminalShellArgs: raw.terminalShellArgs ?? defaults.terminalShellArgs,
+    editorMinimap: raw.editorMinimap ?? defaults.editorMinimap,
+    editorSemanticHighlighting:
+      raw.editorSemanticHighlighting ?? defaults.editorSemanticHighlighting,
   }
 }
 
@@ -232,6 +241,18 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
       partial.agentMaxToolRounds !== undefined
         ? partial.agentMaxToolRounds
         : cur.agentMaxToolRounds,
+    terminalShell:
+      partial.terminalShell !== undefined ? partial.terminalShell : cur.terminalShell,
+    terminalShellArgs:
+      partial.terminalShellArgs !== undefined
+        ? partial.terminalShellArgs
+        : cur.terminalShellArgs,
+    editorMinimap:
+      partial.editorMinimap !== undefined ? partial.editorMinimap : cur.editorMinimap,
+    editorSemanticHighlighting:
+      partial.editorSemanticHighlighting !== undefined
+        ? partial.editorSemanticHighlighting
+        : cur.editorSemanticHighlighting,
   }
   await fs.writeFile(configPath(), JSON.stringify(next, null, 2), 'utf-8')
   invalidateMainLocaleCache()

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
+import { fuzzyFilterCommands } from '../../utils/command-registry'
 
 export type PaletteCommand = {
   id: string
@@ -21,11 +22,7 @@ const query = ref('')
 const selected = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
 
-const filtered = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  if (!q) return props.commands
-  return props.commands.filter((c) => c.label.toLowerCase().includes(q))
-})
+const filtered = computed(() => fuzzyFilterCommands(query.value, props.commands))
 
 watch(
   () => props.visible,

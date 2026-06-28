@@ -3,6 +3,9 @@ import { registerFsIpc, getRecentProjects } from './fs-ipc'
 import { registerCodeGraphIpc } from './codegraph-ipc'
 import { registerMarkdownExportIpc } from './markdown-export-ipc'
 import { registerGitIpc } from './git-ipc'
+import { registerOutputIpc } from './output-ipc'
+import { registerWorkspaceSettingsIpc } from './workspace-settings'
+import { registerLspEditorIpc } from './lsp/lsp-editor-ipc'
 import { registerTerminalIpc, killTerminalPty } from './terminal-ipc'
 import { registerChatIpc } from './chat-store'
 import { registerSessionIpc } from './session/session-ipc'
@@ -493,6 +496,9 @@ app.whenReady().then(async () => {
   registerCodeGraphIpc(() => win)
   registerMarkdownExportIpc(() => win)
   registerGitIpc()
+  registerOutputIpc(() => win)
+  registerLspEditorIpc(() => win)
+  registerWorkspaceSettingsIpc()
   registerTerminalIpc(() => win)
   registerChatIpc()
   registerSessionIpc()

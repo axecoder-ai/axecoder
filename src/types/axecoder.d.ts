@@ -78,6 +78,10 @@ export type AppSettings = {
   agentWebSearchApiKey?: string
   /** Playwright browser automation WebRun */
   agentFeatureWebRun?: boolean
+  terminalShell?: string
+  terminalShellArgs?: string[]
+  editorMinimap?: boolean
+  editorSemanticHighlighting?: boolean
 }
 
 export type PickProfileAvatarResult =
@@ -642,6 +646,21 @@ export type GitStatusResult =
   | { ok: true; branch: string; changes: { code: string; file: string }[] }
   | { ok: false; error: string }
 
+export type ProblemItem = {
+  file: string
+  line: number
+  col: number
+  endLine?: number
+  endCol?: number
+  severity: 'error' | 'warning' | 'info' | 'hint'
+  message: string
+  source?: string
+}
+
+export type EditorDiagnostic = ProblemItem
+
+export type GitSimpleResult = { ok: true } | { ok: false; error: string }
+
 export type GitForgeStatusResult =
   | {
       ok: true
@@ -888,6 +907,13 @@ export type AxeCoderFs = {
     replacement: string,
     opts?: SearchOptions,
   ) => Promise<SearchReplaceResult>
+  searchReplaceOne: (
+    rootPath: string,
+    hit: SearchHit,
+    query: string,
+    replacement: string,
+    opts?: SearchOptions,
+  ) => Promise<{ ok: boolean; replacements: number }>
   listProjectFiles: (rootPath: string) => Promise<{ files: string[] }>
   getRecentFiles: () => Promise<{ files: string[] }>
   getRecentProjects: () => Promise<{ projects: string[] }>
@@ -1178,20 +1204,103 @@ export type AxeCoderFs = {
   ) => Promise<AgentContinueResult>
   onAgentProgress: (callback: (payload: AgentProgressPayload) => void) => () => void
   gitStatus: (cwd: string) => Promise<GitStatusResult>
+  gitStage: (cwd: string, file: string) => Promise<GitSimpleResult>
+  gitUnstage: (cwd: string, file: string) => Promise<GitSimpleResult>
+  gitStageAll: (cwd: string) => Promise<GitSimpleResult>
+  gitCommit: (cwd: string, message: string, amend?: boolean) => Promise<GitSimpleResult>
+  gitDiff: (cwd: string, staged?: boolean) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  gitShow: (cwd: string, file: string, staged?: boolean) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
   gitForgeStatus: (cwd: string) => Promise<GitForgeStatusResult>
   gitCommitPushPrPrompt: (
     cwd: string,
   ) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
   gitOpenUrl: (url: string) => Promise<{ ok: true } | { ok: false; error: string }>
-  terminalStart: (cwd: string, cols?: number, rows?: number) => Promise<
-    { ok: true } | { ok: false; error: string }
-  >
-  terminalWrite: (data: string) => Promise<{ ok: boolean }>
-  terminalResize: (cols: number, rows: number) => Promise<{ ok: boolean }>
-  terminalInterrupt: () => Promise<{ ok: boolean }>
-  terminalStop: () => Promise<{ ok: true }>
+  terminalStart: (
+    cwd: string,
+    cols?: number,
+    rows?: number,
+    tabId?: string,
+  ) => Promise<{ ok: true; tabId?: string; reused?: boolean } | { ok: false; error: string }>
+  terminalCreate: (
+    cwd: string,
+    cols?: number,
+    rows?: number,
+    tabId?: string,
+  ) => Promise<{ ok: true; tabId: string; reused?: boolean } | { ok: false; error: string }>
+  terminalClose: (tabId: string) => Promise<{ ok: true }>
+  terminalList: () => Promise<{ ok: true; tabs: string[]; activeTabId: string }>
+  terminalSetActive: (tabId: string) => Promise<{ ok: true }>
+  terminalWrite: (data: string, tabId?: string) => Promise<{ ok: boolean }>
+  terminalResize: (cols: number, rows: number, tabId?: string) => Promise<{ ok: boolean }>
+  terminalInterrupt: (tabId?: string) => Promise<{ ok: boolean }>
+  terminalStop: (tabId?: string) => Promise<{ ok: true }>
   terminalSetFocused: (focused: boolean) => Promise<{ ok: true }>
-  onTerminalData: (callback: (text: string) => void) => () => void
+  onTerminalData: (callback: (payload: { tabId: string; text: string }) => void) => () => void
+  outputAppend: (channel: string, line: string) => Promise<{ ok: true }>
+  outputClear: (channel: string) => Promise<{ ok: true }>
+  outputListChannels: () => Promise<{ ok: true; channels: string[] }>
+  outputGetLines: (channel: string) => Promise<{ ok: true; lines: string[] }>
+  onOutputUpdated: (callback: (payload: { channel: string; line: string }) => void) => () => void
+  lspEnsureProject: (projectRoot: string) => Promise<{ ok: true } | { ok: false; error: string }>
+  lspDidOpen: (
+    projectRoot: string,
+    filePath: string,
+    content: string,
+  ) => Promise<{ ok: true; version: number } | { ok: false; error: string }>
+  lspDidChange: (
+    projectRoot: string,
+    filePath: string,
+    content: string,
+    version?: number,
+  ) => Promise<{ ok: true; version: number } | { ok: false; error: string }>
+  lspDidClose: (projectRoot: string, filePath: string) => Promise<{ ok: true }>
+  lspHover: (
+    projectRoot: string,
+    filePath: string,
+    line: number,
+    character: number,
+  ) => Promise<{ ok: true; result: unknown }>
+  lspDefinition: (
+    projectRoot: string,
+    filePath: string,
+    line: number,
+    character: number,
+  ) => Promise<{ ok: true; result: unknown }>
+  lspReferences: (
+    projectRoot: string,
+    filePath: string,
+    line: number,
+    character: number,
+  ) => Promise<{ ok: true; result: unknown[] }>
+  lspCompletion: (
+    projectRoot: string,
+    filePath: string,
+    line: number,
+    character: number,
+  ) => Promise<{ ok: true; result: unknown }>
+  lspFormat: (
+    projectRoot: string,
+    filePath: string,
+  ) => Promise<{ ok: true; result: unknown }>
+  lspWorkspaceSymbol: (
+    projectRoot: string,
+    query: string,
+  ) => Promise<{ ok: true; result: unknown[] }>
+  lspRefreshDiagnostics: (projectRoot: string, filePath: string) => Promise<{ ok: true }>
+  onLspDiagnostics: (
+    callback: (payload: { file: string; diagnostics: EditorDiagnostic[] }) => void,
+  ) => () => void
+  onLspRefreshFile: (callback: (payload: { file: string }) => void) => () => void
+  settingsReadWorkspace: (
+    projectRoot: string,
+  ) => Promise<{ ok: true; settings: Record<string, unknown> }>
+  settingsMergeWorkspace: (
+    projectRoot: string,
+  ) => Promise<{ ok: true; config: AppSettings }>
+  settingsReadKeybindings: () => Promise<{ ok: true; entries: { key: string; command: string; when?: string }[] }>
+  settingsWriteKeybindings: (
+    entries: { key: string; command: string; when?: string }[],
+  ) => Promise<{ ok: true }>
   listAllSessions: (projectRoot: string) => Promise<{ sessions: SessionListItem[] }>
   suggestChatSessionTitle: (
     modelId: string,

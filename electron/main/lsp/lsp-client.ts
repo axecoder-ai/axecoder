@@ -22,6 +22,7 @@ export type LSPClient = {
     method: string,
     handler: (params: TParams) => TResult | Promise<TResult>,
   ) => void
+  onNotification: (method: string, handler: (params: unknown) => void) => void
   stop: () => Promise<void>
 }
 
@@ -37,6 +38,10 @@ export const createLSPClient = (serverName: string, onCrash?: (error: Error) => 
   const pendingRequestHandlers: Array<{
     method: string
     handler: (params: unknown) => unknown | Promise<unknown>
+  }> = []
+  const pendingNotificationHandlers: Array<{
+    method: string
+    handler: (params: unknown) => void
   }> = []
 
   const checkStartFailed = () => {
@@ -95,6 +100,10 @@ export const createLSPClient = (serverName: string, onCrash?: (error: Error) => 
         connection.onRequest(method, handler)
       }
       pendingRequestHandlers.length = 0
+      for (const { method, handler } of pendingNotificationHandlers) {
+        connection.onNotification(method, handler)
+      }
+      pendingNotificationHandlers.length = 0
     },
 
     async initialize(params) {
@@ -133,6 +142,14 @@ export const createLSPClient = (serverName: string, onCrash?: (error: Error) => 
         return
       }
       connection.onRequest(method, handler)
+    },
+
+    onNotification(method, handler) {
+      if (!connection) {
+        pendingNotificationHandlers.push({ method, handler })
+        return
+      }
+      connection.onNotification(method, handler)
     },
 
     async stop() {

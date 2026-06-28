@@ -181,6 +181,16 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('fs:searchReplace', rootPath, query, replacement, opts) as Promise<
       import('../../src/types/axecoder').SearchReplaceResult
     >,
+  searchReplaceOne: (
+    rootPath: string,
+    hit: import('../../src/types/axecoder').SearchHit,
+    query: string,
+    replacement: string,
+    opts?: import('../../src/types/axecoder').SearchOptions,
+  ) =>
+    ipcRenderer.invoke('fs:searchReplaceOne', rootPath, hit, query, replacement, opts) as Promise<
+      { ok: boolean; replacements: number }
+    >,
   listProjectFiles: (rootPath: string) =>
     ipcRenderer.invoke('fs:listProjectFiles', rootPath) as Promise<{ files: string[] }>,
   getRecentFiles: () => ipcRenderer.invoke('fs:getRecentFiles') as Promise<{ files: string[] }>,
@@ -654,6 +664,22 @@ contextBridge.exposeInMainWorld('axecoder', {
   },
   gitStatus: (cwd: string) =>
     ipcRenderer.invoke('git:status', cwd) as Promise<import('../../src/types/axecoder').GitStatusResult>,
+  gitStage: (cwd: string, file: string) =>
+    ipcRenderer.invoke('git:stage', cwd, file) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitUnstage: (cwd: string, file: string) =>
+    ipcRenderer.invoke('git:unstage', cwd, file) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitStageAll: (cwd: string) =>
+    ipcRenderer.invoke('git:stageAll', cwd) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitCommit: (cwd: string, message: string, amend?: boolean) =>
+    ipcRenderer.invoke('git:commit', cwd, message, amend) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitDiff: (cwd: string, staged?: boolean) =>
+    ipcRenderer.invoke('git:diff', cwd, staged) as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
+  gitShow: (cwd: string, file: string, staged?: boolean) =>
+    ipcRenderer.invoke('git:show', cwd, file, staged) as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
   gitForgeStatus: (cwd: string) =>
     ipcRenderer.invoke('git:forgeStatus', cwd) as Promise<
       import('../../src/types/axecoder').GitForgeStatusResult
@@ -666,22 +692,99 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('git:openUrl', url) as Promise<
       { ok: true } | { ok: false; error: string }
     >,
-  terminalStart: (cwd: string, cols?: number, rows?: number) =>
-    ipcRenderer.invoke('terminal:start', cwd, cols, rows) as Promise<
-      { ok: true } | { ok: false; error: string }
+  terminalStart: (cwd: string, cols?: number, rows?: number, tabId?: string) =>
+    ipcRenderer.invoke('terminal:start', cwd, cols, rows, tabId) as Promise<
+      { ok: true; tabId?: string; reused?: boolean } | { ok: false; error: string }
     >,
-  terminalWrite: (data: string) => ipcRenderer.invoke('terminal:write', data) as Promise<{ ok: boolean }>,
-  terminalResize: (cols: number, rows: number) =>
-    ipcRenderer.invoke('terminal:resize', cols, rows) as Promise<{ ok: boolean }>,
-  terminalInterrupt: () => ipcRenderer.invoke('terminal:interrupt') as Promise<{ ok: boolean }>,
-  terminalStop: () => ipcRenderer.invoke('terminal:stop') as Promise<{ ok: true }>,
+  terminalCreate: (cwd: string, cols?: number, rows?: number, tabId?: string) =>
+    ipcRenderer.invoke('terminal:create', cwd, cols, rows, tabId) as Promise<
+      { ok: true; tabId: string; reused?: boolean } | { ok: false; error: string }
+    >,
+  terminalClose: (tabId: string) =>
+    ipcRenderer.invoke('terminal:close', tabId) as Promise<{ ok: true }>,
+  terminalList: () =>
+    ipcRenderer.invoke('terminal:list') as Promise<{ ok: true; tabs: string[]; activeTabId: string }>,
+  terminalSetActive: (tabId: string) =>
+    ipcRenderer.invoke('terminal:setActive', tabId) as Promise<{ ok: true }>,
+  terminalWrite: (data: string, tabId?: string) =>
+    ipcRenderer.invoke('terminal:write', data, tabId) as Promise<{ ok: boolean }>,
+  terminalResize: (cols: number, rows: number, tabId?: string) =>
+    ipcRenderer.invoke('terminal:resize', cols, rows, tabId) as Promise<{ ok: boolean }>,
+  terminalInterrupt: (tabId?: string) =>
+    ipcRenderer.invoke('terminal:interrupt', tabId) as Promise<{ ok: boolean }>,
+  terminalStop: (tabId?: string) =>
+    ipcRenderer.invoke('terminal:stop', tabId) as Promise<{ ok: true }>,
   terminalSetFocused: (focused: boolean) =>
     ipcRenderer.invoke('terminal:setFocused', focused) as Promise<{ ok: true }>,
-  onTerminalData: (callback: (text: string) => void) => {
-    const listener = (_: unknown, text: string) => callback(text)
+  onTerminalData: (callback: (payload: { tabId: string; text: string }) => void) => {
+    const listener = (_: unknown, payload: { tabId: string; text: string }) => callback(payload)
     ipcRenderer.on('terminal:data', listener)
     return () => ipcRenderer.off('terminal:data', listener)
   },
+  outputAppend: (channel: string, line: string) =>
+    ipcRenderer.invoke('output:append', channel, line) as Promise<{ ok: true }>,
+  outputClear: (channel: string) =>
+    ipcRenderer.invoke('output:clear', channel) as Promise<{ ok: true }>,
+  outputListChannels: () =>
+    ipcRenderer.invoke('output:listChannels') as Promise<{ ok: true; channels: string[] }>,
+  outputGetLines: (channel: string) =>
+    ipcRenderer.invoke('output:getLines', channel) as Promise<{ ok: true; lines: string[] }>,
+  onOutputUpdated: (callback: (payload: { channel: string; line: string }) => void) => {
+    const listener = (_: unknown, payload: { channel: string; line: string }) => callback(payload)
+    ipcRenderer.on('output:updated', listener)
+    return () => ipcRenderer.off('output:updated', listener)
+  },
+  lspEnsureProject: (projectRoot: string) =>
+    ipcRenderer.invoke('lsp:ensureProject', projectRoot) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
+  lspDidOpen: (projectRoot: string, filePath: string, content: string) =>
+    ipcRenderer.invoke('lsp:didOpen', projectRoot, filePath, content) as Promise<
+      { ok: true; version: number } | { ok: false; error: string }
+    >,
+  lspDidChange: (projectRoot: string, filePath: string, content: string, version?: number) =>
+    ipcRenderer.invoke('lsp:didChange', projectRoot, filePath, content, version) as Promise<
+      { ok: true; version: number } | { ok: false; error: string }
+    >,
+  lspDidClose: (projectRoot: string, filePath: string) =>
+    ipcRenderer.invoke('lsp:didClose', projectRoot, filePath) as Promise<{ ok: true }>,
+  lspHover: (projectRoot: string, filePath: string, line: number, character: number) =>
+    ipcRenderer.invoke('lsp:hover', projectRoot, filePath, line, character) as Promise<{ ok: true; result: unknown }>,
+  lspDefinition: (projectRoot: string, filePath: string, line: number, character: number) =>
+    ipcRenderer.invoke('lsp:definition', projectRoot, filePath, line, character) as Promise<{ ok: true; result: unknown }>,
+  lspReferences: (projectRoot: string, filePath: string, line: number, character: number) =>
+    ipcRenderer.invoke('lsp:references', projectRoot, filePath, line, character) as Promise<{ ok: true; result: unknown[] }>,
+  lspCompletion: (projectRoot: string, filePath: string, line: number, character: number) =>
+    ipcRenderer.invoke('lsp:completion', projectRoot, filePath, line, character) as Promise<{ ok: true; result: unknown }>,
+  lspFormat: (projectRoot: string, filePath: string) =>
+    ipcRenderer.invoke('lsp:format', projectRoot, filePath) as Promise<{ ok: true; result: unknown }>,
+  lspWorkspaceSymbol: (projectRoot: string, query: string) =>
+    ipcRenderer.invoke('lsp:workspaceSymbol', projectRoot, query) as Promise<{ ok: true; result: unknown[] }>,
+  lspRefreshDiagnostics: (projectRoot: string, filePath: string) =>
+    ipcRenderer.invoke('lsp:refreshDiagnostics', projectRoot, filePath) as Promise<{ ok: true }>,
+  onLspDiagnostics: (
+    callback: (payload: { file: string; diagnostics: import('../../src/types/axecoder').EditorDiagnostic[] }) => void,
+  ) => {
+    const listener = (
+      _: unknown,
+      payload: { file: string; diagnostics: import('../../src/types/axecoder').EditorDiagnostic[] },
+    ) => callback(payload)
+    ipcRenderer.on('lsp:diagnostics', listener)
+    return () => ipcRenderer.off('lsp:diagnostics', listener)
+  },
+  onLspRefreshFile: (callback: (payload: { file: string }) => void) => {
+    const listener = (_: unknown, payload: { file: string }) => callback(payload)
+    ipcRenderer.on('lsp:refreshFile', listener)
+    return () => ipcRenderer.off('lsp:refreshFile', listener)
+  },
+  settingsReadWorkspace: (projectRoot: string) =>
+    ipcRenderer.invoke('settings:readWorkspace', projectRoot) as Promise<{ ok: true; settings: Record<string, unknown> }>,
+  settingsMergeWorkspace: (projectRoot: string) =>
+    ipcRenderer.invoke('settings:mergeWorkspace', projectRoot) as Promise<{ ok: true; config: import('../../src/types/axecoder').AppSettings }>,
+  settingsReadKeybindings: () =>
+    ipcRenderer.invoke('settings:readKeybindings') as Promise<{ ok: true; entries: { key: string; command: string; when?: string }[] }>,
+  settingsWriteKeybindings: (entries: { key: string; command: string; when?: string }[]) =>
+    ipcRenderer.invoke('settings:writeKeybindings', entries) as Promise<{ ok: true }>,
   listAllSessions: (projectRoot: string) =>
     ipcRenderer.invoke('session:listAll', projectRoot) as Promise<{
       sessions: import('../../src/types/axecoder').SessionListItem[]

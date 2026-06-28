@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch, computed } from 'vue'
 import type * as Monaco from 'monaco-editor'
 import type { AppTheme } from '../../types/axecoder'
 import { monacoThemeFor } from '../../utils/apply-theme'
+import { useMonacoLsp } from '../../composables/useMonacoLsp'
+import { loadSnippets } from '../../utils/load-snippets'
 
 const props = defineProps<{
   modelValue: string
@@ -10,43 +12,69 @@ const props = defineProps<{
   readOnly?: boolean
   fontSize?: number
   appTheme?: AppTheme
+  minimap?: boolean
+  semanticHighlighting?: boolean
+  projectRoot?: string
+  filePath?: string | null
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   'cursor-change': [line: number, col: number]
+  'go-to-definition': [file: string, line: number, col: number]
 }>()
 
 const container = ref<HTMLElement | null>(null)
 const editorReady = ref(false)
 const loadError = ref<string | null>(null)
+const monacoRef = ref<typeof Monaco | null>(null)
+const editorRef = ref<Monaco.editor.IStandaloneCodeEditor | null>(null)
 let monaco: typeof Monaco | null = null
 let editor: Monaco.editor.IStandaloneCodeEditor | null = null
-/** 切换标签 / 外部同步内容时 setValue 也会触发 onDidChangeModelContent，需屏蔽以免误标 dirty 并自动保存 */
 let syncingModelValue = false
+let f12Disposable: Monaco.IDisposable | null = null
+
+const contentRef = computed(() => props.modelValue)
+const projectRootRef = computed(() => props.projectRoot ?? '')
+const filePathRef = computed(() => props.filePath ?? null)
+
+const lsp = useMonacoLsp({
+  projectRoot: projectRootRef,
+  filePath: filePathRef,
+  content: contentRef,
+  monaco: monacoRef,
+  editor: editorRef,
+})
 
 const mountEditor = async () => {
   if (!container.value || editor) return
   try {
     await import('../../monaco-setup')
     monaco = await import('monaco-editor')
+    monacoRef.value = monaco
+    await loadSnippets(monaco)
     const themeId = monacoThemeFor(props.appTheme ?? 'vscode')
     monaco.editor.setTheme(themeId)
+    const uri = props.filePath
+      ? monaco.Uri.file(props.filePath)
+      : monaco.Uri.parse('inmemory://model/untitled')
+    const model = monaco.editor.createModel(props.modelValue, props.language ?? 'plaintext', uri)
     editor = monaco.editor.create(container.value, {
-      value: props.modelValue,
-      language: props.language ?? 'plaintext',
+      model,
       theme: themeId,
       automaticLayout: true,
       fontSize: props.fontSize ?? 14,
       fontFamily: "'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace",
       fontLigatures: false,
       lineNumbers: 'on',
-      minimap: { enabled: false },
+      minimap: { enabled: props.minimap ?? false },
+      'semanticHighlighting.enabled': props.semanticHighlighting ?? false,
       scrollBeyondLastLine: false,
       wordWrap: 'on',
       padding: { top: 8 },
       readOnly: props.readOnly,
     })
+    editorRef.value = editor
     editor.onDidChangeModelContent(() => {
       if (syncingModelValue) return
       emit('update:modelValue', editor?.getValue() ?? '')
@@ -54,8 +82,36 @@ const mountEditor = async () => {
     editor.onDidChangeCursorPosition((e) => {
       emit('cursor-change', e.position.lineNumber, e.position.column)
     })
+    f12Disposable = editor.addAction({
+      id: 'go-to-definition',
+      label: 'Go to Definition',
+      keybindings: [monaco.KeyCode.F12],
+      run: async (ed) => {
+        const pos = ed.getPosition()
+        const fp = props.filePath
+        const root = props.projectRoot
+        if (!pos || !fp || !root) return
+        const res = await window.axecoder.lspDefinition(root, fp, pos.lineNumber, pos.column)
+        const result = res.result
+        if (!result) return
+        const item = Array.isArray(result) ? result[0] : result
+        const loc = item as {
+          uri?: string
+          targetUri?: string
+          range?: { start: { line: number; character: number } }
+          targetRange?: { start: { line: number; character: number } }
+        }
+        const uri = loc.uri ?? loc.targetUri
+        const range = loc.range ?? loc.targetRange
+        if (!uri || !range) return
+        const file = uri.replace(/^file:\/\//, '')
+        emit('go-to-definition', decodeURIComponent(file), range.start.line + 1, range.start.character + 1)
+      },
+    })
     const pos = editor.getPosition()
     if (pos) emit('cursor-change', pos.lineNumber, pos.column)
+    lsp.start()
+    if (props.filePath && props.projectRoot) void lsp.syncOpen()
     editorReady.value = true
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : 'Editor failed to load'
@@ -110,10 +166,41 @@ watch(
   },
 )
 
+watch(
+  () => props.minimap,
+  (enabled) => {
+    editor?.updateOptions({ minimap: { enabled: enabled ?? false } })
+  },
+)
+
+watch(
+  () => props.semanticHighlighting,
+  (enabled) => {
+    editor?.updateOptions({ 'semanticHighlighting.enabled': enabled ?? false })
+  },
+)
+
+watch(
+  () => props.filePath,
+  (path) => {
+    if (!monaco || !editor || !path) return
+    const model = editor.getModel()
+    if (model && model.uri.fsPath !== path) {
+      const lang = props.language ?? model.getLanguageId()
+      const newModel = monaco.editor.createModel(model.getValue(), lang, monaco.Uri.file(path))
+      editor.setModel(newModel)
+      model.dispose()
+    }
+  },
+)
+
 onBeforeUnmount(() => {
+  f12Disposable?.dispose()
   editor?.dispose()
   editor = null
+  editorRef.value = null
   monaco = null
+  monacoRef.value = null
 })
 
 const revealPosition = (line: number, col: number) => {
@@ -127,10 +214,26 @@ const focus = () => {
   editor?.focus()
 }
 
+const formatDocument = async () => {
+  const root = props.projectRoot
+  const fp = props.filePath
+  if (!root || !fp || !editor) return
+  const res = await window.axecoder.lspFormat(root, fp)
+  const edits = res.result as { range?: unknown; newText?: string }[] | null
+  if (!edits?.length) {
+    await editor.getAction('editor.action.formatDocument')?.run()
+    return
+  }
+  const model = editor.getModel()
+  if (!model) return
+  editor.executeEdits('lsp-format', edits as Monaco.editor.IIdentifiedSingleEditOperation[])
+}
+
 defineExpose({
   focus,
   getEditor: () => editor,
   revealPosition,
+  formatDocument,
 })
 </script>
 

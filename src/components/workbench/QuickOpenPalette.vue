@@ -1,24 +1,83 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from '../../i18n'
-import { fuzzyFilterPaths } from '../../utils/quick-open-fuzzy'
+import { fuzzyFilterPaths, fuzzyScore } from '../../utils/quick-open-fuzzy'
+
+export type QuickOpenItem = {
+  label: string
+  path: string
+  line?: number
+  col?: number
+  kind: 'file' | 'symbol'
+}
 
 const props = defineProps<{
   visible: boolean
   paths: string[]
+  projectRoot?: string
+  recentFiles?: string[]
 }>()
 
 const emit = defineEmits<{
   close: []
-  open: [relPath: string]
+  open: [relPath: string, line?: number, col?: number]
 }>()
 
 const { t } = useI18n()
 const query = ref('')
 const selected = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
+const symbolItems = ref<QuickOpenItem[]>([])
 
-const filtered = computed(() => fuzzyFilterPaths(query.value, props.paths, 50))
+const parseFileLineCol = (q: string): { filePart: string; line?: number; col?: number } => {
+  const m = q.match(/^(.+?):(\d+)(?::(\d+))?$/)
+  if (!m) return { filePart: q }
+  return {
+    filePart: m[1]!,
+    line: Number(m[2]),
+    col: m[3] ? Number(m[3]) : 1,
+  }
+}
+
+const filtered = computed((): QuickOpenItem[] => {
+  const raw = query.value.trim()
+  if (!raw) {
+    const recent = (props.recentFiles ?? []).slice(0, 8)
+    return recent.map((p) => ({ label: p, path: p, kind: 'file' as const }))
+  }
+  if (raw.startsWith('@')) {
+    return symbolItems.value
+  }
+  const { filePart, line, col } = parseFileLineCol(raw)
+  const paths = fuzzyFilterPaths(filePart, props.paths, 50)
+  const recentSet = new Set(props.recentFiles ?? [])
+  const scored = paths.map((p) => {
+    let score = fuzzyScore(filePart, p)
+    if (recentSet.has(p)) score += 200
+    return { label: line ? `${p}:${line}${col && col > 1 ? `:${col}` : ''}` : p, path: p, line, col, kind: 'file' as const, score }
+  })
+  scored.sort((a, b) => b.score - a.score)
+  return scored.map(({ label, path, line: ln, col: cl, kind }) => ({ label, path, line: ln, col: cl, kind }))
+})
+
+watch(query, async (q) => {
+  if (!q.trim().startsWith('@') || !props.projectRoot) {
+    symbolItems.value = []
+    return
+  }
+  const symQ = q.trim().slice(1)
+  const res = await window.axecoder.lspWorkspaceSymbol(props.projectRoot, symQ)
+  const list = (res.result ?? []) as { name?: string; location?: { uri?: string; range?: { start?: { line?: number; character?: number } } } }[]
+  symbolItems.value = list.slice(0, 40).map((s) => {
+    const uri = s.location?.uri?.replace(/^file:\/\//, '') ?? ''
+    const rel = uri.startsWith(props.projectRoot!)
+      ? uri.slice(props.projectRoot!.length).replace(/^[/\\]+/, '')
+      : uri
+    const line = (s.location?.range?.start?.line ?? 0) + 1
+    const col = (s.location?.range?.start?.character ?? 0) + 1
+    return { label: `${s.name ?? 'symbol'} — ${rel}:${line}`, path: rel, line, col, kind: 'symbol' as const }
+  })
+})
 
 watch(
   () => props.visible,
@@ -26,6 +85,7 @@ watch(
     if (v) {
       query.value = ''
       selected.value = 0
+      symbolItems.value = []
       nextTick(() => inputRef.value?.focus())
     }
   },
@@ -36,9 +96,9 @@ watch(filtered, () => {
 })
 
 const runSelected = () => {
-  const p = filtered.value[selected.value]
-  if (!p) return
-  emit('open', p)
+  const item = filtered.value[selected.value]
+  if (!item) return
+  emit('open', item.path, item.line, item.col)
   emit('close')
 }
 
@@ -76,12 +136,13 @@ const onKeydown = (e: KeyboardEvent) => {
       />
       <ul class="palette-list">
         <li
-          v-for="(p, i) in filtered"
-          :key="p"
+          v-for="(item, i) in filtered"
+          :key="`${item.kind}:${item.path}:${item.line}:${i}`"
           :class="{ selected: i === selected }"
           @click="selected = i; runSelected()"
         >
-          <span class="path">{{ p }}</span>
+          <span class="path">{{ item.label }}</span>
+          <span v-if="item.kind === 'symbol'" class="sym-tag">@</span>
         </li>
         <li v-if="!filtered.length" class="empty">{{ t('quickOpen.empty') }}</li>
       </ul>
@@ -130,6 +191,10 @@ const onKeydown = (e: KeyboardEvent) => {
   padding: 8px 16px;
   font-size: 13px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .palette-list li.selected,
@@ -140,6 +205,15 @@ const onKeydown = (e: KeyboardEvent) => {
 .path {
   font-family: var(--wc-font-mono);
   font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sym-tag {
+  font-size: 10px;
+  color: var(--wc-accent);
+  flex-shrink: 0;
 }
 
 .empty {

@@ -2,6 +2,7 @@
 const items = [
   { id: 'explorer', title: 'Explorer' },
   { id: 'search', title: 'Search in project' },
+  { id: 'scm', title: 'Source Control' },
 ] as const
 
 defineProps<{
@@ -38,6 +39,12 @@ defineEmits<{
         <circle cx="7" cy="7" r="4" stroke="currentColor" />
         <path d="M10 10l3.5 3.5" stroke="currentColor" stroke-linecap="round" />
       </svg>
+      <svg v-else-if="item.id === 'scm'" class="view-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <circle cx="4" cy="4" r="1.5" fill="currentColor" />
+        <circle cx="4" cy="12" r="1.5" fill="currentColor" />
+        <circle cx="12" cy="8" r="1.5" fill="currentColor" />
+        <path d="M4 5.5v5M4.5 12h6.5a1.5 1.5 0 0 0 0-3H7.5" stroke="currentColor" />
+      </svg>
     </button>
   </nav>
 </template>
@@ -70,11 +77,6 @@ defineEmits<{
 .view-btn.active {
   color: var(--wc-text);
   background: var(--wc-active);
-}
-
-.view-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .view-icon {

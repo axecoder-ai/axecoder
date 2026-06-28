@@ -8,20 +8,26 @@ export type LSPServerManager = {
   initialize(projectRoot: string): Promise<void>
   shutdown(): Promise<void>
   sendRequest<T>(filePath: string, method: string, params: unknown): Promise<T | undefined>
-  openFile(filePath: string, content: string): Promise<void>
+  sendNotification(filePath: string, method: string, params: unknown): Promise<void>
+  openFile(filePath: string, content: string, version?: number): Promise<void>
+  changeFile(filePath: string, version: number, content: string): Promise<void>
+  closeFile(filePath: string): Promise<void>
   isFileOpen(filePath: string): boolean
   getAllServers(): Map<string, LSPServerInstance>
+  getLanguageId(filePath: string): string | undefined
 }
 
 export const createLSPServerManager = (): LSPServerManager => {
   const servers = new Map<string, LSPServerInstance>()
   const extensionMap = new Map<string, string[]>()
   const openedFiles = new Map<string, string>()
+  const fileVersions = new Map<string, number>()
 
   const initialize = async (projectRoot: string) => {
     servers.clear()
     extensionMap.clear()
     openedFiles.clear()
+    fileVersions.clear()
 
     const { servers: serverConfigs } = await loadLspConfig(projectRoot)
     for (const [serverName, raw] of Object.entries(serverConfigs)) {
@@ -48,6 +54,7 @@ export const createLSPServerManager = (): LSPServerManager => {
     servers.clear()
     extensionMap.clear()
     openedFiles.clear()
+    fileVersions.clear()
   }
 
   const getServerForFile = (filePath: string): LSPServerInstance | undefined => {
@@ -77,26 +84,70 @@ export const createLSPServerManager = (): LSPServerManager => {
     return openedFiles.has(uri)
   }
 
-  const openFile = async (filePath: string, content: string) => {
+  const sendNotification = async (filePath: string, method: string, params: unknown) => {
+    const server = await ensureServerStarted(filePath)
+    if (!server) return
+    await server.sendNotification(method, params)
+  }
+
+  const getLanguageId = (filePath: string): string | undefined => {
+    const server = getServerForFile(filePath)
+    if (!server) return undefined
+    const ext = path.extname(filePath).toLowerCase()
+    return server.config.extensionToLanguage[ext] || 'plaintext'
+  }
+
+  const openFile = async (filePath: string, content: string, version = 1) => {
     const server = await ensureServerStarted(filePath)
     if (!server) return
     const fileUri = pathToFileURL(path.resolve(filePath)).href
-    if (openedFiles.get(fileUri) === server.name) return
-
     const ext = path.extname(filePath).toLowerCase()
     const languageId = server.config.extensionToLanguage[ext] || 'plaintext'
     await server.sendNotification('textDocument/didOpen', {
-      textDocument: { uri: fileUri, languageId, version: 1, text: content },
+      textDocument: { uri: fileUri, languageId, version, text: content },
     })
     openedFiles.set(fileUri, server.name)
+    fileVersions.set(fileUri, version)
+  }
+
+  const changeFile = async (filePath: string, version: number, content: string) => {
+    const server = await ensureServerStarted(filePath)
+    if (!server) return
+    const fileUri = pathToFileURL(path.resolve(filePath)).href
+    if (!openedFiles.has(fileUri)) {
+      await openFile(filePath, content, version)
+      return
+    }
+    await server.sendNotification('textDocument/didChange', {
+      textDocument: { uri: fileUri, version },
+      contentChanges: [{ text: content }],
+    })
+    fileVersions.set(fileUri, version)
+  }
+
+  const closeFile = async (filePath: string) => {
+    const fileUri = pathToFileURL(path.resolve(filePath)).href
+    if (!openedFiles.has(fileUri)) return
+    const server = await ensureServerStarted(filePath)
+    if (server) {
+      await server.sendNotification('textDocument/didClose', {
+        textDocument: { uri: fileUri },
+      })
+    }
+    openedFiles.delete(fileUri)
+    fileVersions.delete(fileUri)
   }
 
   return {
     initialize,
     shutdown,
     sendRequest,
+    sendNotification,
     openFile,
+    changeFile,
+    closeFile,
     isFileOpen,
+    getLanguageId,
     getAllServers: () => servers,
   }
 }

@@ -41,6 +41,10 @@ const newFolderInput = ref<HTMLInputElement | null>(null)
 
 const dragPath = ref<string | null>(null)
 const dropHighlightPath = ref<string | null>(null)
+const filterQuery = ref('')
+const gitDecorations = ref<Record<string, string>>({})
+const selectedPaths = ref<Set<string>>(new Set())
+const lastClickedPath = ref<string | null>(null)
 
 const fs = window.axecoder
 
@@ -64,6 +68,25 @@ const refresh = async () => {
   const res = await fs.readTree(rootPath.value)
   tree.value = res.tree
   expanded.value.add(res.rootPath)
+  const git = await fs.gitStatus(rootPath.value)
+  if (git.ok) {
+    const map: Record<string, string> = {}
+    for (const c of git.changes) {
+      const code = c.code.trim()
+      const sep = rootPath.value.includes('\\') ? '\\' : '/'
+      map[`${rootPath.value}${sep}${c.file}`] = code
+    }
+    gitDecorations.value = map
+  }
+}
+
+const gitBadge = (path: string) => {
+  const code = gitDecorations.value[path]
+  if (!code) return ''
+  if (code.includes('M')) return 'M'
+  if (code.includes('U') || code.includes('?')) return 'U'
+  if (code.includes('D')) return 'D'
+  return code[0] ?? ''
 }
 
 const isInsideProject = (filePath: string) => {
@@ -149,8 +172,27 @@ const fileKind = (name: string) => {
   return 'kind-file'
 }
 
-const onFileClick = async (node: FileNode) => {
+const onFileClick = async (node: FileNode, e?: MouseEvent) => {
   if (node.type !== 'file') return
+  if (e?.shiftKey && lastClickedPath.value) {
+    const paths = flatNodes.value.filter((r) => r.node.type === 'file').map((r) => r.node.path)
+    const a = paths.indexOf(lastClickedPath.value)
+    const b = paths.indexOf(node.path)
+    if (a >= 0 && b >= 0) {
+      const [lo, hi] = a < b ? [a, b] : [b, a]
+      const next = new Set(selectedPaths.value)
+      for (let i = lo; i <= hi; i++) next.add(paths[i]!)
+      selectedPaths.value = next
+    }
+  } else if (e?.metaKey || e?.ctrlKey) {
+    const next = new Set(selectedPaths.value)
+    if (next.has(node.path)) next.delete(node.path)
+    else next.add(node.path)
+    selectedPaths.value = next
+  } else {
+    selectedPaths.value = new Set([node.path])
+  }
+  lastClickedPath.value = node.path
   emit('open-file', node.path)
 }
 
@@ -498,7 +540,9 @@ const flatNodes = computed(() => {
     for (const child of tree.value.children) walk(child, 0)
   }
   if (rootPath.value) appendPending(rootPath.value, 0)
-  return rows
+  const q = filterQuery.value.trim().toLowerCase()
+  if (!q) return rows
+  return rows.filter(({ node }) => node.name.toLowerCase().includes(q) || node.path.toLowerCase().includes(q))
 })
 
 const onDocClick = () => closeMenu()
@@ -609,6 +653,9 @@ onUnmounted(() => {
         </button>
       </div>
     </div>
+    <div v-if="rootPath" class="filter-row">
+      <input v-model="filterQuery" type="text" class="filter-input" placeholder="Filter files…" />
+    </div>
     <div class="explorer-split">
     <div
       v-show="treeSectionOpen"
@@ -623,6 +670,7 @@ onUnmounted(() => {
         class="tree-item"
         :class="{
           active: !pending && activeFilePath === node.path,
+          selected: !pending && selectedPaths.has(node.path),
           folder: node.type === 'directory',
           pending: !!pending,
           'drag-over': !pending && dropHighlightPath === dropTargetDir(node),
@@ -633,7 +681,7 @@ onUnmounted(() => {
         @click="
           !pending &&
             ((focusedNode = node),
-            node.type === 'directory' ? toggleExpand(node) : onFileClick(node))
+            node.type === 'directory' ? toggleExpand(node) : onFileClick(node, $event))
         "
         @contextmenu="!pending && openMenu($event, node)"
         @dragstart="!pending && onDragStart($event, node)"
@@ -676,6 +724,7 @@ onUnmounted(() => {
           @blur="commitRename"
         />
         <span v-else class="file-name">{{ node.name }}</span>
+        <span v-if="node.type === 'file' && gitBadge(node.path)" class="git-badge">{{ gitBadge(node.path) }}</span>
       </div>
       <div v-if="!rootPath" class="tree-empty">
         <p>No project open</p>
@@ -871,6 +920,35 @@ onUnmounted(() => {
 
 .tree-item.active {
   background: var(--wc-active);
+}
+
+.tree-item.selected {
+  outline: 1px solid var(--wc-accent);
+  outline-offset: -1px;
+}
+
+.filter-row {
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+
+.filter-input {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--wc-border);
+  border-radius: 4px;
+  background: var(--wc-input-bg);
+  color: var(--wc-text);
+}
+
+.git-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  color: #e8ab53;
+  flex-shrink: 0;
+  padding-right: 4px;
 }
 
 .tree-item.pending {

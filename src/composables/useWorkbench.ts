@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type {
   AppSettings,
   SearchHit,
@@ -47,6 +47,48 @@ export const useWorkbench = () => {
   let offMenu: (() => void) | null = null
   let offQuit: (() => void) | null = null
   let offFileChanged: (() => void) | null = null
+  let scmRefreshHook: (() => void) | null = null
+
+  const TABS_STORAGE_KEY = 'axecoder.openTabs'
+
+  const persistTabs = () => {
+    if (!projectRoot.value) return
+    const payload = {
+      root: projectRoot.value,
+      paths: openFiles.value.map((f) => f.path),
+      active: activePath.value,
+    }
+    sessionStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(payload))
+  }
+
+  const restoreTabs = async () => {
+    const raw = sessionStorage.getItem(TABS_STORAGE_KEY)
+    if (!raw || !projectRoot.value) return
+    try {
+      const { root, paths, active } = JSON.parse(raw) as {
+        root: string
+        paths: string[]
+        active: string | null
+      }
+      if (root !== projectRoot.value || !paths?.length) return
+      for (const p of paths) {
+        try {
+          await openFileAtPath(p)
+        } catch {
+          /* skip missing files */
+        }
+      }
+      if (active && openFiles.value.some((f) => f.path === active)) {
+        activePath.value = active
+      }
+    } catch {
+      /* ignore corrupt storage */
+    }
+  }
+
+  const setScmRefreshHook = (fn: (() => void) | null) => {
+    scmRefreshHook = fn
+  }
 
   const activeFile = computed(() =>
     activePath.value
@@ -88,6 +130,7 @@ export const useWorkbench = () => {
         openFiles.value = next
       }
       saveStatus.value = 'saved'
+      scmRefreshHook?.()
       return true
     } catch (e) {
       saveStatus.value = 'error'
@@ -125,10 +168,15 @@ export const useWorkbench = () => {
     return 'cancel'
   }
 
-  const openFileAtPath = async (path: string, content?: string) => {
+  const openFileAtPath = async (path: string, content?: string, opts?: { preview?: boolean }) => {
     const existing = openFiles.value.find((f) => f.path === path)
     if (existing) {
       activePath.value = path
+      if (opts?.preview === false || !existing.preview) {
+        openFiles.value = openFiles.value.map((f) =>
+          f.path === path ? { ...f, preview: false, pinned: true } : f,
+        )
+      }
       return
     }
     const previewKind = documentPreviewKind(path)
@@ -174,10 +222,13 @@ export const useWorkbench = () => {
         name: fileNameFromPath(path),
         content: text,
         dirty: false,
+        preview: opts?.preview,
+        eol: text.includes('\r\n') ? 'CRLF' : 'LF',
       }
     }
     openFiles.value = upsertOpenFile(openFiles.value, file)
     activePath.value = path
+    persistTabs()
   }
 
   const openFileFromDisk = async () => {
@@ -211,6 +262,7 @@ export const useWorkbench = () => {
     }
     activePath.value = nextActiveAfterClose(openFiles.value, path, activePath.value)
     openFiles.value = closeOpenFile(openFiles.value, path)
+    persistTabs()
     return true
   }
 
@@ -230,6 +282,13 @@ export const useWorkbench = () => {
     projectName.value = fileNameFromPath(rootPath)
     await fs.watchStop()
     await fs.watchStart(rootPath)
+    const merged = await fs.settingsMergeWorkspace(rootPath)
+    if (merged.ok) {
+      settings.value = { ...settings.value, ...merged.config }
+      applyTheme(settings.value.theme)
+    }
+    await fs.lspEnsureProject(rootPath)
+    await restoreTabs()
   }
 
   const onProjectClosed = () => {
@@ -250,23 +309,40 @@ export const useWorkbench = () => {
     if (activePath.value === oldPath) activePath.value = newPath
   }
 
-  const handleExternalFileChange = async (filePath: string) => {
+  const handleExternalFileChange = async (
+    filePath: string,
+    onCompare?: (diskContent: string) => void,
+  ) => {
     const open = openFiles.value.find((f) => f.path === filePath)
     if (!open) return
+    const { content: diskContent } = await fs.readFile(filePath)
+    if (diskContent === open.content) return
     if (open.dirty) {
-      if (saveTimer) {
-        clearTimeout(saveTimer)
-        saveTimer = null
+      const choice = window.confirm(
+        t('explorer.externalChangeDirty', {
+          name: open.name,
+          default: `${open.name} changed on disk. Reload and discard your edits?`,
+        }),
+      )
+      if (!choice) return
+    } else {
+      const action = window.prompt(
+        `${open.name} changed on disk. Enter: compare, revert, or keep`,
+        'keep',
+      )
+      if (!action) return
+      const a = action.trim().toLowerCase()
+      if (a === 'compare') {
+        onCompare?.(diskContent)
+        return
       }
-      await saveOpenFile(open)
-      return
+      if (a === 'keep') return
+      if (a !== 'revert') return
     }
-    const { content } = await fs.readFile(filePath)
-    if (content === open.content) return
     const idx = openFiles.value.findIndex((f) => f.path === filePath)
     if (idx >= 0) {
       const next = [...openFiles.value]
-      next[idx] = { ...next[idx], content, dirty: false }
+      next[idx] = { ...next[idx], content: diskContent, dirty: false }
       openFiles.value = next
     }
   }
@@ -315,8 +391,18 @@ export const useWorkbench = () => {
       void handleBeforeQuit()
     })
     offFileChanged = fs.onFileChanged((payload) => {
-      if (payload.kind === 'change') void handleExternalFileChange(payload.path)
+      if (payload.kind === 'change') {
+        void handleExternalFileChange(payload.path, (disk) => {
+          externalCompareHandler?.(payload.path, disk, openFiles.value.find((f) => f.path === payload.path)?.content ?? '')
+        })
+      }
     })
+  }
+
+  let externalCompareHandler: ((path: string, disk: string, editor: string) => void) | null = null
+
+  const setExternalCompareHandler = (fn: ((path: string, disk: string, editor: string) => void) | null) => {
+    externalCompareHandler = fn
   }
 
   const unbindMenu = () => {
@@ -360,6 +446,33 @@ export const useWorkbench = () => {
     return fs.searchReplace(projectRoot.value, query, replacement, opts)
   }
 
+  const replaceOneInProject = async (
+    hit: SearchHit,
+    query: string,
+    replacement: string,
+    opts?: SearchOptions,
+  ): Promise<{ ok: boolean; replacements: number }> => {
+    if (!projectRoot.value || !query.trim()) return { ok: false, replacements: 0 }
+    return fs.searchReplaceOne(projectRoot.value, hit, query, replacement, opts)
+  }
+
+  const setLanguageOverride = (lang: string) => {
+    const path = activePath.value
+    if (!path) return
+    openFiles.value = openFiles.value.map((f) =>
+      f.path === path ? { ...f, languageOverride: lang } : f,
+    )
+  }
+
+  const setEol = (eol: 'LF' | 'CRLF') => {
+    const path = activePath.value
+    if (!path) return
+    openFiles.value = openFiles.value.map((f) => (f.path === path ? { ...f, eol } : f))
+  }
+
+  watch(openFiles, () => persistTabs(), { deep: true })
+  watch(activePath, () => persistTabs())
+
   const listProjectFiles = async (): Promise<string[]> => {
     if (!projectRoot.value) return []
     const { files } = await fs.listProjectFiles(projectRoot.value)
@@ -377,6 +490,7 @@ export const useWorkbench = () => {
     settings,
     saveCurrent,
     saveAsCurrent,
+    saveAllDirty,
     closeTab,
     openFileAtPath,
     openFileFromDisk,
@@ -390,6 +504,11 @@ export const useWorkbench = () => {
     applySettings,
     searchProject,
     replaceInProject,
+    replaceOneInProject,
     listProjectFiles,
+    setScmRefreshHook,
+    setExternalCompareHandler,
+    setLanguageOverride,
+    setEol,
   }
 }

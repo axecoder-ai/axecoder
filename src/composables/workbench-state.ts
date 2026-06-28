@@ -5,6 +5,12 @@ export type OpenFile = {
   name: string
   content: string
   dirty: boolean
+  preview?: boolean
+  pinned?: boolean
+  kind?: 'edit' | 'diff'
+  diffOriginal?: string
+  languageOverride?: string
+  eol?: 'LF' | 'CRLF'
   previewKind?: DocumentPreviewKind
   previewBase64?: string
   previewHtml?: string

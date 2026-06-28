@@ -4,6 +4,7 @@ import TitleBar from './components/workbench/TitleBar.vue'
 import SidebarViewBar from './components/workbench/SidebarViewBar.vue'
 import FileExplorer from './components/workbench/FileExplorer.vue'
 import SearchPanel from './components/workbench/SearchPanel.vue'
+import ScmPanel from './components/workbench/ScmPanel.vue'
 import EditorPane from './components/workbench/EditorPane.vue'
 import WelcomePage from './components/workbench/WelcomePage.vue'
 import ChatPane from './components/workbench/ChatPane.vue'
@@ -41,7 +42,13 @@ import { parseWorkbenchRoleFromLocation } from './utils/workbench-window-role'
 import { applyTheme } from './utils/apply-theme'
 import { applyMetricsWindowTheme } from './utils/metrics-window-theme'
 import type { AppTheme } from './types/axecoder'
-import { languageLabelForPath } from './utils/editor-language'
+import { languageLabelForPath, monacoLanguageForPath } from './utils/editor-language'
+import { getAllDiagnostics } from './composables/useMonacoLsp'
+import {
+  getCommands,
+  runCommandById,
+  setupWorkbenchCommands,
+} from './utils/command-registry'
 import { useI18n } from './i18n'
 import { appT } from './i18n/translate'
 
@@ -51,13 +58,39 @@ const wb = useWorkbench()
 const {
   openFiles,
   activePath,
+  activeFile,
   editorContent,
   projectRoot,
   projectName,
   saveStatus,
   settings,
+  saveCurrent,
+  saveAllDirty,
+  replaceOneInProject,
+  setScmRefreshHook,
+  setExternalCompareHandler,
+  setLanguageOverride,
+  setEol,
 } = wb
-const statusLanguage = computed(() => languageLabelForPath(activePath.value))
+const statusLanguage = computed(() =>
+  activeFile.value?.languageOverride
+    ? languageLabelForPath(activePath.value)
+    : languageLabelForPath(activePath.value),
+)
+const statusLanguageId = computed(
+  () => activeFile.value?.languageOverride ?? monacoLanguageForPath(activePath.value),
+)
+const statusEol = computed(() => activeFile.value?.eol ?? 'LF')
+const problemCounts = computed(() => {
+  const list = getAllDiagnostics()
+  let errors = 0
+  let warnings = 0
+  for (const p of list) {
+    if (p.severity === 'error') errors++
+    else if (p.severity === 'warning') warnings++
+  }
+  return { errors, warnings }
+})
 
 const activeActivity = ref('explorer')
 const aiPanelVisible = ref(false)
@@ -112,6 +145,7 @@ let offThemeChange: (() => void) | undefined
 
 const fileExplorerRef = ref<InstanceType<typeof FileExplorer> | null>(null)
 const searchPanelRef = ref<InstanceType<typeof SearchPanel> | null>(null)
+const scmPanelRef = ref<InstanceType<typeof ScmPanel> | null>(null)
 const editorPaneRef = ref<InstanceType<typeof EditorPane> | null>(null)
 const chatPaneRef = ref<InstanceType<typeof ChatPane> | null>(null)
 const settingsPanelRef = ref<InstanceType<typeof SettingsPanel> | null>(null)
@@ -389,21 +423,76 @@ const onSettingsModelsChanged = async () => {
 
 const showExplorer = () => activeActivity.value === 'explorer'
 const showSearch = () => activeActivity.value === 'search'
+const showScm = () => activeActivity.value === 'scm'
 
-const paletteCommands = computed(() => [
-  { id: 'openProject', label: t('palette.openProject'), shortcut: '⌘O' },
-  { id: 'openFile', label: t('palette.openFile'), shortcut: '⌘⇧O' },
-  { id: 'newFile', label: t('palette.newFile'), shortcut: '⌘N' },
-  { id: 'save', label: t('palette.save'), shortcut: '⌘S' },
-  { id: 'find', label: t('palette.find'), shortcut: '⌘F' },
-  { id: 'findInFiles', label: t('palette.findInProject'), shortcut: '⌘⇧F' },
-  { id: 'toggleChat', label: t('palette.toggleAi'), shortcut: '' },
-  { id: 'toggleAgents', label: t('palette.toggleAi'), shortcut: '' },
-  { id: 'toggleTerminal', label: t('palette.toggleTerminal'), shortcut: '' },
-  { id: 'toggleMetrics', label: t('titlebar.toggleMetrics'), shortcut: '' },
-  { id: 'toggleTrace', label: t('titlebar.toggleTrace'), shortcut: '' },
-  { id: 'settings', label: t('palette.settings'), shortcut: '' },
-])
+const paletteCommands = computed(() => getCommands())
+
+const refreshProblems = () => {
+  bottomPanelRef.value?.setProblems(getAllDiagnostics())
+}
+
+const onShowProblems = () => {
+  terminalVisible.value = true
+  bottomPanelTab.value = 'problems'
+  bottomPanelRef.value?.switchTab('problems')
+  refreshProblems()
+}
+
+const onOpenProblem = async (item: import('./types/axecoder').ProblemItem) => {
+  await wb.openFileAtPath(item.file)
+  setTimeout(() => editorPaneRef.value?.revealLine(item.line, item.col), 100)
+}
+
+const onScmOpenDiff = async (file: string, diffText: string) => {
+  const root = projectRoot.value
+  if (!root) return
+  const sep = root.includes('\\') ? '\\' : '/'
+  const full = `${root.replace(/[/\\]+$/, '')}${sep}${file.replace(/^[/\\]+/, '')}`
+  try {
+    const { content } = await window.axecoder.readFile(full)
+    editorPaneRef.value?.openDiffTab(full, diffText, content)
+  } catch {
+    editorPaneRef.value?.openDiffTab(full, diffText, '')
+  }
+}
+
+const onGoToDefinition = async (file: string, line: number, col: number) => {
+  await wb.openFileAtPath(file)
+  setTimeout(() => editorPaneRef.value?.revealLine(line, col), 100)
+}
+
+const onBreadcrumbNavigate = async (path: string) => {
+  if (path === projectRoot.value) return
+  await wb.openFileAtPath(path)
+}
+
+const onExternalCompare = (path: string, disk: string, editor: string) => {
+  editorPaneRef.value?.openDiffTab(path, disk, editor)
+}
+
+const onSearchReplaceOne = async (
+  hit: SearchHit,
+  query: string,
+  replacement: string,
+  opts: SearchOptions,
+) => {
+  const result = await replaceOneInProject(hit, query, replacement, opts)
+  if (result.replacements > 0) {
+    const hits = await wb.searchProject(query, opts)
+    searchPanelRef.value?.setHits(hits)
+    fileExplorerRef.value?.refresh?.()
+    scmPanelRef.value?.refresh?.()
+    if (activePath.value === hit.file) {
+      const { content } = await window.axecoder.readFile(hit.file)
+      const idx = openFiles.value.findIndex((f) => f.path === hit.file)
+      if (idx >= 0) {
+        const next = [...openFiles.value]
+        next[idx] = { ...next[idx], content, dirty: false }
+        openFiles.value = next
+      }
+    }
+  }
+}
 
 const loadRecent = async () => {
   const [filesRes, projectsRes] = await Promise.all([
@@ -444,6 +533,7 @@ const onActivitySelect = (id: string) => {
   activeActivity.value = id
   primarySidebarVisible.value = true
   if (id === 'search') setTimeout(() => searchPanelRef.value?.focusInput(), 50)
+  if (id === 'scm') scmPanelRef.value?.refresh?.()
 }
 
 const toggleAiPanel = () => {
@@ -589,6 +679,7 @@ const onProjectOpened = async (rootPath: string) => {
   activeChatSessionId.value = ''
   void chatPaneRef.value?.load()
   void agentsPanelRef.value?.load()
+  scmPanelRef.value?.refresh?.()
 }
 
 /** When no project and no welcome page, open AI panel so center is not empty (user may close after opening a project). */
@@ -638,6 +729,7 @@ const onSearchReplace = async (query: string, replacement: string, opts: SearchO
   const hits = await wb.searchProject(query, opts)
   searchPanelRef.value?.setHits(hits)
   fileExplorerRef.value?.refresh?.()
+  scmPanelRef.value?.refresh?.()
 }
 
 const onSearchOpen = async (hit: SearchHit) => {
@@ -667,12 +759,15 @@ const onQuickOpen = async () => {
   quickOpenVisible.value = true
 }
 
-const onQuickOpenFile = async (relPath: string) => {
+const onQuickOpenFile = async (relPath: string, line?: number, col?: number) => {
   const root = projectRoot.value
   if (!root) return
   const sep = root.includes('\\') ? '\\' : '/'
   const full = `${root.replace(/[/\\]+$/, '')}${sep}${relPath.replace(/^[/\\]+/, '')}`
   await wb.openFileAtPath(full)
+  if (line) {
+    setTimeout(() => editorPaneRef.value?.revealLine(line, col ?? 1), 100)
+  }
 }
 
 const onFind = () => {
@@ -685,17 +780,7 @@ const onSettingsSave = async (partial: Parameters<typeof wb.applySettings>[0]) =
 }
 
 const onPaletteRun = (id: string) => {
-  if (id === 'openProject') triggerOpenProject()
-  else if (id === 'openFile') void wb.openFileFromDisk()
-  else if (id === 'newFile') fileExplorerRef.value?.newFile()
-  else if (id === 'save') void wb.saveCurrent()
-  else if (id === 'find') onFind()
-  else if (id === 'findInFiles') onFindInFiles()
-  else if (id === 'toggleChat' || id === 'toggleAgents') toggleAiPanel()
-  else if (id === 'toggleTerminal') toggleTerminal()
-  else if (id === 'toggleMetrics') toggleBottomPanel()
-  else if (id === 'toggleTrace') void toggleTrace()
-  else if (id === 'settings') void openSettingsPanel('general')
+  void runCommandById(id)
 }
 
 const onNewAgentSession = async () => {
@@ -851,6 +936,42 @@ onMounted(async () => {
       void onQuickOpen()
     },
   })
+  setupWorkbenchCommands({
+    save: () => void saveCurrent().then(() => scmPanelRef.value?.refresh?.()),
+    saveAll: () => void saveAllDirty().then(() => scmPanelRef.value?.refresh?.()),
+    saveAs: () => void wb.saveAsCurrent(),
+    closeTab: () => {
+      if (activePath.value) void wb.closeTab(activePath.value)
+    },
+    openProject: triggerOpenProject,
+    openFile: () => void wb.openFileFromDisk(),
+    newFile: () => fileExplorerRef.value?.newFile(),
+    find: onFind,
+    findInFiles: onFindInFiles,
+    quickOpen: onQuickOpen,
+    formatDocument: () => editorPaneRef.value?.formatDocument?.(),
+    splitHorizontal: () => editorPaneRef.value?.splitHorizontal?.(),
+    splitVertical: () => editorPaneRef.value?.splitVertical?.(),
+    closeSplit: () => editorPaneRef.value?.closeSplit?.(),
+    scmStageAll: async () => {
+      if (!projectRoot.value) return
+      await window.axecoder.gitStageAll(projectRoot.value)
+      scmPanelRef.value?.refresh?.()
+    },
+    toggleTerminal,
+    toggleChat: toggleAiPanel,
+    toggleScm: () => {
+      activeActivity.value = 'scm'
+      primarySidebarVisible.value = true
+      scmPanelRef.value?.refresh?.()
+    },
+    settings: () => void openSettingsPanel('general'),
+    toggleMetrics: toggleBottomPanel,
+    toggleTrace,
+  })
+  setScmRefreshHook(() => scmPanelRef.value?.refresh?.())
+  setExternalCompareHandler(onExternalCompare)
+  window.axecoder.onLspDiagnostics(() => refreshProblems())
 })
 
 onUnmounted(() => {
@@ -932,7 +1053,15 @@ onUnmounted(() => {
               :project-name="projectName"
               @search="onSearch"
               @replace="onSearchReplace"
+              @replace-one="onSearchReplaceOne"
               @open="onSearchOpen"
+            />
+            <ScmPanel
+              v-show="showScm()"
+              ref="scmPanelRef"
+              :visible="showScm()"
+              :project-root="projectRoot"
+              @open-diff="onScmOpenDiff"
             />
           </div>
         </div>
@@ -964,11 +1093,17 @@ onUnmounted(() => {
           :mode="editorMode"
           :font-size="settings.fontSize"
           :app-theme="settings.theme"
+          :project-root="projectRoot"
+          :minimap="!!settings.editorMinimap"
+          :semantic-highlighting="!!settings.editorSemanticHighlighting"
           @update:content="onEditorContentUpdate"
           @update:mode="editorMode = $event"
+          @update:tabs="openFiles = $event"
           @select="onSelectTab"
           @close="(p) => wb.closeTab(p)"
           @cursor-change="(l, c) => { cursorLine = l; cursorCol = c }"
+          @go-to-definition="onGoToDefinition"
+          @breadcrumb-navigate="onBreadcrumbNavigate"
         />
         <div
           v-show="!isCompanionWindow && aiPanelUsesFixedWidth"
@@ -1069,6 +1204,7 @@ onUnmounted(() => {
         @metrics-detach="onMetricsDetach"
         @trace-detach="onTraceDetach"
         @collapse="collapseBottomPanel"
+        @open-problem="onOpenProblem"
       />
     </div>
     <StatusBar
@@ -1076,9 +1212,15 @@ onUnmounted(() => {
       :line="cursorLine"
       :col="cursorCol"
       :language="statusLanguage"
+      :language-id="statusLanguageId"
       :project-name="projectName"
       :project-root="projectRoot"
       :save-status="saveStatus"
+      :eol="statusEol"
+      :error-count="problemCounts.errors"
+      :warning-count="problemCounts.warnings"
+      @show-problems="onShowProblems"
+      @language-change="setLanguageOverride"
     />
     <SettingsModal
       :visible="settingsVisible"
@@ -1104,6 +1246,8 @@ onUnmounted(() => {
     <QuickOpenPalette
       :visible="quickOpenVisible"
       :paths="quickOpenPaths"
+      :project-root="projectRoot"
+      :recent-files="recentFiles"
       @close="quickOpenVisible = false"
       @open="onQuickOpenFile"
     />

@@ -180,6 +180,23 @@ const clearCompletionSound = () => {
     agentCompletionSoundDisplayName: '',
   })
 }
+
+const onTerminalShell = (e: Event) => {
+  emit('save', { terminalShell: (e.target as HTMLInputElement).value })
+}
+
+const onTerminalArgs = (e: Event) => {
+  const raw = (e.target as HTMLInputElement).value.trim()
+  emit('save', { terminalShellArgs: raw ? raw.split(/\s+/) : [] })
+}
+
+const onMinimap = (v: boolean) => {
+  emit('save', { editorMinimap: v })
+}
+
+const onSemanticHl = (v: boolean) => {
+  emit('save', { editorSemanticHighlighting: v })
+}
 </script>
 
 <template>
@@ -487,6 +504,56 @@ const clearCompletionSound = () => {
             @change="onFontSize"
           />
         </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">Minimap</span>
+        </div>
+        <div class="pref-control">
+          <SwitchToggle
+            :model-value="!!settings.editorMinimap"
+            @update:model-value="onMinimap"
+          />
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">Semantic highlighting</span>
+        </div>
+        <div class="pref-control">
+          <SwitchToggle
+            :model-value="!!settings.editorSemanticHighlighting"
+            @update:model-value="onSemanticHl"
+          />
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h3 class="section-title">Terminal</h3>
+      <div class="pref-item pref-item--stack">
+        <div class="pref-info">
+          <span class="pref-label">Shell</span>
+        </div>
+        <input
+          type="text"
+          class="pref-input"
+          :value="settings.terminalShell ?? ''"
+          placeholder="/bin/zsh"
+          @change="onTerminalShell"
+        />
+      </div>
+      <div class="pref-item pref-item--stack">
+        <div class="pref-info">
+          <span class="pref-label">Shell args</span>
+        </div>
+        <input
+          type="text"
+          class="pref-input"
+          :value="(settings.terminalShellArgs ?? []).join(' ')"
+          placeholder="-l"
+          @change="onTerminalArgs"
+        />
       </div>
     </section>
 

@@ -35,6 +35,7 @@ import {
   writeProjectFile,
 } from './agent-fs'
 import { executeExtendedAgentTool } from './agent-ext-executor'
+import { notifyLspFileRefresh } from '../lsp/lsp-editor-ipc'
 import { createSubagentAgentId } from './agent-subagent-store'
 import {
   createBackgroundRunId,
@@ -268,6 +269,7 @@ export const executeAgentTool = async (
           const rel = relativeInProject(ctx.projectRoot, resolved)
           if (rel) trackCheckpointFileCtx(ctx, rel, oldContent)
           await writeProjectFile(resolved, newContent)
+          notifyLspFileRefresh(resolved)
           return { ok: true as const, content: 'Applied.', logOk: true }
         },
       },
@@ -307,6 +309,7 @@ export const executeAgentTool = async (
           const rel = relativeInProject(ctx.projectRoot, resolved)
           if (rel) trackCheckpointFileCtx(ctx, rel, oldContent)
           await writeProjectFile(resolved, content)
+          notifyLspFileRefresh(resolved)
           ctx.readCache.add(resolved)
           return { ok: true as const, content: 'Applied.', logOk: true }
         },

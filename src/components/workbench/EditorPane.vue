@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, ref, watch, onBeforeUnmount } from 'vue'
 import MarkdownIt from 'markdown-it'
+import EditorBreadcrumb from './EditorBreadcrumb.vue'
 
 const MonacoEditor = defineAsyncComponent(() => import('./MonacoEditor.vue'))
 const DocumentPreviewPane = defineAsyncComponent(() => import('./DocumentPreviewPane.vue'))
@@ -8,6 +9,7 @@ import type { OpenFile } from '../../composables/workbench-state'
 import type { AppTheme } from '../../types/axecoder'
 import { isMarkdownPath, monacoLanguageForPath } from '../../utils/editor-language'
 import { documentPreviewKind } from '../../utils/document-preview'
+
 const props = defineProps<{
   tabs: OpenFile[]
   activePath: string | null
@@ -15,36 +17,66 @@ const props = defineProps<{
   mode: 'markdown' | 'preview'
   fontSize?: number
   appTheme?: AppTheme
+  projectRoot?: string
+  minimap?: boolean
+  semanticHighlighting?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:content': [value: string]
   'update:mode': [value: 'markdown' | 'preview']
+  'update:tabs': [tabs: OpenFile[]]
   select: [path: string]
   close: [path: string]
   'cursor-change': [line: number, col: number]
+  'go-to-definition': [file: string, line: number, col: number]
+  'breadcrumb-navigate': [path: string]
 }>()
 
 const monacoRef = ref<InstanceType<typeof MonacoEditor> | null>(null)
+const secondaryMonacoRef = ref<InstanceType<typeof MonacoEditor> | null>(null)
+const diffContainer = ref<HTMLElement | null>(null)
 const md = new MarkdownIt()
 const previewHtml = computed(() => md.render(props.content))
 const isMarkdown = computed(() => isMarkdownPath(props.activePath))
-const editorLanguage = computed(() => monacoLanguageForPath(props.activePath))
-const previewKind = computed(() => documentPreviewKind(props.activePath))
-const activePreviewFile = computed(() =>
-  props.tabs.find((t) => t.path === props.activePath) ?? null,
+const activeTab = computed(() => props.tabs.find((t) => t.path === props.activePath) ?? null)
+const isDiffTab = computed(() => activeTab.value?.kind === 'diff')
+const editorLanguage = computed(() =>
+  activeTab.value?.languageOverride ?? monacoLanguageForPath(props.activePath),
 )
+const previewKind = computed(() => documentPreviewKind(props.activePath))
+const activePreviewFile = computed(() => activeTab.value)
 const isDocumentPreview = computed(() => previewKind.value !== null)
+
+const splitDirection = ref<'horizontal' | 'vertical' | null>(null)
+const secondaryPath = ref<string | null>(null)
+const dragTabIndex = ref<number | null>(null)
+
+let diffEditor: import('monaco-editor').editor.IStandaloneDiffEditor | null = null
+let diffMonaco: typeof import('monaco-editor') | null = null
+
+const secondaryContent = computed(() => {
+  const p = secondaryPath.value
+  if (!p) return ''
+  return props.tabs.find((t) => t.path === p)?.content ?? ''
+})
+
 const revealLine = (line: number, col = 1) => {
+  if (isDiffTab.value && diffEditor) {
+    diffEditor.getModifiedEditor().revealLineInCenter(line)
+    diffEditor.getModifiedEditor().setPosition({ lineNumber: line, column: col })
+    return
+  }
   monacoRef.value?.revealPosition(line, col)
 }
 
 const focusEditor = () => {
-  monacoRef.value?.focus()
+  if (isDiffTab.value) diffEditor?.getModifiedEditor().focus()
+  else monacoRef.value?.focus()
 }
 
 const getEditorSelection = (): string => {
-  const ed = monacoRef.value?.getEditor?.()
+  const ed = isDiffTab.value ? diffEditor?.getModifiedEditor() : monacoRef.value?.getEditor?.()
   if (!ed) return ''
   const sel = ed.getSelection()
   const model = ed.getModel()
@@ -52,12 +84,134 @@ const getEditorSelection = (): string => {
   return model.getValueInRange(sel)
 }
 
-const fileName = (p: string) => {
-  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
-  return i >= 0 ? p.slice(i + 1) : p
+const formatDocument = () => {
+  monacoRef.value?.formatDocument?.()
 }
 
-defineExpose({ revealLine, focusEditor, getEditorSelection })
+const splitHorizontal = () => {
+  if (!props.activePath) return
+  splitDirection.value = 'horizontal'
+  secondaryPath.value = props.activePath
+}
+
+const splitVertical = () => {
+  if (!props.activePath) return
+  splitDirection.value = 'vertical'
+  secondaryPath.value = props.activePath
+}
+
+const closeSplit = () => {
+  splitDirection.value = null
+  secondaryPath.value = null
+}
+
+const pinTab = (path: string) => {
+  emit(
+    'update:tabs',
+    props.tabs.map((t) => (t.path === path ? { ...t, pinned: true, preview: false } : t)),
+  )
+}
+
+const onTabClick = (path: string, tab: OpenFile) => {
+  if (tab.preview && !tab.pinned) pinTab(path)
+  emit('select', path)
+}
+
+const onTabDragStart = (e: DragEvent, index: number) => {
+  dragTabIndex.value = index
+  e.dataTransfer!.effectAllowed = 'move'
+}
+
+const onTabDrop = (index: number) => {
+  const from = dragTabIndex.value
+  dragTabIndex.value = null
+  if (from === null || from === index) return
+  const next = [...props.tabs]
+  const [item] = next.splice(from, 1)
+  next.splice(index, 0, item!)
+  emit('update:tabs', next)
+}
+
+const mountDiffEditor = async () => {
+  if (!diffContainer.value || !isDiffTab.value || !activeTab.value) return
+  await import('../../monaco-setup')
+  diffMonaco = await import('monaco-editor')
+  diffEditor?.dispose()
+  const themeId = (await import('../../utils/apply-theme')).monacoThemeFor(props.appTheme ?? 'vscode')
+  diffMonaco.editor.setTheme(themeId)
+  const fp = props.activePath!
+  const original = activeTab.value.diffOriginal ?? ''
+  const modified = props.content
+  diffEditor = diffMonaco.editor.createDiffEditor(diffContainer.value, {
+    automaticLayout: true,
+    readOnly: false,
+    renderSideBySide: true,
+    fontSize: props.fontSize ?? 14,
+  })
+  const origModel = diffMonaco.editor.createModel(original, editorLanguage.value, diffMonaco.Uri.file(fp + '.orig'))
+  const modModel = diffMonaco.editor.createModel(modified, editorLanguage.value, diffMonaco.Uri.file(fp))
+  diffEditor.setModel({ original: origModel, modified: modModel })
+  diffEditor.getModifiedEditor().onDidChangeModelContent(() => {
+    emit('update:content', diffEditor!.getModifiedEditor().getValue())
+  })
+}
+
+const disposeDiffEditor = () => {
+  diffEditor?.dispose()
+  diffEditor = null
+}
+
+watch(
+  () => [isDiffTab.value, props.activePath, props.content, activeTab.value?.diffOriginal] as const,
+  () => {
+    if (isDiffTab.value) void mountDiffEditor()
+    else disposeDiffEditor()
+  },
+)
+
+watch(
+  () => props.appTheme,
+  async (theme) => {
+    if (!diffMonaco || !theme) return
+    diffMonaco.editor.setTheme((await import('../../utils/apply-theme')).monacoThemeFor(theme))
+  },
+)
+
+onBeforeUnmount(() => {
+  disposeDiffEditor()
+})
+
+const openDiffTab = (path: string, original: string, modified: string) => {
+  const name = path.split(/[/\\]/).pop() || path
+  const diffPath = `${path} (diff)`
+  const existing = props.tabs.find((t) => t.path === diffPath)
+  const tab: OpenFile = {
+    path: diffPath,
+    name: `${name} (diff)`,
+    content: modified,
+    dirty: false,
+    kind: 'diff',
+    diffOriginal: original,
+    pinned: true,
+  }
+  const next = existing
+    ? props.tabs.map((t) => (t.path === diffPath ? { ...tab, dirty: t.dirty } : t))
+    : [...props.tabs, tab]
+  emit('update:tabs', next)
+  emit('select', diffPath)
+  splitDirection.value = null
+}
+
+defineExpose({
+  revealLine,
+  focusEditor,
+  getEditorSelection,
+  formatDocument,
+  splitHorizontal,
+  splitVertical,
+  closeSplit,
+  openDiffTab,
+})
 </script>
 
 <template>
@@ -65,11 +219,15 @@ defineExpose({ revealLine, focusEditor, getEditorSelection })
     <div class="tab-bar">
       <div class="tabs">
         <div
-          v-for="tab in tabs"
+          v-for="(tab, index) in tabs"
           :key="tab.path"
           class="tab"
-          :class="{ active: tab.path === activePath }"
-          @click="emit('select', tab.path)"
+          :class="{ active: tab.path === activePath, preview: tab.preview && !tab.pinned }"
+          draggable="true"
+          @click="onTabClick(tab.path, tab)"
+          @dragstart="onTabDragStart($event, index)"
+          @dragover.prevent
+          @drop="onTabDrop(index)"
         >
           <span v-if="tab.dirty" class="dirty-dot" title="Unsaved" />
           <span class="tab-icon md" />
@@ -84,9 +242,8 @@ defineExpose({ revealLine, focusEditor, getEditorSelection })
           </button>
         </div>
       </div>
-      <div v-if="isMarkdown" class="tab-actions">
+      <div v-if="isMarkdown && !isDiffTab" class="tab-actions">
         <button
-          v-if="isMarkdown"
           type="button"
           class="mode-btn"
           :class="{ active: mode === 'preview' }"
@@ -104,24 +261,56 @@ defineExpose({ revealLine, focusEditor, getEditorSelection })
         </button>
       </div>
     </div>
-    <div class="editor-body">
-      <DocumentPreviewPane
-        v-if="activePath && isDocumentPreview && previewKind"
-        :kind="previewKind"
-        :preview-base64="activePreviewFile?.previewBase64"
-        :preview-html="activePreviewFile?.previewHtml"
-      />
-      <MonacoEditor
-        v-else-if="activePath && (isMarkdown ? mode === 'markdown' : true)"
-        ref="monacoRef"
-        :model-value="content"
-        :language="editorLanguage"
-        :read-only="false"
-        :font-size="fontSize ?? 14"
-        :app-theme="appTheme"
-        @update:model-value="emit('update:content', $event)"
-        @cursor-change="(line, col) => emit('cursor-change', line, col)"
-      />
+    <EditorBreadcrumb
+      v-if="projectRoot && activePath && !isDiffTab"
+      :project-root="projectRoot"
+      :active-path="activePath"
+      @navigate="emit('breadcrumb-navigate', $event)"
+    />
+    <div
+      class="editor-body"
+      :class="{ 'split-h': splitDirection === 'horizontal', 'split-v': splitDirection === 'vertical' }"
+    >
+      <div v-if="isDiffTab" ref="diffContainer" class="diff-host" />
+      <template v-else-if="activePath && isDocumentPreview && previewKind">
+        <DocumentPreviewPane
+          :kind="previewKind"
+          :preview-base64="activePreviewFile?.previewBase64"
+          :preview-html="activePreviewFile?.previewHtml"
+        />
+      </template>
+      <template v-else-if="activePath && (isMarkdown ? mode === 'markdown' : true)">
+        <div class="editor-split primary">
+          <MonacoEditor
+            ref="monacoRef"
+            :model-value="content"
+            :language="editorLanguage"
+            :read-only="false"
+            :font-size="fontSize ?? 14"
+            :app-theme="appTheme"
+            :minimap="minimap"
+            :semantic-highlighting="semanticHighlighting"
+            :project-root="projectRoot ?? ''"
+            :file-path="activePath"
+            @update:model-value="emit('update:content', $event)"
+            @cursor-change="(line, col) => emit('cursor-change', line, col)"
+            @go-to-definition="(f, l, c) => emit('go-to-definition', f, l, c)"
+          />
+        </div>
+        <div v-if="splitDirection && secondaryPath" class="editor-split secondary">
+          <MonacoEditor
+            ref="secondaryMonacoRef"
+            :model-value="secondaryContent"
+            :language="monacoLanguageForPath(secondaryPath)"
+            :read-only="true"
+            :font-size="fontSize ?? 14"
+            :app-theme="appTheme"
+            :minimap="minimap"
+            :project-root="projectRoot ?? ''"
+            :file-path="secondaryPath"
+          />
+        </div>
+      </template>
       <div v-show="isMarkdown && mode === 'preview'" class="preview" v-html="previewHtml" />
     </div>
   </section>
@@ -166,6 +355,10 @@ defineExpose({ revealLine, focusEditor, getEditorSelection })
   max-width: 220px;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.tab.preview .tab-name {
+  font-style: italic;
 }
 
 .tab.active {
@@ -239,6 +432,33 @@ defineExpose({ revealLine, focusEditor, getEditorSelection })
   flex: 1;
   min-height: 0;
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-body.split-h {
+  flex-direction: row;
+}
+
+.editor-body.split-v {
+  flex-direction: column;
+}
+
+.editor-split {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.editor-body.split-h .editor-split,
+.editor-body.split-v .editor-split {
+  border: 1px solid var(--wc-border);
+}
+
+.diff-host {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 .preview {

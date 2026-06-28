@@ -18,6 +18,7 @@ import { maybeAutoIndexCodeGraph } from './codegraph-ipc'
 import {
   listProjectFiles,
   replaceInProject,
+  replaceOneInFile,
   runRipgrepSearch,
   type SearchOptions,
 } from './search-utils'
@@ -348,6 +349,22 @@ export const registerFsIpc = (getMainWindow: () => BrowserWindow | null) => {
       if (!(await pathExists(rootPath))) return { hits: [] as SearchHit[] }
       const hits = await runRipgrepSearch(rootPath, query.trim(), opts ?? {})
       return { hits }
+    },
+  )
+
+  ipcMain.handle(
+    'fs:searchReplaceOne',
+    async (
+      _,
+      rootPath: string,
+      hit: SearchHit,
+      query: string,
+      replacement: string,
+      opts?: SearchOptions,
+    ) => {
+      if (!query.trim()) return { ok: false as const, replacements: 0 }
+      if (!(await pathExists(rootPath))) return { ok: false as const, replacements: 0 }
+      return replaceOneInFile(rootPath, hit, query.trim(), replacement, opts ?? {})
     },
   )
 

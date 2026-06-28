@@ -11,6 +11,7 @@ defineProps<{
 const emit = defineEmits<{
   search: [query: string, opts: SearchOptions, gen: number]
   replace: [query: string, replacement: string, opts: SearchOptions]
+  replaceOne: [hit: SearchHit, query: string, replacement: string, opts: SearchOptions]
   open: [hit: SearchHit]
 }>()
 
@@ -184,10 +185,10 @@ const focusInput = () => {
   searchInput.value?.focus()
 }
 
-const onReplaceAll = () => {
+const onReplaceOneHit = (hit: SearchHit) => {
   const q = query.value.trim()
   if (!q) return
-  emit('replace', q, replaceText.value, searchOpts.value)
+  emit('replaceOne', hit, q, replaceText.value, searchOpts.value)
 }
 
 const clearSearch = () => {
@@ -195,6 +196,12 @@ const clearSearch = () => {
   replaceText.value = ''
   hits.value = []
   searching.value = false
+}
+
+const onReplaceAll = () => {
+  const q = query.value.trim()
+  if (!q) return
+  emit('replace', q, replaceText.value, searchOpts.value)
 }
 
 const refreshSearch = () => {
@@ -350,6 +357,9 @@ defineExpose({ setHits, focusInput, setQuery })
             class="match-row"
             @click="emit('open', hit)"
           >
+            <button type="button" class="tb-btn replace-one" :title="t('searchPanel.replaceOne')" @click.stop="onReplaceOneHit(hit)">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 3h5.5L12 5.5V12H4V3zm1 1v7h6V6H9V4H5zm7.5-.5L11 2H6L5.5 2.5H3v1h9.5z"/></svg>
+            </button>
             <span class="match-loc">{{ hit.line }}</span>
             <span class="match-text" v-html="highlightLine(hit.text, query)" />
           </li>

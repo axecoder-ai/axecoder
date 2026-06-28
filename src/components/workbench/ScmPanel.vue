@@ -6,10 +6,15 @@ const props = defineProps<{
   projectRoot: string
 }>()
 
+const emit = defineEmits<{
+  openDiff: [file: string, diffText: string]
+}>()
+
 const branch = ref('')
 const changes = ref<{ code: string; file: string }[]>([])
 const error = ref('')
 const loading = ref(false)
+const commitMessage = ref('')
 
 const refresh = async () => {
   if (!props.projectRoot) {
@@ -32,13 +37,50 @@ const refresh = async () => {
   changes.value = res.changes
 }
 
+const isStaged = (code: string) => code[0] !== ' ' && code[0] !== '?'
+
+const toggleStage = async (file: string, code: string) => {
+  if (!props.projectRoot) return
+  if (isStaged(code)) {
+    await window.axecoder.gitUnstage(props.projectRoot, file)
+  } else {
+    await window.axecoder.gitStage(props.projectRoot, file)
+  }
+  await refresh()
+}
+
+const stageAll = async () => {
+  if (!props.projectRoot) return
+  await window.axecoder.gitStageAll(props.projectRoot)
+  await refresh()
+}
+
+const commit = async () => {
+  if (!props.projectRoot || !commitMessage.value.trim()) return
+  const res = await window.axecoder.gitCommit(props.projectRoot, commitMessage.value.trim())
+  if (res.ok) {
+    commitMessage.value = ''
+    await refresh()
+  } else {
+    error.value = res.error
+  }
+}
+
+const openDiff = async (file: string) => {
+  if (!props.projectRoot) return
+  const res = await window.axecoder.gitShow(props.projectRoot, file, false)
+  if (res.ok) emit('openDiff', file, res.text)
+}
+
 watch(
   () => [props.visible, props.projectRoot] as const,
   () => {
-    if (props.visible) void refresh()
+    if (props.visible || props.projectRoot) void refresh()
   },
   { immediate: true },
 )
+
+defineExpose({ refresh })
 </script>
 
 <template>
@@ -49,10 +91,18 @@ watch(
       <div v-else-if="error" class="hint error">{{ error }}</div>
       <template v-else>
         <div v-if="branch" class="branch">Branch: {{ branch }}</div>
+        <div class="commit-row">
+          <input v-model="commitMessage" class="commit-input" placeholder="Commit message" />
+          <button type="button" class="action-btn" :disabled="!commitMessage.trim()" @click="commit">Commit</button>
+        </div>
+        <button v-if="changes.length" type="button" class="action-btn secondary" @click="stageAll">Stage All</button>
         <ul v-if="changes.length" class="change-list">
           <li v-for="(c, i) in changes" :key="i">
+            <button type="button" class="stage-btn" :title="isStaged(c.code) ? 'Unstage' : 'Stage'" @click="toggleStage(c.file, c.code)">
+              {{ isStaged(c.code) ? '−' : '+' }}
+            </button>
             <span class="code">{{ c.code.trim() || '?' }}</span>
-            <span class="file">{{ c.file }}</span>
+            <button type="button" class="file-btn" @click="openDiff(c.file)">{{ c.file }}</button>
           </li>
         </ul>
         <div v-else class="hint">Working tree clean</div>
@@ -93,8 +143,42 @@ watch(
 }
 
 .branch {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   color: var(--wc-accent);
+}
+
+.commit-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.commit-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--wc-border);
+  border-radius: 4px;
+  background: var(--wc-bg);
+  color: var(--wc-text);
+  font-size: 12px;
+}
+
+.action-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  background: var(--wc-accent);
+  color: #fff;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.action-btn.secondary {
+  background: var(--wc-hover);
+  color: var(--wc-text);
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
 }
 
 .change-list {
@@ -106,8 +190,19 @@ watch(
 
 .change-list li {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   line-height: 1.4;
+  align-items: flex-start;
+}
+
+.stage-btn {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: var(--wc-hover);
+  font-size: 12px;
+  line-height: 1;
 }
 
 .code {
@@ -117,8 +212,15 @@ watch(
   font-family: var(--wc-font-mono);
 }
 
-.file {
+.file-btn {
+  text-align: left;
   word-break: break-all;
+  color: var(--wc-text);
+}
+
+.file-btn:hover {
+  color: var(--wc-accent);
+  text-decoration: underline;
 }
 
 .hint {

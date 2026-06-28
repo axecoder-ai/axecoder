@@ -127,6 +127,14 @@ export type AppConfig = {
   agentLoopGuardRepeatSuccessThreshold?: number
   /** 每轮用户消息内 model↔tool 循环上限；0 = 不限制 */
   agentMaxToolRounds?: number
+  /** 终端 shell 路径，空则用系统默认 */
+  terminalShell?: string
+  /** 终端 shell 参数 */
+  terminalShellArgs?: string[]
+  /** Monaco minimap */
+  editorMinimap?: boolean
+  /** Monaco 语义高亮 */
+  editorSemanticHighlighting?: boolean
 }
 
 export type AiChatMessage = {

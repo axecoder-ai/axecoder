@@ -144,6 +144,27 @@ export const replaceInProject = async (
   return { files, replacements }
 }
 
+export const replaceOneInFile = async (
+  rootPath: string,
+  hit: SearchHit,
+  query: string,
+  replacement: string,
+  opts: SearchOptions = {},
+): Promise<{ ok: boolean; replacements: number }> => {
+  const file = hit.file
+  if (!isPathInsideRoot(rootPath, file)) return { ok: false, replacements: 0 }
+  const content = await fs.readFile(file, 'utf-8')
+  const lines = content.split('\n')
+  const lineIdx = hit.line - 1
+  if (lineIdx < 0 || lineIdx >= lines.length) return { ok: false, replacements: 0 }
+  const before = lines[lineIdx]
+  const after = replaceInLine(before, query, replacement, opts)
+  if (after === before) return { ok: false, replacements: 0 }
+  lines[lineIdx] = after
+  await fs.writeFile(file, lines.join('\n'), 'utf-8')
+  return { ok: true, replacements: 1 }
+}
+
 const LIST_FILES_MAX = 5000
 
 export const listProjectFiles = async (rootPath: string): Promise<string[]> => {
