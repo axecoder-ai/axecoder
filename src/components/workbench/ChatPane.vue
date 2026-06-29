@@ -316,6 +316,8 @@ const AGENT_TITLE_PLACEHOLDERS = new Set([
   '新对话',
   'Multi-Agent',
   'Draw.IO',
+  'Software Co.',
+  'Collab Workshop',
 ])
 
 /** Multi-Agent 对话在 Workshop 线程；侧栏/标签仍显示 Agent 会话，需把 Workshop 标题写回 */
@@ -2141,7 +2143,9 @@ const send = async () => {
       imagePreviews: imagePreviews.length ? imagePreviews : undefined,
       modelId,
     })
-    if (res && !res.ok) {
+    if (res?.ok) {
+      await onWorkshopSessionsChanged()
+    } else if (res && !res.ok) {
       if (activeSession.value) {
         activeSession.value.messages.push({
           role: 'assistant',

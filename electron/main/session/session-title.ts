@@ -21,6 +21,14 @@ const buildDefaultTitleSet = (): Set<string> => {
 
 export const DEFAULT_SESSION_TITLES = buildDefaultTitleSet()
 
+/** 协作/画图等模式预建会话的占位标题，应被首句或 LLM 主题替换 */
+export const CHAT_MODE_PLACEHOLDER_TITLES = new Set([
+  'Draw.IO',
+  'Multi-Agent',
+  'Software Co.',
+  'Collab Workshop',
+])
+
 export const truncateSessionTitle = (text: string, maxLen = 24): string => {
   const line = text.trim()
   if (!line) return ''
@@ -34,7 +42,7 @@ export const firstUserMessageText = (messages: TitleDialogMessage[]): string => 
 
 export const isPlaceholderSessionTitle = (title: string, firstUserText: string): boolean => {
   const line = title.trim()
-  if (!line || DEFAULT_SESSION_TITLES.has(line)) return true
+  if (!line || DEFAULT_SESSION_TITLES.has(line) || CHAT_MODE_PLACEHOLDER_TITLES.has(line)) return true
   const first = firstUserText.trim()
   if (first && (line === truncateSessionTitle(first) || line === first)) return true
   if (/^(你好|您好|hi|hello|hey)$/i.test(line)) return true

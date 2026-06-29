@@ -41,6 +41,12 @@ describe('session-title helpers', () => {
     expect(isPlaceholderSessionTitle('支付系统优先级梳理', '你好')).toBe(false)
   })
 
+  it('isPlaceholder 识别协作模式占位标题', () => {
+    expect(isPlaceholderSessionTitle('Draw.IO', 'JXS 系统架构')).toBe(true)
+    expect(isPlaceholderSessionTitle('Multi-Agent', '梳理模块')).toBe(true)
+    expect(isPlaceholderSessionTitle('Software Co.', '写 PRD')).toBe(true)
+  })
+
   it('shouldSuggest 至少四轮且仍为占位', () => {
     const dialog = msgs([
       ['user', '你好'],

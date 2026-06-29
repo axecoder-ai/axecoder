@@ -574,8 +574,18 @@ const pushOptimisticUser = (
     emitWorkshopActive(id)
     return id
   }
+  const snippet = text.trim().slice(0, 24) + (text.trim().length > 24 ? '…' : '')
+  const hadNoUserMsg = !active.value.messages.some((m) => m.roleId === 'user')
+  const titleIsPlaceholder =
+    !active.value.title?.trim() ||
+    active.value.title === embeddedDefaultTitle.value ||
+    active.value.title === 'Multi-Agent' ||
+    active.value.title === 'Collab Workshop'
   active.value = {
     ...active.value,
+    ...(snippet && hadNoUserMsg && titleIsPlaceholder
+      ? { title: snippet, userBrief: text.trim() }
+      : {}),
     messages: [...active.value.messages, userMsg],
     phase: 'running',
     pendingQuestion: undefined,
