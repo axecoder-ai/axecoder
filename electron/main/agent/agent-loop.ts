@@ -15,6 +15,7 @@ import type {
   AgentLoopMessage,
   AgentSendResult,
   AgentToolLogEntry,
+  AgentTurnFileChange,
   PendingAskUserPublic,
   PendingBashPublic,
   PendingPlanPublic,
@@ -23,6 +24,7 @@ import type {
 import { composePlanBuildUserMessage, userWantsCreatePlan } from './agent-create-plan'
 import {
   clearAgentCheckpoints,
+  listAgentCheckpoints,
   pushAgentCheckpoint,
   rewindAgentCheckpoint,
 } from './agent-checkpoint'
@@ -38,11 +40,12 @@ import {
   putSession,
   type StoredAgentSession,
 } from './agent-session-store'
-import { executeAgentTool, type AgentContext, type ToolRunResult } from './tool-executor'
+import { executeAgentTool, type AgentContext, type PendingWriteInternal, type ToolRunResult } from './tool-executor'
 import { emitAgentProgress } from './agent-progress-emit'
 import { formatModelCallDetail, formatToolResultDetail } from './agent-progress-detail'
 import { traceToolCall, traceToolResult } from '../ai-trace-store'
 import { formatAutoPlanNotice, resolveShouldAutoPlan } from './agent-auto-plan'
+import { countPatchLineStats } from './edit-utils'
 import { getConfig } from '../config-store'
 import { buildMergedPermissionsPolicy, resolveToolPermission } from './agent-permissions'
 import { extractToolSubject } from './agent-permission-rules'
@@ -173,6 +176,42 @@ const replyMeta = (
   }
 }
 
+const recordTurnFileChange = (session: StoredAgentSession, pending: PendingWriteInternal) => {
+  const { additions, deletions } = countPatchLineStats(pending.patchText)
+  const entry: AgentTurnFileChange = {
+    filePath: pending.filePath,
+    tool: pending.tool,
+    patchText: pending.patchText,
+    additions,
+    deletions,
+  }
+  const idx = session.turnFileChanges.findIndex((f) => f.filePath === pending.filePath)
+  if (idx >= 0) session.turnFileChanges[idx] = entry
+  else session.turnFileChanges.push(entry)
+}
+
+const finalizeTurnCheckpointId = (sessionId: string, session: StoredAgentSession) => {
+  if (Object.keys(session.ctx.checkpointFiles ?? {}).length > 0) {
+    return pushAgentCheckpoint(sessionId, session).id
+  }
+  const list = listAgentCheckpoints(sessionId)
+  return list.length ? list[list.length - 1]!.id : undefined
+}
+
+const exportTurnMeta = (session: StoredAgentSession, sessionId?: string) => {
+  const fileChanges = [...session.turnFileChanges]
+  if (!fileChanges.length) return {}
+  const rewindCheckpointId = sessionId ? finalizeTurnCheckpointId(sessionId, session) : undefined
+  return {
+    fileChanges,
+    ...(sessionId && rewindCheckpointId
+      ? { rewindSessionId: sessionId, rewindCheckpointId }
+      : sessionId
+        ? { rewindSessionId: sessionId }
+        : {}),
+  }
+}
+
 const finishDone = (
   session: StoredAgentSession,
   assistantText: string,
@@ -181,6 +220,7 @@ const finishDone = (
   reasoningContent?: string,
 ): AgentSendResult | AgentContinueResult => {
   const toolLog = [...session.toolLog]
+  const turnMeta = exportTurnMeta(session, sessionId)
   if (sessionId) deleteSession(sessionId)
   return {
     ok: true,
@@ -188,6 +228,7 @@ const finishDone = (
     assistantText,
     toolLog,
     ...replyMeta(session, content, reasoningContent),
+    ...turnMeta,
   }
 }
 
@@ -246,6 +287,7 @@ const finishPending = (
   assistantText,
   toolLog: [...session.toolLog],
   ...replyMeta(session, content, reasoningContent),
+  ...exportTurnMeta(session, sessionId),
 })
 
 const collectPendingPublic = (session: StoredAgentSession) => ({
@@ -329,6 +371,7 @@ const finishAbortedAgent = (
 ): AgentSendResult | AgentContinueResult => {
   const toolLog = [...session.toolLog]
   const backgroundTaskIds = backgroundTaskIdsFromSession(session)
+  const turnMeta = exportTurnMeta(session, sessionId)
   deleteSession(sessionId)
   return {
     ok: true,
@@ -336,6 +379,7 @@ const finishAbortedAgent = (
     assistantText: t('common.stopped'),
     toolLog,
     ...(backgroundTaskIds ? { backgroundTaskIds } : {}),
+    ...turnMeta,
   }
 }
 
@@ -554,6 +598,10 @@ export const runAgentLoopUntilDoneOrPending = async (
         }
 
         let run = await executeAgentTool(session.ctx, tc)
+
+        if (run.kind === 'pending') {
+          recordTurnFileChange(session, run.pending)
+        }
 
         if (cfg.agentHooksEnabled !== false) {
           const post = await runHooks('PostToolUse', session.projectRoot, {
@@ -882,6 +930,7 @@ export const startAgentTurn = async (
     compactedOnce: false,
     loopGuard: createLoopGuardState(),
     reasoningEffort: normalizeReasoningEffort(reasoningEffortRaw),
+    turnFileChanges: [],
     ...(resolvedAssignee ? { assigneeUserId: resolvedAssignee } : {}),
     ...(clientChatId?.trim() ? { clientChatId: clientChatId.trim() } : {}),
   }
@@ -1419,6 +1468,7 @@ export const runWorkshopRoleAgentTurn = async (
     scratchpadDir,
     compactedOnce: false,
     loopGuard: createLoopGuardState(),
+    turnFileChanges: [],
   }
   applyChatModeToNewSession(session, workshopChatMode)
 

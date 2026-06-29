@@ -69,6 +69,30 @@ export const listAgentCheckpoints = (sessionId: string): AgentCheckpointMeta[] =
   }))
 }
 
+export const restoreCheckpointFilesOnly = async (
+  sessionId: string,
+  projectRoot: string,
+  checkpointId?: string,
+): Promise<{ ok: true; restoredFiles: number } | { ok: false; error: string }> => {
+  const list = bySession.get(sessionId) ?? []
+  if (!list.length) return { ok: false, error: 'No checkpoints available' }
+  const cp = checkpointId ? list.find((c) => c.id === checkpointId) : list[list.length - 1]
+  if (!cp) return { ok: false, error: 'Checkpoint not found' }
+
+  let restoredFiles = 0
+  for (const [rel, content] of Object.entries(cp.files)) {
+    const resolved = resolvePathInProject(projectRoot, rel)
+    if (!resolved) continue
+    try {
+      await writeProjectFile(resolved, content)
+      restoredFiles += 1
+    } catch {
+      /* skip */
+    }
+  }
+  return { ok: true, restoredFiles }
+}
+
 export const rewindAgentCheckpoint = async (
   sessionId: string,
   session: StoredAgentSession,

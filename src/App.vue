@@ -18,6 +18,8 @@ import SettingsPanel from './components/workbench/SettingsPanel.vue'
 import CommandPalette from './components/workbench/CommandPalette.vue'
 import QuickOpenPalette from './components/workbench/QuickOpenPalette.vue'
 import { useWorkbench } from './composables/useWorkbench'
+import { buildDiffOpenFile, closeOpenFile, upsertOpenFile } from './composables/workbench-state'
+import { contentsForReviewDiff } from './utils/patch-stats'
 import {
   clampAgentsWidth,
   clampAiPanelWidth,
@@ -444,16 +446,50 @@ const onOpenProblem = async (item: import('./types/axecoder').ProblemItem) => {
   setTimeout(() => editorPaneRef.value?.revealLine(item.line, item.col), 100)
 }
 
-const onScmOpenDiff = async (file: string, diffText: string) => {
+const onScmOpenDiff = async (file: string, _diffText: string, staged = false) => {
   const root = projectRoot.value
   if (!root) return
   const sep = root.includes('\\') ? '\\' : '/'
   const full = `${root.replace(/[/\\]+$/, '')}${sep}${file.replace(/^[/\\]+/, '')}`
   try {
-    const { content } = await window.axecoder.readFile(full)
-    editorPaneRef.value?.openDiffTab(full, diffText, content)
+    const headRes = await window.axecoder.gitShowRef(root, file, 'HEAD')
+    const original = headRes.ok ? headRes.text : ''
+    let modified = ''
+    if (staged) {
+      const idxRes = await window.axecoder.gitShowRef(root, file, ':')
+      modified = idxRes.ok ? idxRes.text : ''
+    } else {
+      const { content } = await window.axecoder.readFile(full)
+      modified = content
+    }
+    const tab = buildDiffOpenFile(full, original, modified)
+    let next = closeOpenFile(openFiles.value, full)
+    next = closeOpenFile(next, tab.path)
+    openFiles.value = upsertOpenFile(next, tab)
+    activePath.value = tab.path
   } catch {
-    editorPaneRef.value?.openDiffTab(full, diffText, '')
+    const tab = buildDiffOpenFile(full, '', '')
+    openFiles.value = upsertOpenFile(closeOpenFile(openFiles.value, tab.path), tab)
+    activePath.value = tab.path
+  }
+}
+
+const onReviewPatch = async (filePath: string, patchText: string) => {
+  const full = filePath.includes('/') || filePath.includes('\\')
+    ? filePath
+    : projectRoot.value
+      ? `${projectRoot.value.replace(/[/\\]+$/, '')}/${filePath}`
+      : filePath
+  try {
+    const { content } = await window.axecoder.readFile(full)
+    const { original, modified } = contentsForReviewDiff(patchText, content)
+    const tab = buildDiffOpenFile(full, original, modified)
+    let next = closeOpenFile(openFiles.value, full)
+    next = closeOpenFile(next, tab.path)
+    openFiles.value = upsertOpenFile(next, tab)
+    activePath.value = tab.path
+  } catch {
+    await wb.openFileAtPath(full)
   }
 }
 
@@ -1063,6 +1099,7 @@ onUnmounted(() => {
               :visible="showScm()"
               :project-root="projectRoot"
               @open-diff="onScmOpenDiff"
+              @open-file="onOpenFile"
             />
           </div>
         </div>
@@ -1163,6 +1200,7 @@ onUnmounted(() => {
             @kind-change="onChatKindChange"
             @sessions-changed="onChatSessionsChanged(); onWorkshopSessionsChanged()"
             @open-file="onOpenFile"
+            @review-patch="onReviewPatch"
             @files-changed="fileExplorerRef?.refresh?.()"
           />
           <div
@@ -1313,17 +1351,19 @@ onUnmounted(() => {
 }
 
 .sidebar-panels {
+  position: relative;
   flex: 1;
-  display: flex;
-  flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
 
 .sidebar-panels > * {
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .bottom-split-handle {

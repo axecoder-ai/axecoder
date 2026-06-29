@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
   CHAT_MODE_OPTIONS,
   canPickChatMode,
+  chatModeIcon,
   chatModeLabel,
   type ChatModeId,
 } from '../../utils/chat-modes'
@@ -115,14 +116,7 @@ onUnmounted(() => {
                 @click="pick(m.id)"
               >
                 <span class="mode-icon" aria-hidden="true">
-                  <svg viewBox="0 0 16 16" width="14" height="14">
-                    <path
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.2"
-                      d="M4.5 8c0-2.5 1.5-4 3.5-4s3.5 1.5 3.5 4-1.5 4-3.5 4-3.5-1.5-3.5-4z M8 8c0-2.5 1.5-4 3.5-4s3.5 1.5 3.5 4-1.5 4-3.5 4-3.5-1.5-3.5-4z"
-                    />
-                  </svg>
+                  <span class="codicon" :class="`codicon-${m.icon}`" />
                 </span>
                 <span class="mode-name">{{ m.label }}</span>
               </button>
@@ -133,19 +127,11 @@ onUnmounted(() => {
                 title="Auto Plan: complex tasks auto-enter read-only plan mode"
                 @update:model-value="onAutoPlanToggle"
               />
-              <svg
+              <span
                 v-if="m.id === activeModeId"
-                class="check"
-                viewBox="0 0 16 16"
-                width="14"
-                height="14"
+                class="codicon codicon-check check"
                 aria-hidden="true"
-              >
-                <path
-                  fill="currentColor"
-                  d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"
-                />
-              </svg>
+              />
             </div>
             <button
               v-else
@@ -161,56 +147,14 @@ onUnmounted(() => {
               @click="pick(m.id)"
             >
               <span class="mode-icon" aria-hidden="true">
-                <!-- Plan -->
-                <svg v-if="m.id === 'plan'" viewBox="0 0 16 16" width="14" height="14">
-                  <path
-                    fill="currentColor"
-                    d="M2.5 4.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75zm0 3.5a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75zm0 3.5a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75z"
-                  />
-                </svg>
-                <!-- Draw.IO -->
-                <svg v-else-if="m.id === 'draw-io'" viewBox="0 0 16 16" width="14" height="14">
-                  <rect x="2" y="3" width="4" height="3.5" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-                  <rect x="10" y="3" width="4" height="3.5" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-                  <rect x="6" y="10" width="4" height="3.5" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-                  <path fill="none" stroke="currentColor" stroke-width="1.2" d="M6 5h4 M8 6.5v3" />
-                </svg>
-                <!-- Multi-Agent -->
-                <svg v-else-if="m.id === 'multi-agent'" viewBox="0 0 16 16" width="14" height="14">
-                  <circle cx="5.5" cy="6" r="2.25" fill="none" stroke="currentColor" stroke-width="1.2" />
-                  <circle cx="10.5" cy="6" r="2.25" fill="none" stroke="currentColor" stroke-width="1.2" />
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    d="M2.5 13c0-1.8 1.3-3 3-3s3 1.2 3 3M7.5 13c0-1.8 1.3-3 3-3s3 1.2 3 3"
-                  />
-                </svg>
-                <!-- Software Co. -->
-                <svg v-else-if="m.id === 'software-company'" viewBox="0 0 16 16" width="14" height="14">
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.2"
-                    stroke-linejoin="round"
-                    d="M4 13V7l4-2.5L12 7v6M4 13h8M6.5 13V10h1v3M8.5 13V10h1v3"
-                  />
-                </svg>
+                <span class="codicon" :class="`codicon-${m.icon}`" />
               </span>
               <span class="mode-name">{{ m.label }}</span>
-              <svg
+              <span
                 v-if="m.id === activeModeId"
-                class="check"
-                viewBox="0 0 16 16"
-                width="14"
-                height="14"
+                class="codicon codicon-check check"
                 aria-hidden="true"
-              >
-                <path
-                  fill="currentColor"
-                  d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"
-                />
-              </svg>
+              />
             </button>
           </li>
         </ul>
@@ -225,48 +169,10 @@ onUnmounted(() => {
       @click="toggle"
     >
       <span class="mode-icon trigger-icon" aria-hidden="true">
-        <svg v-if="activeModeId === 'agent' || activeModeId === 'auto-plan'" viewBox="0 0 16 16" width="14" height="14">
-          <path
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.2"
-            d="M4.5 8c0-2.5 1.5-4 3.5-4s3.5 1.5 3.5 4-1.5 4-3.5 4-3.5-1.5-3.5-4z M8 8c0-2.5 1.5-4 3.5-4s3.5 1.5 3.5 4-1.5 4-3.5 4-3.5-1.5-3.5-4z"
-          />
-        </svg>
-        <svg v-else-if="activeModeId === 'plan' || activeModeId === 'planning'" viewBox="0 0 16 16" width="14" height="14">
-          <path
-            fill="currentColor"
-            d="M2.5 4.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75zm0 3.5a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75zm0 3.5a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5H3.25a.75.75 0 0 1-.75-.75z"
-          />
-        </svg>
-        <svg v-else-if="activeModeId === 'draw-io'" viewBox="0 0 16 16" width="14" height="14">
-          <rect x="2" y="3" width="4" height="3.5" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-          <rect x="10" y="3" width="4" height="3.5" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-          <rect x="6" y="10" width="4" height="3.5" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-          <path fill="none" stroke="currentColor" stroke-width="1.2" d="M6 5h4 M8 6.5v3" />
-        </svg>
-        <svg v-else-if="activeModeId === 'multi-agent'" viewBox="0 0 16 16" width="14" height="14">
-          <circle cx="5.5" cy="6" r="2.25" fill="none" stroke="currentColor" stroke-width="1.2" />
-          <circle cx="10.5" cy="6" r="2.25" fill="none" stroke="currentColor" stroke-width="1.2" />
-          <path fill="none" stroke="currentColor" stroke-width="1.2" d="M2.5 13c0-1.8 1.3-3 3-3s3 1.2 3 3M7.5 13c0-1.8 1.3-3 3-3s3 1.2 3 3" />
-        </svg>
-        <svg v-else-if="activeModeId === 'software-company'" viewBox="0 0 16 16" width="14" height="14">
-          <path
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.2"
-            stroke-linejoin="round"
-            d="M4 13V7l4-2.5L12 7v6M4 13h8M6.5 13V10h1v3M8.5 13V10h1v3"
-          />
-        </svg>
+        <span class="codicon" :class="`codicon-${chatModeIcon(activeModeId)}`" />
       </span>
       <span class="trigger-label">{{ triggerLabel }}</span>
-      <svg class="chevron" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-        <path
-          fill="currentColor"
-          d="M4.427 6.427a.75.75 0 0 1 1.06-.02L8 8.88l2.513-2.473a.75.75 0 1 1 1.04 1.08l-3.02 2.96a.75.75 0 0 1-1.04 0l-3.02-2.96a.75.75 0 0 1-.02-1.06z"
-        />
-      </svg>
+      <span class="codicon codicon-chevron-down chevron" aria-hidden="true" />
     </button>
   </div>
 </template>
@@ -314,6 +220,7 @@ onUnmounted(() => {
 .chevron {
   flex-shrink: 0;
   opacity: 0.65;
+  font-size: 12px;
 }
 
 .trigger.open .chevron {
@@ -413,6 +320,10 @@ onUnmounted(() => {
   opacity: 0.85;
 }
 
+.mode-icon .codicon {
+  font-size: 14px;
+}
+
 .mode-name {
   flex: 1;
   font-size: 13px;
@@ -423,6 +334,7 @@ onUnmounted(() => {
 .check {
   flex-shrink: 0;
   opacity: 0.9;
+  font-size: 14px;
 }
 
 .mode-auto-plan {

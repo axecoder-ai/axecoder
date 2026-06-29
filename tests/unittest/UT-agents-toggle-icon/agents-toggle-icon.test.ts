@@ -42,6 +42,12 @@ describe('Agents 历史侧栏折叠图标', () => {
     expect(block.includes(LEGACY_AGENTS_PANEL_ICON_MARKERS.inner)).toBe(false)
   })
 
+  it('ChatPane 标签栏提供关闭 AI 面板按钮', () => {
+    const cp = readComponent('ChatPane.vue')
+    expect(cp.includes('class="chat-pane-close"')).toBe(true)
+    expect(cp.includes("@click=\"emit('close')\"")).toBe(true)
+  })
+
   it('ChatPane 输入区 footer 未误用侧栏布局图标', () => {
     const cp = readComponent('ChatPane.vue')
     const footer = sliceBetween(cp, 'class="chat-input-footer"', 'class="send-btn"')

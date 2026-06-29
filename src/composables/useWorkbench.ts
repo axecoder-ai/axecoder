@@ -54,10 +54,14 @@ export const useWorkbench = () => {
 
   const persistTabs = () => {
     if (!projectRoot.value) return
+    const persistable = openFiles.value.filter((f) => f.kind !== 'diff')
+    const active = persistable.some((f) => f.path === activePath.value)
+      ? activePath.value
+      : (persistable[0]?.path ?? null)
     const payload = {
       root: projectRoot.value,
-      paths: openFiles.value.map((f) => f.path),
-      active: activePath.value,
+      paths: persistable.map((f) => f.path),
+      active,
     }
     sessionStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(payload))
   }

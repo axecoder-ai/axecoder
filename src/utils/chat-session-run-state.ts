@@ -21,6 +21,8 @@ export type ChatSessionRunState = {
   runningAgentSessionId: string
   pendingAssigneeUserId: string
   completedUnread: boolean
+  /** Agent 模式运行：中间轮次 content 进时间轴，不单独预览 */
+  isAgentRun: boolean
 }
 
 export const createEmptyRunState = (): ChatSessionRunState => ({
@@ -35,6 +37,7 @@ export const createEmptyRunState = (): ChatSessionRunState => ({
   runningAgentSessionId: '',
   pendingAssigneeUserId: '',
   completedUnread: false,
+  isAgentRun: false,
 })
 
 export const sessionHasPendingInteraction = (messages: ChatMessage[]) =>
@@ -97,4 +100,5 @@ export const resetRunProgress = (run: ChatSessionRunState) => {
   run.subagentTasks = []
   run.runningAgentSessionId = ''
   run.pendingAssigneeUserId = ''
+  run.isAgentRun = false
 }

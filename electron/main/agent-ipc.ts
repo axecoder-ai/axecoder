@@ -6,6 +6,7 @@ import {
   AGENTS_MD_TEMPLATE,
   listAgentCheckpoints,
   readMemoryFile,
+  restoreCheckpointFilesOnly,
   writeMemoryFile,
 } from './agent/agent-checkpoint'
 import { listBackgroundRuns, resolveBackgroundTasks } from './agent/agent-subagent-tasks'
@@ -348,6 +349,15 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
       const session = getSession(sessionId)
       if (!session) return { ok: false as const, error: t('errors.agentSessionMissing') }
       return rewindAgentCheckpoint(sessionId, session, checkpointId)
+    },
+  )
+
+  ipcMain.handle(
+    'agent:restoreCheckpointFiles',
+    async (_, sessionId: string, projectRoot: string, checkpointId?: string) => {
+      if (!sessionId?.trim()) return { ok: false as const, error: t('errors.missingSessionId') }
+      if (!projectRoot?.trim()) return { ok: false as const, error: t('errors.noProject') }
+      return restoreCheckpointFilesOnly(sessionId.trim(), projectRoot.trim(), checkpointId)
     },
   )
 

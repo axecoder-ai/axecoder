@@ -2,6 +2,7 @@ export type FileNode = {
   name: string
   path: string
   type: 'file' | 'directory'
+  symlink?: boolean
   children?: FileNode[]
 }
 
@@ -351,6 +352,14 @@ export type AgentPendingWrite = {
   patchText: string
 }
 
+export type AgentTurnFileChange = {
+  filePath: string
+  tool: 'Edit' | 'Write' | 'Delete' | 'Move'
+  patchText: string
+  additions: number
+  deletions: number
+}
+
 export type AgentAskUserOption = { id: string; label: string }
 
 export type AgentAskUserQuestion = {
@@ -453,6 +462,9 @@ export type AgentSendResult =
       reasoningContent?: string
       speakerUserId?: string
       backgroundTaskIds?: string[]
+      fileChanges?: AgentTurnFileChange[]
+      rewindSessionId?: string
+      rewindCheckpointId?: string
     }
   | {
       ok: true
@@ -468,6 +480,9 @@ export type AgentSendResult =
       reasoningContent?: string
       speakerUserId?: string
       backgroundTaskIds?: string[]
+      fileChanges?: AgentTurnFileChange[]
+      rewindSessionId?: string
+      rewindCheckpointId?: string
     }
   | { ok: false; error: string }
 
@@ -610,6 +625,11 @@ export type ChatMessage = {
   roleMentionCommand?: string
   /** 本条 assistant 启动的后台 Task id */
   backgroundTaskIds?: string[]
+  /** 本轮 Agent 改动的文件（输入框上方文件条） */
+  turnFileChanges?: AgentTurnFileChange[]
+  /** Undo 用：Agent 会话与 checkpoint */
+  rewindSessionId?: string
+  rewindCheckpointId?: string
 }
 
 export type BackgroundTaskSnapshot = {
@@ -645,7 +665,18 @@ export type ChatSession = ChatSessionMeta & {
 }
 
 export type GitStatusResult =
-  | { ok: true; branch: string; changes: { code: string; file: string }[] }
+  | {
+      ok: true
+      branch: string
+      tracking: string | null
+      ahead: number
+      behind: number
+      changes: { code: string; file: string }[]
+    }
+  | { ok: false; error: string }
+
+export type GitBranchesResult =
+  | { ok: true; branches: string[] }
   | { ok: false; error: string }
 
 export type ProblemItem = {
@@ -1149,6 +1180,14 @@ export type AxeCoderFs = {
     | { ok: true; label: string; restoredFiles: number }
     | { ok: false; error: string }
   >
+  agentRestoreCheckpointFiles: (
+    sessionId: string,
+    projectRoot: string,
+    checkpointId?: string,
+  ) => Promise<
+    | { ok: true; restoredFiles: number }
+    | { ok: false; error: string }
+  >
   agentListBackgroundTasks: (sessionId?: string) => Promise<{
     ok: true
     tasks: {
@@ -1213,6 +1252,16 @@ export type AxeCoderFs = {
   gitCommit: (cwd: string, message: string, amend?: boolean) => Promise<GitSimpleResult>
   gitDiff: (cwd: string, staged?: boolean) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
   gitShow: (cwd: string, file: string, staged?: boolean) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  gitShowRef: (cwd: string, file: string, ref: string) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  gitUnstageAll: (cwd: string) => Promise<GitSimpleResult>
+  gitDiscard: (cwd: string, file: string) => Promise<GitSimpleResult>
+  gitFetch: (cwd: string) => Promise<GitSimpleResult>
+  gitPull: (cwd: string) => Promise<GitSimpleResult>
+  gitPush: (cwd: string) => Promise<GitSimpleResult>
+  gitBranches: (cwd: string) => Promise<GitBranchesResult>
+  gitCheckout: (cwd: string, branch: string) => Promise<GitSimpleResult>
+  gitStash: (cwd: string, message?: string) => Promise<GitSimpleResult>
+  gitStashPop: (cwd: string) => Promise<GitSimpleResult>
   gitForgeStatus: (cwd: string) => Promise<GitForgeStatusResult>
   gitCommitPushPrPrompt: (
     cwd: string,

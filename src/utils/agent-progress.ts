@@ -86,6 +86,22 @@ const markActiveDone = (steps: AgentProgressStep[]) => {
   }
 }
 
+export const appendContentDeltaToActiveModelStep = (
+  steps: AgentProgressStep[],
+  delta: string,
+): { steps: AgentProgressStep[]; changed: boolean } => {
+  if (!delta) return { steps, changed: false }
+  const next = steps.map((s) => ({ ...s }))
+  for (let i = next.length - 1; i >= 0; i--) {
+    const s = next[i]!
+    if (s.phase === 'model' && s.status === 'active') {
+      next[i] = { ...s, detail: (s.detail ?? '') + delta }
+      return { steps: next, changed: true }
+    }
+  }
+  return { steps, changed: false }
+}
+
 export const applyProgressPayload = (
   steps: AgentProgressStep[],
   payload: AgentProgressPayload,

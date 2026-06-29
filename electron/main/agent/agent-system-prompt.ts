@@ -12,8 +12,7 @@ import {
 import { composeMemoryPrompt } from './agent-memory'
 import { getMcpInstructionsSection } from './agent-mcp-instructions'
 import { getCodeGraphInstructionsSection } from './agent-codegraph-prompt'
-import { getMainLocale } from '../i18n'
-import { agentLanguageForLocale } from '../../../shared/i18n'
+import { resolveWorkshopReplyLanguage } from '../workshop/workshop-language'
 import { getConfig } from '../config-store'
 import { buildGitForgeContext } from '../git-forge/detect-forge'
 import { formatForgeEnvLines, getGitForgePromptSection } from '../git-forge/forge-prompt'
@@ -304,7 +303,7 @@ export const buildDefaultSubAgentSystemPrompt = async (
   const envInfo = await computeSimpleEnvInfo(root, options.modelId)
   const language =
     getLanguageSection(
-      options.languagePreference ?? agentLanguageForLocale(getMainLocale()),
+      options.languagePreference ?? (await resolveWorkshopReplyLanguage(root)),
     ) ?? null
   const parts = [
     DEFAULT_AGENT_PROMPT,
@@ -359,7 +358,7 @@ export const buildAgentSystemPrompt = async (
   const gitForgeSection = getGitForgePromptSection(forgeCtx)
   const language =
     getLanguageSection(
-      options.languagePreference ?? agentLanguageForLocale(getMainLocale()),
+      options.languagePreference ?? (await resolveWorkshopReplyLanguage(root)),
     ) ?? null
   const outputStyleSection = getOutputStyleSection(outputStyleConfig)
 

@@ -688,6 +688,7 @@ onUnmounted(() => {
           :name="node.name"
           :folder="node.type === 'directory'"
           :open="node.type === 'directory' && expanded.has(node.path)"
+          :symlink="!!node.symlink"
         />
         <input
           v-if="pending === 'file' && creatingFile"
@@ -761,11 +762,12 @@ onUnmounted(() => {
 <style scoped>
 .file-explorer {
   width: 100%;
+  height: 100%;
   background: var(--wc-sidebar);
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
   min-height: 0;
+  overflow: hidden;
   position: relative;
 }
 

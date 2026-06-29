@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, watch, onBeforeUnmount } from 'vue'
+import { computed, defineAsyncComponent, ref, watch, onBeforeUnmount, nextTick } from 'vue'
 import MarkdownIt from 'markdown-it'
 import EditorBreadcrumb from './EditorBreadcrumb.vue'
 
@@ -41,8 +41,15 @@ const previewHtml = computed(() => md.render(props.content))
 const isMarkdown = computed(() => isMarkdownPath(props.activePath))
 const activeTab = computed(() => props.tabs.find((t) => t.path === props.activePath) ?? null)
 const isDiffTab = computed(() => activeTab.value?.kind === 'diff')
+const diffReviewPath = computed(() =>
+  props.activePath ? diffSourcePath(props.activePath) : null,
+)
+const diffSourcePath = (diffPath: string) =>
+  diffPath.endsWith(' (diff)') ? diffPath.slice(0, -' (diff)'.length) : diffPath
+
 const editorLanguage = computed(() =>
-  activeTab.value?.languageOverride ?? monacoLanguageForPath(props.activePath),
+  activeTab.value?.languageOverride ??
+  monacoLanguageForPath(isDiffTab.value ? diffReviewPath.value : props.activePath),
 )
 const previewKind = computed(() => documentPreviewKind(props.activePath))
 const activePreviewFile = computed(() => activeTab.value)
@@ -54,6 +61,20 @@ const dragTabIndex = ref<number | null>(null)
 
 let diffEditor: import('monaco-editor').editor.IStandaloneDiffEditor | null = null
 let diffMonaco: typeof import('monaco-editor') | null = null
+let diffOrigModel: import('monaco-editor').editor.ITextModel | null = null
+let diffModModel: import('monaco-editor').editor.ITextModel | null = null
+let mountedDiffKey: string | null = null
+let diffContentListener: import('monaco-editor').IDisposable | null = null
+
+const diffModelUri = (monaco: typeof import('monaco-editor'), sourcePath: string, side: 'original' | 'modified') =>
+  monaco.Uri.parse(`inmemory://aex-review/${encodeURIComponent(sourcePath)}/${side}`)
+
+const disposeDiffModels = () => {
+  diffOrigModel?.dispose()
+  diffModModel?.dispose()
+  diffOrigModel = null
+  diffModModel = null
+}
 
 const secondaryContent = computed(() => {
   const p = secondaryPath.value
@@ -135,38 +156,70 @@ const onTabDrop = (index: number) => {
 const mountDiffEditor = async () => {
   if (!diffContainer.value || !isDiffTab.value || !activeTab.value) return
   await import('../../monaco-setup')
-  diffMonaco = await import('monaco-editor')
-  diffEditor?.dispose()
+  diffMonaco = diffMonaco ?? (await import('monaco-editor'))
   const themeId = (await import('../../utils/apply-theme')).monacoThemeFor(props.appTheme ?? 'vscode')
   diffMonaco.editor.setTheme(themeId)
   const fp = props.activePath!
+  const sourcePath = diffSourcePath(fp)
   const original = activeTab.value.diffOriginal ?? ''
   const modified = props.content
+  const lang =
+    activeTab.value.languageOverride ?? monacoLanguageForPath(sourcePath)
+
+  if (diffEditor && mountedDiffKey === fp) {
+    if (diffOrigModel && diffOrigModel.getValue() !== original) diffOrigModel.setValue(original)
+    if (diffModModel && diffModModel.getValue() !== modified) diffModModel.setValue(modified)
+    await nextTick()
+    diffEditor.layout()
+    return
+  }
+
+  disposeDiffEditor()
+
+  const origUri = diffModelUri(diffMonaco, sourcePath, 'original')
+  const modUri = diffModelUri(diffMonaco, sourcePath, 'modified')
+  diffMonaco.editor.getModel(origUri)?.dispose()
+  diffMonaco.editor.getModel(modUri)?.dispose()
+  diffOrigModel = diffMonaco.editor.createModel(original, lang, origUri)
+  diffModModel = diffMonaco.editor.createModel(modified, lang, modUri)
   diffEditor = diffMonaco.editor.createDiffEditor(diffContainer.value, {
     automaticLayout: true,
-    readOnly: false,
+    readOnly: true,
     renderSideBySide: true,
+    renderOverviewRuler: true,
+    useInlineViewWhenSpaceIsLimited: false,
     fontSize: props.fontSize ?? 14,
   })
-  const origModel = diffMonaco.editor.createModel(original, editorLanguage.value, diffMonaco.Uri.file(fp + '.orig'))
-  const modModel = diffMonaco.editor.createModel(modified, editorLanguage.value, diffMonaco.Uri.file(fp))
-  diffEditor.setModel({ original: origModel, modified: modModel })
-  diffEditor.getModifiedEditor().onDidChangeModelContent(() => {
-    emit('update:content', diffEditor!.getModifiedEditor().getValue())
-  })
+  diffEditor.setModel({ original: diffOrigModel, modified: diffModModel })
+  mountedDiffKey = fp
+  await nextTick()
+  diffEditor.layout()
+}
+
+const scheduleDiffMount = () => {
+  if (!isDiffTab.value) return
+  void nextTick(() => mountDiffEditor())
 }
 
 const disposeDiffEditor = () => {
-  diffEditor?.dispose()
-  diffEditor = null
+  diffContentListener?.dispose()
+  diffContentListener = null
+  if (diffEditor) {
+    diffEditor.setModel(null)
+    diffEditor.dispose()
+    diffEditor = null
+  }
+  disposeDiffModels()
+  mountedDiffKey = null
 }
 
 watch(
   () => [isDiffTab.value, props.activePath, props.content, activeTab.value?.diffOriginal] as const,
   () => {
-    if (isDiffTab.value) void mountDiffEditor()
+    if (isDiffTab.value) scheduleDiffMount()
     else disposeDiffEditor()
   },
+  { flush: 'post', immediate: true },
 )
 
 watch(

@@ -575,6 +575,20 @@ contextBridge.exposeInMainWorld('axecoder', {
       | { ok: true; label: string; restoredFiles: number }
       | { ok: false; error: string }
     >,
+  agentRestoreCheckpointFiles: (
+    sessionId: string,
+    projectRoot: string,
+    checkpointId?: string,
+  ) =>
+    ipcRenderer.invoke(
+      'agent:restoreCheckpointFiles',
+      sessionId,
+      cloneForIpc(projectRoot),
+      checkpointId,
+    ) as Promise<
+      | { ok: true; restoredFiles: number }
+      | { ok: false; error: string }
+    >,
   agentListBackgroundTasks: (sessionId?: string) =>
     ipcRenderer.invoke('agent:listBackgroundTasks', sessionId) as Promise<{
       ok: true
@@ -681,6 +695,28 @@ contextBridge.exposeInMainWorld('axecoder', {
     ipcRenderer.invoke('git:show', cwd, file, staged) as Promise<
       { ok: true; text: string } | { ok: false; error: string }
     >,
+  gitShowRef: (cwd: string, file: string, ref: string) =>
+    ipcRenderer.invoke('git:showRef', cwd, file, ref) as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
+  gitUnstageAll: (cwd: string) =>
+    ipcRenderer.invoke('git:unstageAll', cwd) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitDiscard: (cwd: string, file: string) =>
+    ipcRenderer.invoke('git:discard', cwd, file) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitFetch: (cwd: string) =>
+    ipcRenderer.invoke('git:fetch', cwd) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitPull: (cwd: string) =>
+    ipcRenderer.invoke('git:pull', cwd) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitPush: (cwd: string) =>
+    ipcRenderer.invoke('git:push', cwd) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitBranches: (cwd: string) =>
+    ipcRenderer.invoke('git:branches', cwd) as Promise<import('../../src/types/axecoder').GitBranchesResult>,
+  gitCheckout: (cwd: string, branch: string) =>
+    ipcRenderer.invoke('git:checkout', cwd, branch) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitStash: (cwd: string, message?: string) =>
+    ipcRenderer.invoke('git:stash', cwd, message) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
+  gitStashPop: (cwd: string) =>
+    ipcRenderer.invoke('git:stashPop', cwd) as Promise<import('../../src/types/axecoder').GitSimpleResult>,
   gitForgeStatus: (cwd: string) =>
     ipcRenderer.invoke('git:forgeStatus', cwd) as Promise<
       import('../../src/types/axecoder').GitForgeStatusResult

@@ -1,4 +1,5 @@
 import type { DocumentPreviewKind } from '../utils/document-preview'
+import { monacoLanguageForPath } from '../utils/editor-language'
 
 export type OpenFile = {
   path: string
@@ -21,6 +22,26 @@ export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 export const fileNameFromPath = (p: string) => {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
   return i >= 0 ? p.slice(i + 1) : p
+}
+
+export const diffTabPath = (filePath: string) => `${filePath} (diff)`
+
+export const buildDiffOpenFile = (
+  filePath: string,
+  original: string,
+  modified: string,
+): OpenFile => {
+  const name = fileNameFromPath(filePath)
+  return {
+    path: diffTabPath(filePath),
+    name: `${name} (diff)`,
+    content: modified,
+    dirty: false,
+    kind: 'diff',
+    diffOriginal: original,
+    pinned: true,
+    languageOverride: monacoLanguageForPath(filePath),
+  }
 }
 
 export const upsertOpenFile = (files: OpenFile[], file: OpenFile): OpenFile[] => {

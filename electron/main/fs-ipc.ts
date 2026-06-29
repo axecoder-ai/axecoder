@@ -29,6 +29,7 @@ export type FileNode = {
   name: string
   path: string
   type: 'file' | 'directory'
+  symlink?: boolean
   children?: FileNode[]
 }
 
@@ -39,16 +40,40 @@ const sortNodes = (a: FileNode, b: FileNode) => {
   return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
 }
 
-const buildTree = async (dirPath: string): Promise<FileNode> => {
+const buildTree = async (dirPath: string, visited = new Set<string>()): Promise<FileNode> => {
   const name = path.basename(dirPath)
+  let realPath = dirPath
+  try {
+    realPath = await fs.realpath(dirPath)
+  } catch {
+    // 路径不可解析时仍尝试列出
+  }
+  if (visited.has(realPath)) {
+    return { name, path: dirPath, type: 'directory', children: [] }
+  }
+  visited.add(realPath)
+
   const entries = await fs.readdir(dirPath, { withFileTypes: true })
   const children: FileNode[] = []
   for (const ent of entries) {
     const full = path.join(dirPath, ent.name)
     if (shouldIgnoreWorkspacePath(full)) continue
-    if (ent.isSymbolicLink()) continue
+    if (ent.isSymbolicLink()) {
+      try {
+        const stat = await fs.stat(full)
+        if (stat.isDirectory()) {
+          const sub = await buildTree(full, visited)
+          children.push({ ...sub, name: ent.name, path: full, symlink: true })
+        } else {
+          children.push({ name: ent.name, path: full, type: 'file', symlink: true })
+        }
+      } catch {
+        children.push({ name: ent.name, path: full, type: 'file', symlink: true })
+      }
+      continue
+    }
     if (ent.isDirectory()) {
-      children.push(await buildTree(full))
+      children.push(await buildTree(full, visited))
     } else {
       children.push({ name: ent.name, path: full, type: 'file' })
     }

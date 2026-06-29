@@ -31,20 +31,43 @@ const resolveGitPath = (cwd: string, file: string) => {
   return path.isAbsolute(f) ? f : path.join(cwd, f)
 }
 
+/** git status --porcelain：XY 后至少一个空格再接路径；仅暂存时路径可能紧跟在第二位状态后 */
+export const parsePorcelainLine = (line: string) => {
+  const code = line.slice(0, 2)
+  const file = (line.length > 2 && line[2] === ' ' ? line.slice(3) : line.slice(2)).trim()
+  return { code, file }
+}
+
+const parsePorcelain = (raw: string) =>
+  raw ? raw.split('\n').filter(Boolean).map(parsePorcelainLine) : []
+
 export const registerGitIpc = () => {
   ipcMain.handle('git:status', async (_, cwd: string) => {
     if (!cwd) return { ok: false as const, error: 'No project open' }
     try {
       const branch = await runGit(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])
       const raw = await runGit(cwd, ['status', '--porcelain'])
-      const changes = raw
-        ? raw.split('\n').filter(Boolean).map((line) => {
-            const code = line.slice(0, 2)
-            const file = line.slice(3).trim()
-            return { code, file }
-          })
-        : []
-      return { ok: true as const, branch, changes }
+      const changes = parsePorcelain(raw)
+      let tracking: string | null = null
+      let ahead = 0
+      let behind = 0
+      try {
+        tracking = await runGit(cwd, ['rev-parse', '--abbrev-ref', '@{u}'])
+      } catch {
+        tracking = null
+      }
+      if (tracking) {
+        try {
+          const counts = await runGit(cwd, ['rev-list', '--left-right', '--count', '@{u}...HEAD'])
+          const [behindStr, aheadStr] = counts.split(/\s+/)
+          behind = Number(behindStr) || 0
+          ahead = Number(aheadStr) || 0
+        } catch {
+          ahead = 0
+          behind = 0
+        }
+      }
+      return { ok: true as const, branch, tracking, ahead, behind, changes }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Git unavailable'
       return { ok: false as const, error: msg }
@@ -125,6 +148,131 @@ export const registerGitIpc = () => {
       return { ok: true as const, text }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Show diff failed'
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('git:showRef', async (_, cwd: string, file: string, ref: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    const r = ref?.trim()
+    if (!r) return { ok: false as const, error: 'Ref required' }
+    try {
+      const spec = r === ':' ? `:${file}` : `${r}:${file}`
+      const text = await runGit(cwd, ['show', spec])
+      return { ok: true as const, text }
+    } catch {
+      return { ok: true as const, text: '' }
+    }
+  })
+
+  ipcMain.handle('git:unstageAll', async (_, cwd: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    try {
+      await runGit(cwd, ['reset', 'HEAD'])
+      logOutput('Git', 'Unstaged all changes')
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unstage all failed'
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('git:discard', async (_, cwd: string, file: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    try {
+      const p = resolveGitPath(cwd, file)
+      await runGit(cwd, ['restore', '--staged', '--worktree', '--', p])
+      logOutput('Git', `Discarded changes in ${file}`)
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Discard failed'
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('git:fetch', async (_, cwd: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    try {
+      await runGit(cwd, ['fetch'])
+      logOutput('Git', 'Fetched from remote')
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Fetch failed'
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('git:pull', async (_, cwd: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    try {
+      await runGit(cwd, ['pull', '--ff-only'])
+      logOutput('Git', 'Pulled from remote')
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Pull failed'
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('git:push', async (_, cwd: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    try {
+      await runGit(cwd, ['push'])
+      logOutput('Git', 'Pushed to remote')
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Push failed'
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('git:branches', async (_, cwd: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    try {
+      const raw = await runGit(cwd, ['branch', '--format=%(refname:short)'])
+      const branches = raw ? raw.split('\n').filter(Boolean) : []
+      return { ok: true as const, branches }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'List branches failed'
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('git:checkout', async (_, cwd: string, branch: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    const b = branch?.trim()
+    if (!b) return { ok: false as const, error: 'Branch name required' }
+    try {
+      await runGit(cwd, ['checkout', b])
+      logOutput('Git', `Checked out ${b}`)
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Checkout failed'
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('git:stash', async (_, cwd: string, message?: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    try {
+      const args = message?.trim() ? ['stash', 'push', '-m', message.trim()] : ['stash', 'push']
+      await runGit(cwd, args)
+      logOutput('Git', 'Stashed changes')
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Stash failed'
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('git:stashPop', async (_, cwd: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    try {
+      await runGit(cwd, ['stash', 'pop'])
+      logOutput('Git', 'Popped stash')
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Stash pop failed'
       return { ok: false as const, error: msg }
     }
   })

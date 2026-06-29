@@ -112,6 +112,20 @@ export type PendingWritePublic = {
   patchText: string
 }
 
+export type AgentTurnFileChange = {
+  filePath: string
+  tool: 'Edit' | 'Write' | 'Delete' | 'Move'
+  patchText: string
+  additions: number
+  deletions: number
+}
+
+type AgentTurnMeta = {
+  fileChanges?: AgentTurnFileChange[]
+  rewindSessionId?: string
+  rewindCheckpointId?: string
+}
+
 export type PendingBashPublic = {
   id: string
   command: string
@@ -149,7 +163,8 @@ export type AgentSendResult =
       status: 'done'
       assistantText: string
       toolLog: AgentToolLogEntry[]
-    } & AgentReplyMeta)
+    } & AgentReplyMeta &
+      AgentTurnMeta)
   | ({
       ok: true
       status: 'pending'
@@ -160,7 +175,8 @@ export type AgentSendResult =
       pendingPlans?: PendingPlanPublic[]
       assistantText: string
       toolLog: AgentToolLogEntry[]
-    } & AgentReplyMeta)
+    } & AgentReplyMeta &
+      AgentTurnMeta)
   | { ok: false; error: string }
 
 export type AgentContinueResult =

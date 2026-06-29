@@ -164,10 +164,34 @@ defineExpose({ addOutput, setProblems, tab, switchTab, problemCounts })
         {{ t('trace.tab') }}
       </button>
       <span class="panel-tabs-spacer" />
-      <button type="button" class="panel-action-btn" :title="t('bottom.collapse')" @click="$emit('collapse')">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-          <path fill="currentColor" d="M3.5 6 8 10.5 12.5 6H3.5z" />
-        </svg>
+      <button
+        v-if="tab === 'metrics' && !metricsDetached"
+        type="button"
+        class="panel-action-btn"
+        :title="t('metrics.detach')"
+        :aria-label="t('metrics.detach')"
+        @click="$emit('metricsDetach')"
+      >
+        <span class="codicon codicon-link-external" aria-hidden="true" />
+      </button>
+      <button
+        v-if="tab === 'trace' && !traceDetached"
+        type="button"
+        class="panel-action-btn"
+        :title="t('trace.detach')"
+        :aria-label="t('trace.detach')"
+        @click="$emit('traceDetach')"
+      >
+        <span class="codicon codicon-link-external" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        class="panel-action-btn panel-close-btn"
+        :title="t('bottom.close')"
+        :aria-label="t('bottom.close')"
+        @click="$emit('collapse')"
+      >
+        <span class="codicon codicon-close" aria-hidden="true" />
       </button>
     </div>
     <div v-show="tab === 'terminal'" class="panel-content terminal">
@@ -210,6 +234,8 @@ defineExpose({ addOutput, setProblems, tab, switchTab, problemCounts })
 .panel-tabs-spacer { flex: 1; }
 .panel-action-btn { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; background: transparent; color: var(--wc-text-muted); cursor: pointer; }
 .panel-action-btn:hover { color: var(--wc-text); background: var(--wc-hover); }
+.panel-action-btn .codicon { font-size: 14px; }
+.panel-close-btn .codicon { font-size: 16px; }
 .panel-tabs button { padding: 0 14px; font-size: 11px; color: var(--wc-text-muted); display: flex; align-items: center; gap: 6px; }
 .panel-tabs button.active { color: var(--wc-text); background: var(--wc-panel); border-top: 1px solid var(--wc-accent); }
 .badge { background: var(--wc-accent); color: #fff; font-size: 10px; padding: 0 5px; border-radius: 8px; }

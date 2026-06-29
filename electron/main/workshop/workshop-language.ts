@@ -2,7 +2,7 @@ import { agentLanguageForLocale } from '../../../shared/i18n'
 import { getMainLocale } from '../i18n'
 import { loadAlwaysApplyRulesPrompt } from '../rules/rules-store'
 
-const CHINESE_RULE = /Always respond in 中文|用中文回复|respond in Chinese/i
+const CHINESE_RULE = /Always respond in 中文|用中文回复|respond in 中文|respond in Chinese/i
 const ENGLISH_RULE = /Always respond in English|用英文回复|respond in English/i
 
 export const workshopReplyLanguageFromLocale = (): string =>

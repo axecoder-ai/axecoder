@@ -12,33 +12,40 @@ export type ChatModeOption = {
   id: ChatModeId
   label: string
   description: string
+  /** @vscode/codicons 名称（不含 codicon- 前缀） */
+  icon: string
 }
 
 export const CHAT_MODE_OPTIONS: ChatModeOption[] = [
   {
     id: 'agent',
     label: 'Agent',
+    icon: 'agent',
     description:
       'Read/write code and use tools; complex tasks auto-enter read-only plan mode first (heuristic + cheap model; /auto-plan off to disable)',
   },
   {
     id: 'plan',
     label: 'Plan',
+    icon: 'tasklist',
     description: 'Plan first; file writes and shell need exiting plan mode',
   },
   {
     id: 'draw-io',
     label: 'Draw.IO',
+    icon: 'type-hierarchy',
     description: 'AI-assisted draw.io diagrams in Workshop with embedded canvas',
   },
   {
     id: 'multi-agent',
     label: 'Multi-Agent',
+    icon: 'organization',
     description: 'Collab workshop in this chat: roles discuss in turn',
   },
   {
     id: 'software-company',
     label: 'Software Co.',
+    icon: 'home',
     description: 'MetaGPT SOP: PRD → design → tasks → code → QA; each role runs at Agent efficiency',
   },
 ]
@@ -63,6 +70,12 @@ export const chatModeLabel = (id: ChatModeId) => {
   if (id === 'planning') return 'Plan'
   if (id === 'auto-plan') return 'Agent'
   return CHAT_MODE_OPTIONS.find((m) => m.id === id)?.label ?? 'Agent'
+}
+
+export const chatModeIcon = (id: ChatModeId) => {
+  if (id === 'planning') return 'tasklist'
+  if (id === 'auto-plan') return 'agent'
+  return CHAT_MODE_OPTIONS.find((m) => m.id === id)?.icon ?? 'agent'
 }
 
 /** 旧版 localStorage / 会话里可能仍存 auto-plan、已下线的 reflection / rppit */

@@ -195,8 +195,10 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  const model = editor?.getModel()
   f12Disposable?.dispose()
   editor?.dispose()
+  model?.dispose()
   editor = null
   editorRef.value = null
   monaco = null

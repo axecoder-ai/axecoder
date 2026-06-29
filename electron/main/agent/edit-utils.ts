@@ -55,3 +55,14 @@ export const patchToUnifiedDiff = (filePath: string, oldContent: string, newCont
   const base = filePath.split(/[/\\]/).pop() ?? filePath
   return createPatch(base, oldContent, newContent, `a/${base}`, `b/${base}`)
 }
+
+export const countPatchLineStats = (patchText: string) => {
+  let additions = 0
+  let deletions = 0
+  for (const line of patchText.split(/\r?\n/)) {
+    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) continue
+    if (line.startsWith('+')) additions++
+    else if (line.startsWith('-')) deletions++
+  }
+  return { additions, deletions }
+}

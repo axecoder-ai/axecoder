@@ -2,6 +2,8 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { setAxecoderDirForTests } from '../../../electron/main/axecoder-dir'
+import { invalidateMainLocaleCache, refreshMainLocale } from '../../../electron/main/i18n'
 import {
   getOutputStyleSection,
   OUTPUT_STYLE_CONFIG,
@@ -290,6 +292,7 @@ describe('agent-system-prompt buildAgentSystemPrompt', () => {
     const full = await buildAgentSystemPrompt('/proj/BIAOSHU', {
       skipProjectMemory: true,
       outputStyleId: 'Explanatory',
+      languagePreference: '中文',
     })
     const lang = getLanguageSection('中文')!
     expect(full).toMatch(/according to your "Output Style"/)
@@ -298,5 +301,35 @@ describe('agent-system-prompt buildAgentSystemPrompt', () => {
     expect(full.indexOf(SUMMARIZE_TOOL_RESULTS_SECTION)).toBeGreaterThan(
       full.indexOf('# Output Style: Explanatory'),
     )
+  })
+
+  it('alwaysApply 用户中文规则优先于 locale en', async () => {
+    const testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lang-'))
+    const projectRoot = path.join(testDir, 'proj')
+    await fs.mkdir(projectRoot, { recursive: true })
+    await fs.mkdir(path.join(testDir, 'rules'), { recursive: true })
+    setAxecoderDirForTests(testDir)
+    invalidateMainLocaleCache()
+    await fs.writeFile(
+      path.join(testDir, 'config.json'),
+      JSON.stringify({ schemaVersion: 1, locale: 'en' }, null, 2),
+      'utf-8',
+    )
+    await refreshMainLocale()
+    await fs.writeFile(
+      path.join(testDir, 'rules', 'always-respond-in-中文.mdc'),
+      `---
+description: Always respond in 中文
+alwaysApply: true
+---
+Always respond in 中文
+`,
+      'utf-8',
+    )
+    const full = await buildAgentSystemPrompt(projectRoot, { skipProjectMemory: true })
+    expect(full).toContain(getLanguageSection('中文')!)
+    expect(full).not.toContain('Always respond in English')
+    setAxecoderDirForTests(null)
+    invalidateMainLocaleCache()
   })
 })

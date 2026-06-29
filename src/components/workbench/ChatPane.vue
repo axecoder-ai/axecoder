@@ -7,6 +7,7 @@ import type {
   AgentPendingPlan,
   AgentSendResult,
   AgentToolLogEntry,
+  AgentTurnFileChange,
   AiChatMessage,
   ChatMessage,
   ChatSession,
@@ -22,6 +23,7 @@ import ChatModePickerDropdown from './ChatModePickerDropdown.vue'
 import SlashCommandPicker from './SlashCommandPicker.vue'
 import AtRefPicker from './AtRefPicker.vue'
 import ChatDiffCard from './ChatDiffCard.vue'
+import ChatTurnChangesBar from './ChatTurnChangesBar.vue'
 import ChatAskUserCard from './ChatAskUserCard.vue'
 import ChatPlanCard from './ChatPlanCard.vue'
 import ChatBashCard from './ChatBashCard.vue'
@@ -29,6 +31,7 @@ import BackgroundTaskCard from './BackgroundTaskCard.vue'
 import AgentProgressStream from './AgentProgressStream.vue'
 import FooterTpsBadge from './FooterTpsBadge.vue'
 import { isUnderProject, relativeToProject, type ChatFileRef } from '../../utils/chat-file-context'
+import { countPatchLineStats } from '../../utils/patch-stats'
 import { formatWorkshopAskAnswers } from '../../utils/workshop-ask'
 import {
   CHAT_IDLE_HINTS,
@@ -73,6 +76,7 @@ import {
 } from '../../composables/useChatAttachedImages'
 import {
   canPickChatMode,
+  DEFAULT_CHAT_MODE,
   loadStoredChatMode,
   saveStoredChatMode,
   type ChatModeId,
@@ -126,6 +130,7 @@ const emit = defineEmits<{
   sessionsChanged: []
   filesChanged: []
   openFile: [path: string]
+  reviewPatch: [filePath: string, patchText: string]
   planFileBuilt: [path: string]
   'update:agentAutoApplyWrites': [value: boolean]
   'update:agentAutoPlanOn': [value: boolean]
@@ -435,6 +440,13 @@ const aiStreamUnsubs = new Map<string, () => void>()
 
 const chatModeId = ref<ChatModeId>(loadStoredChatMode())
 
+const applyDefaultChatModeWhenNoSession = () => {
+  if (activeId.value || activeTabKind.value !== 'agent') return
+  if (chatModeId.value === DEFAULT_CHAT_MODE) return
+  chatModeId.value = DEFAULT_CHAT_MODE
+  saveStoredChatMode(DEFAULT_CHAT_MODE)
+}
+
 const applySessionPreferencesOnSwitch = (session: ChatSession | null) => {
   if (!session) return
   chatModeId.value = resolveSessionChatModeOnSwitch(session, chatModeId.value)
@@ -673,6 +685,7 @@ const startRunUi = (
 ) => {
   beginRun(chatId)
   const run = getRunState(chatId)
+  run.isAgentRun = agentMode.value
   if (opts?.assigneeUserId) run.pendingAssigneeUserId = opts.assigneeUserId
   if (opts?.agentSessionId) linkAgentSession(chatId, opts.agentSessionId)
   if (!agentMode.value && opts?.idleHints !== false) startIdleHintTimer()
@@ -686,6 +699,7 @@ const startPendingRunUi = (
   setPendingBusy(chatId, true)
   const run = getRunState(chatId)
   clearRunProgress(chatId)
+  run.isAgentRun = true
   run.pendingAssigneeUserId = assigneeUserId?.trim() ?? ''
   linkAgentSession(chatId, agentSessionId)
 }
@@ -1192,6 +1206,47 @@ const tabShowsStop = (tab: OpenChatTab) =>
 
 const formatToolLog = (_log: AgentToolLogEntry[]) => ''
 
+const turnMetaFromAgent = (res: AgentSendResult | AgentContinueResult) => {
+  if (!res.ok) return {}
+  return {
+    ...(res.fileChanges?.length ? { turnFileChanges: res.fileChanges } : {}),
+    ...(res.rewindSessionId ? { rewindSessionId: res.rewindSessionId } : {}),
+    ...(res.rewindCheckpointId ? { rewindCheckpointId: res.rewindCheckpointId } : {}),
+  }
+}
+
+const pendingWritesToFileChanges = (
+  writes: import('../../types/axecoder').AgentPendingWrite[] | undefined,
+): AgentTurnFileChange[] | undefined => {
+  if (!writes?.length) return undefined
+  return writes.map((w) => {
+    const { additions, deletions } = countPatchLineStats(w.patchText)
+    return {
+      filePath: w.filePath,
+      tool: w.tool,
+      patchText: w.patchText,
+      additions,
+      deletions,
+    }
+  })
+}
+
+const mergeTurnFileMeta = (
+  target: ChatMessage,
+  res: AgentSendResult | AgentContinueResult,
+  pendingWrites?: import('../../types/axecoder').AgentPendingWrite[],
+) => {
+  const meta = turnMetaFromAgent(res)
+  if (meta.turnFileChanges?.length) {
+    target.turnFileChanges = meta.turnFileChanges
+    if (meta.rewindSessionId) target.rewindSessionId = meta.rewindSessionId
+    if (meta.rewindCheckpointId) target.rewindCheckpointId = meta.rewindCheckpointId
+    return
+  }
+  const fromPending = pendingWritesToFileChanges(pendingWrites)
+  if (fromPending?.length) target.turnFileChanges = fromPending
+}
+
 const maybePlayAgentDoneSound = (res: { ok: boolean; status: string; assistantText?: string }) => {
   if (!res.ok || res.status !== 'done') return
   if (res.assistantText?.includes('(stopped)')) return
@@ -1261,6 +1316,7 @@ const pushAssistantFromAgent = (
       ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
       ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
       ...(res.backgroundTaskIds?.length ? { backgroundTaskIds: [...res.backgroundTaskIds] } : {}),
+      ...turnMetaFromAgent(res),
     })
     maybePlayAgentDoneSound(res)
     emit('filesChanged')
@@ -1279,7 +1335,12 @@ const pushAssistantFromAgent = (
     ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
     ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
     ...(res.backgroundTaskIds?.length ? { backgroundTaskIds: [...res.backgroundTaskIds] } : {}),
+    ...turnMetaFromAgent(res),
   })
+  const lastMsg = session.messages[session.messages.length - 1]
+  if (lastMsg?.role === 'assistant' && !lastMsg.turnFileChanges?.length && res.pending?.length) {
+    mergeTurnFileMeta(lastMsg, res, res.pending)
+  }
 }
 
 const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
@@ -1302,6 +1363,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     mergeBackgroundTaskIds(msg, res.backgroundTaskIds)
     if (res.assistantText.trim()) msg.text = res.assistantText + suffix
     else msg.text += suffix
+    mergeTurnFileMeta(msg, res, res.pending)
   } else {
     msg.pendingWrites = undefined
     msg.pendingBashes = undefined
@@ -1310,9 +1372,68 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     const next = resolveAgentReplyBody(res) + suffix
     if (next.trim()) msg.text = next.trim()
     mergeBackgroundTaskIds(msg, res.backgroundTaskIds)
+    mergeTurnFileMeta(msg, res)
     maybePlayAgentDoneSound(res)
     emit('filesChanged')
   }
+}
+
+/** AskUserQuestion 作答后：插入用户澄清气泡，并新开 assistant 气泡承接后续回复 */
+const pushAssistantAfterAskAnswer = (
+  session: ChatSession,
+  res: AgentContinueResult,
+  ctx: { speakerUserId?: string; agentSessionId?: string },
+) => {
+  if (!res.ok) {
+    session.messages.push({
+      role: 'assistant',
+      text: `Confirm failed: ${res.error}`,
+      agentSessionId: ctx.agentSessionId,
+      ...(ctx.speakerUserId ? { speakerUserId: ctx.speakerUserId } : {}),
+    })
+    return
+  }
+  const suffix = formatToolLog(res.toolLog)
+  const speakerUserId = res.speakerUserId ?? ctx.speakerUserId
+  const agentSessionId =
+    res.status === 'pending' ? res.sessionId : ctx.agentSessionId
+  if (res.status === 'pending') {
+    const body = res.assistantText.trim() || 'Please confirm the following:'
+    session.messages.push({
+      role: 'assistant',
+      text: body + suffix,
+      toolLog: res.toolLog,
+      pendingWrites: res.pending,
+      pendingBashes: res.pendingBashes,
+      pendingAsks: res.pendingAsks,
+      pendingPlans: res.pendingPlans,
+      agentSessionId,
+      ...(speakerUserId ? { speakerUserId } : {}),
+      ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
+      ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
+      ...(res.backgroundTaskIds?.length ? { backgroundTaskIds: [...res.backgroundTaskIds] } : {}),
+      ...turnMetaFromAgent(res),
+    })
+    const last = session.messages[session.messages.length - 1]
+    if (last?.role === 'assistant' && !last.turnFileChanges?.length && res.pending?.length) {
+      mergeTurnFileMeta(last, res, res.pending)
+    }
+    return
+  }
+  const body = resolveAgentReplyBody(res) + suffix
+  session.messages.push({
+    role: 'assistant',
+    text: body.trim() || '(done)',
+    toolLog: res.toolLog,
+    agentSessionId,
+    ...(speakerUserId ? { speakerUserId } : {}),
+    ...(res.assistantContent !== undefined ? { assistantContent: res.assistantContent } : {}),
+    ...(res.reasoningContent ? { reasoningContent: res.reasoningContent } : {}),
+    ...(res.backgroundTaskIds?.length ? { backgroundTaskIds: [...res.backgroundTaskIds] } : {}),
+    ...turnMetaFromAgent(res),
+  })
+  maybePlayAgentDoneSound(res)
+  emit('filesChanged')
 }
 
 const onConfirmPending = async (msg: ChatMessage, pendingId: string) => {
@@ -1378,9 +1499,23 @@ const onAnswerPending = async (
 ) => {
   const chatId = activeId.value
   if (!msg.agentSessionId || !chatId || isRunning(chatId)) return
+  const pending = msg.pendingAsks?.find((p) => p.id === pendingId)
   if (msg.pendingAsks?.length) {
     const next = msg.pendingAsks.filter((p) => p.id !== pendingId)
     msg.pendingAsks = next.length ? next : undefined
+  }
+  const session = getChatSession(chatId)
+  if (session && pending) {
+    const answerText = formatWorkshopAskAnswers(pending, answers)
+    if (answerText.trim()) {
+      const idx = session.messages.indexOf(msg)
+      if (idx >= 0) {
+        session.messages.splice(idx + 1, 0, { role: 'user', text: answerText })
+      } else {
+        session.messages.push({ role: 'user', text: answerText })
+      }
+      void scrollMessages(true)
+    }
   }
   startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
   try {
@@ -1389,9 +1524,13 @@ const onAnswerPending = async (
       pendingId,
       answers,
     )
-    applyContinueToMessage(msg, res)
-    const session = getChatSession(chatId)
-    if (session) session.updatedAt = Date.now()
+    if (session) {
+      pushAssistantAfterAskAnswer(session, res, {
+        speakerUserId: msg.speakerUserId,
+        agentSessionId: msg.agentSessionId,
+      })
+      session.updatedAt = Date.now()
+    }
   } finally {
     await finishPendingRunUi(chatId)
   }
@@ -1636,6 +1775,120 @@ const sessionPendingState = computed(() => {
   }
   return { count, sessionIds, msgBySession }
 })
+
+const turnChangesDismissed = ref(false)
+
+const activeTurnChangesContext = computed(() => {
+  if (turnChangesDismissed.value || isWorkshopMode.value) return null
+  const msgs = activeSession.value?.messages ?? []
+  let lastUserIdx = -1
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i]?.role === 'user') {
+      lastUserIdx = i
+      break
+    }
+  }
+  for (let i = msgs.length - 1; i > lastUserIdx; i--) {
+    const m = msgs[i]
+    if (m?.role !== 'assistant') continue
+    const files =
+      m.turnFileChanges?.length
+        ? m.turnFileChanges
+        : pendingWritesToFileChanges(m.pendingWrites)
+    if (files?.length) {
+      return { msg: m, files }
+    }
+  }
+  return null
+})
+
+const showTurnChangesBar = computed(
+  () =>
+    !!activeTurnChangesContext.value?.files.length &&
+    !loading.value &&
+    !pendingBusy.value &&
+    showAgentComposer.value,
+)
+
+const onTurnChangesReview = (file: AgentTurnFileChange) => {
+  emit('reviewPatch', file.filePath, file.patchText)
+}
+
+const onTurnChangesOpenFile = (path: string) => {
+  emit('openFile', path)
+}
+
+const onTurnChangesDismiss = (filePath: string) => {
+  const ctx = activeTurnChangesContext.value
+  if (!ctx) return
+  const { msg } = ctx
+  const files =
+    msg.turnFileChanges?.length
+      ? [...msg.turnFileChanges]
+      : pendingWritesToFileChanges(msg.pendingWrites)
+  if (!files?.length) return
+  const next = files.filter((f) => f.filePath !== filePath)
+  if (!next.length) {
+    msg.turnFileChanges = undefined
+    if (msg.pendingWrites?.length) msg.pendingWrites = undefined
+    turnChangesDismissed.value = true
+  } else {
+    msg.turnFileChanges = next
+    if (msg.pendingWrites?.length) {
+      msg.pendingWrites = msg.pendingWrites.filter((w) => w.filePath !== filePath)
+    }
+  }
+}
+
+const onTurnChangesUndo = async () => {
+  const ctx = activeTurnChangesContext.value
+  if (!ctx || !props.projectRoot?.trim()) return
+  const { msg } = ctx
+  const root = props.projectRoot.trim()
+
+  if (msg.pendingWrites?.length && msg.agentSessionId) {
+    const chatId = activeId.value
+    if (!chatId) return
+    setPendingBusy(chatId, true)
+    try {
+      const res = await window.axecoder.agentRejectAllWrites(msg.agentSessionId)
+      if (!res.ok) return
+      applyContinueToMessage(msg, res)
+      msg.turnFileChanges = undefined
+      turnChangesDismissed.value = true
+      emit('filesChanged')
+    } finally {
+      setPendingBusy(chatId, false)
+    }
+    return
+  }
+
+  const sessionId = msg.rewindSessionId
+  if (!sessionId) return
+  const chatId = activeId.value
+  if (!chatId) return
+  setPendingBusy(chatId, true)
+  try {
+    const res = await window.axecoder.agentRestoreCheckpointFiles(
+      sessionId,
+      root,
+      msg.rewindCheckpointId,
+    )
+    if (!res.ok) return
+    msg.turnFileChanges = undefined
+    turnChangesDismissed.value = true
+    emit('filesChanged')
+  } finally {
+    setPendingBusy(chatId, false)
+  }
+}
+
+watch(
+  () => activeSession.value?.messages.length,
+  () => {
+    turnChangesDismissed.value = false
+  },
+)
 
 const clearPendingForSession = (sessionId: string) => {
   for (const m of activeSession.value?.messages ?? []) {
@@ -2389,10 +2642,12 @@ watch(
   () => activeId.value,
   (id, prev) => {
     if (id !== prev) workshopMessageCount.value = 0
+    if (!id) applyDefaultChatModeWhenNoSession()
     if (!isWorkshopEmbeddedInAgentChat.value || !id || id === prev) return
     lastMultiAgentSyncKey = ''
     void syncMultiAgentWorkshop()
   },
+  { immediate: true },
 )
 
 watch(workshopMessageCount, (n, prev) => {
@@ -2554,6 +2809,15 @@ defineExpose({
         @click="emit('showAgentsSidebar')"
       >
         <span class="codicon codicon-layout-sidebar-right" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        class="chat-pane-close"
+        title="Close panel"
+        aria-label="Close panel"
+        @click="emit('close')"
+      >
+        <span class="codicon codicon-close" aria-hidden="true" />
       </button>
     </div>
     <WorkshopChatSection
@@ -2803,10 +3067,16 @@ defineExpose({
           :stream-text="streamText"
           :subagent-tasks="subagentTaskList"
           :agent-mode="agentMode"
+          :running="showProgressBubble"
           :fallback-headline="progressHeadline"
           :thinking-text="thinkingText"
           :thinking-type="thinkingType"
           :loop-guard-notice="loopGuardNotice"
+        />
+        <div
+          v-if="streamText.trim() && !agentMode"
+          class="assistant-text assistant-stream-preview"
+          v-html="renderMarkdown(streamText)"
         />
       </div>
     </div>
@@ -2881,6 +3151,16 @@ defineExpose({
         @dragleave="onChatDragLeave"
         @drop="onChatDrop"
       >
+        <ChatTurnChangesBar
+          v-if="showTurnChangesBar && activeTurnChangesContext"
+          :files="activeTurnChangesContext.files"
+          :project-root="projectRoot"
+          :busy="pendingBusy"
+          :relative-path="(p) => relativeToProject(projectRoot, p) ?? p"
+          @review="onTurnChangesReview"
+          @undo-all="onTurnChangesUndo"
+          @dismiss="onTurnChangesDismiss"
+        />
         <div
           v-if="attachedFiles.length || attachedImages.length || pendingContextFile"
           class="file-refs"
@@ -2964,11 +3244,7 @@ defineExpose({
         </div>
         <div class="chat-input-footer" :class="{ 'chat-input-footer--running': agentActivityRunning }">
           <div class="footer-left">
-            <span v-if="agentActivityRunning" class="wandering-status" role="status">
-              <span class="wandering-icon" aria-hidden="true">✦</span>
-              Wandering…
-            </span>
-            <template v-else>
+            <template v-if="!agentActivityRunning">
               <ChatModePickerDropdown
                 :active-mode-id="chatModeId"
                 :has-session-messages="hasSessionMessagesForModeLock"
@@ -3249,6 +3525,29 @@ defineExpose({
 }
 
 .agents-expand .codicon {
+  font-size: 16px;
+}
+
+.chat-pane-close {
+  align-self: flex-end;
+  width: 28px;
+  height: 32px;
+  margin-right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border-bottom: 1px solid var(--wc-border);
+  color: var(--wc-text-muted);
+  flex-shrink: 0;
+}
+
+.chat-pane-close:hover {
+  background: var(--wc-hover);
+  color: var(--wc-text);
+}
+
+.chat-pane-close .codicon {
   font-size: 16px;
 }
 
@@ -3611,28 +3910,9 @@ defineExpose({
   padding: 2px 2px 4px;
 }
 
-.wandering-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--wc-text-muted);
-  animation: wandering-pulse 1.6s ease-in-out infinite;
-}
-
-.wandering-icon {
-  font-size: 11px;
-  color: #c9922e;
-}
-
-@keyframes wandering-pulse {
-  0%,
-  100% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 1;
-  }
+.assistant-stream-preview {
+  margin-top: 8px;
+  padding-top: 2px;
 }
 
 .chat-input-footer--running .auto-apply-toggle.compact {

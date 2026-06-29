@@ -1,7 +1,7 @@
 import { computed, reactive, ref } from 'vue'
 import type { ChatModeId } from '../utils/chat-modes'
 import { canPickChatMode } from '../utils/chat-modes'
-import { applyProgressPayload, type AgentProgressPayload } from '../utils/agent-progress'
+import { applyProgressPayload, appendContentDeltaToActiveModelStep, type AgentProgressPayload } from '../utils/agent-progress'
 import { resolveProgressChatId } from '../utils/chat-progress-route'
 import { detectThinkingType } from '../utils/thinking-parser'
 import {
@@ -66,7 +66,12 @@ export const useChatSessionRuns = (opts: UseChatSessionRunsOpts) => {
     if (payload.sessionId) linkAgentSession(chatId, payload.sessionId)
 
     if (payload.kind === 'delta' || payload.kind === 'content_delta') {
-      run.streamText += payload.delta
+      const routed = appendContentDeltaToActiveModelStep(run.progressSteps, payload.delta)
+      if (routed.changed) {
+        run.progressSteps = routed.steps
+      } else if (!run.isAgentRun) {
+        run.streamText += payload.delta
+      }
     } else if (payload.kind === 'thinking_delta') {
       run.thinkingText += payload.delta
       run.thinkingType = detectThinkingType(run.thinkingText)

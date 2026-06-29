@@ -116,9 +116,15 @@ const useMarkdown = computed(
           :stream-text="liveProgress!.streamText"
           :subagent-tasks="[]"
           :agent-mode="true"
+          :running="true"
           fallback-headline="Running…"
           :thinking-text="liveProgress!.thinkingText ?? ''"
           :thinking-type="liveProgress!.thinkingType ?? ''"
+        />
+        <div
+          v-if="liveProgress!.streamText.trim()"
+          class="ws-md ws-stream-preview"
+          v-html="renderMarkdown(liveProgress!.streamText)"
         />
       </div>
       <div v-if="relatedFiles?.length && showBody" class="ws-files">
@@ -339,6 +345,9 @@ const useMarkdown = computed(
   font-size: 12px;
   max-width: 100%;
   margin-top: 4px;
+}
+.ws-stream-preview {
+  margin-top: 8px;
 }
 .ws-md {
   line-height: 1.6;

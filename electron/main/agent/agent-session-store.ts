@@ -3,6 +3,7 @@ import type {
   AgentToolDef,
   AgentToolLogEntry,
   AgentToolName,
+  AgentTurnFileChange,
   PendingAskUserPublic,
   PendingBashPublic,
   PendingPlanPublic,
@@ -49,6 +50,8 @@ export type StoredAgentSession = {
   reasoningEffort?: import('../../../shared/reasoning-effort').ReasoningEffortLevel
   /** 渲染进程 chat session id，用于多 Tab 并发 progress 路由 */
   clientChatId?: string
+  /** 本轮 Agent 改动的文件（用于聊天栏文件列表） */
+  turnFileChanges: AgentTurnFileChange[]
 }
 
 const sessions = new Map<string, StoredAgentSession>()

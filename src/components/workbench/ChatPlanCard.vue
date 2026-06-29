@@ -6,6 +6,7 @@ import {
   initialPlanStepStatuses,
   type PlanStepStatus,
 } from '../../utils/plan-steps'
+import AgentSpinnerGlyph from './AgentSpinnerGlyph.vue'
 
 const props = defineProps<{
   pending: AgentPendingPlan
@@ -45,7 +46,7 @@ const showBody = computed(() => steps.value.length === 0)
       >
         <span class="step-indicator" aria-hidden="true">
           <span v-if="statuses[i] === 'completed'" class="step-check">✓</span>
-          <span v-else-if="statuses[i] === 'in_progress'" class="step-spinner" />
+          <AgentSpinnerGlyph v-else-if="statuses[i] === 'in_progress'" color="#e9b770" />
         </span>
         <span class="step-label">{{ step.label }}</span>
       </li>
@@ -120,8 +121,6 @@ const showBody = computed(() => steps.value.length === 0)
 }
 .plan-step.in_progress .step-indicator {
   border-color: #e9b770;
-  border-top-color: transparent;
-  animation: plan-spin 0.75s linear infinite;
 }
 .plan-step.completed .step-indicator {
   border-color: #e9b770;
@@ -133,12 +132,10 @@ const showBody = computed(() => steps.value.length === 0)
   color: #e9b770;
   line-height: 1;
 }
-.step-spinner {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #e9b770;
-  opacity: 0.85;
+.step-indicator :deep(.agent-spinner-glyph) {
+  width: 10px;
+  height: 10px;
+  font-size: 10px;
 }
 .step-label {
   flex: 1;
@@ -183,10 +180,5 @@ const showBody = computed(() => steps.value.length === 0)
 .btn-dismiss:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-@keyframes plan-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>

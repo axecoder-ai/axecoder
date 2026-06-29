@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import {
-  activeProgressHeadline,
   sliceProgressStepsForDisplay,
   type AgentProgressStep,
 } from '../../utils/agent-progress'
+import AgentSpinnerGlyph from './AgentSpinnerGlyph.vue'
 
 type SubagentTaskView = {
   id: string
@@ -17,6 +17,7 @@ const props = defineProps<{
   streamText: string
   subagentTasks: SubagentTaskView[]
   agentMode: boolean
+  running?: boolean
   fallbackHeadline?: string
   thinkingText?: string
   thinkingType?: string
@@ -96,11 +97,6 @@ watch(
   { deep: true },
 )
 
-const displayHeadline = computed(() => {
-  if (props.agentMode && props.steps.length) return activeProgressHeadline(props.steps)
-  return props.fallbackHeadline ?? 'Working…'
-})
-
 const sliced = computed(() =>
   sliceProgressStepsForDisplay(props.steps, expanded.value),
 )
@@ -114,24 +110,69 @@ const primaryForStep = (step: AgentProgressStep) => {
   return step.label
 }
 
+const hasStepExpandable = (step: AgentProgressStep) =>
+  !!(step.detail?.trim() || (isBashStep(step) && step.summary?.trim()))
+
 const isStepDetailOpen = (step: AgentProgressStep) => {
-  if (!step.detail?.trim()) return false
-  if (step.status === 'active') return true
+  if (step.status === 'active' && hasStepExpandable(step)) return true
+  if (!hasStepExpandable(step)) return false
   return stepDetailExpanded.value.has(step.id)
 }
 
 const toggleStepDetail = (step: AgentProgressStep) => {
-  if (!step.detail?.trim() || step.status === 'active') return
+  if (!hasStepExpandable(step) || step.status === 'active') return
   const next = new Set(stepDetailExpanded.value)
   if (next.has(step.id)) next.delete(step.id)
   else next.add(step.id)
   stepDetailExpanded.value = next
 }
 
+const streamingReply = computed(() => !!props.streamText.trim())
+
+const displaySteps = computed(() => visibleSteps.value)
+
+const displaySubagents = computed(() => props.subagentTasks)
+
+const isRunning = computed(() => !!props.running)
+
+const showThinkingPending = computed(
+  () =>
+    isRunning.value &&
+    !streamingReply.value &&
+    (props.agentMode
+      ? !safeThinkingText.value.trim() &&
+        displaySteps.value.length === 0 &&
+        displaySubagents.value.length === 0
+      : true),
+)
+
+const showWandering = computed(
+  () =>
+    isRunning.value &&
+    props.agentMode &&
+    !streamingReply.value &&
+    !showThinkingPending.value &&
+    (displaySteps.value.length > 0 ||
+      displaySubagents.value.some((t) => t.status === 'running')),
+)
+
+const plainStatusLabel = computed(() => props.fallbackHeadline?.trim() || 'Thinking…')
+
+const showTrackSpine = computed(
+  () =>
+    showThinkingPending.value ||
+    showWandering.value ||
+    !!safeThinkingText.value.trim() ||
+    (props.agentMode && hiddenCount.value > 0) ||
+    (props.agentMode && displaySteps.value.length > 0) ||
+    (props.agentMode && displaySubagents.value.length > 0),
+)
+
 const secondaryForStep = (step: AgentProgressStep) => {
+  if (isStepDetailOpen(step)) return ''
   if (step.phase === 'tool' && step.summary) return step.summary
   if (step.phase === 'model' && step.status === 'done') return `turn ${step.turn}`
-  if (step.detail?.trim() && !isStepDetailOpen(step)) {
+  if (step.detail?.trim()) {
     const oneLine = step.detail.replace(/\s+/g, ' ').trim()
     return oneLine.length > 72 ? `${oneLine.slice(0, 72)}…` : oneLine
   }
@@ -146,99 +187,121 @@ const secondaryForStep = (step: AgentProgressStep) => {
       ⚠ {{ loopGuardNotice }}
     </div>
 
-    <button
-      v-if="safeThinkingText.trim()"
-      type="button"
-      class="thought-toggle"
-      :aria-expanded="thinkingExpanded"
-      @click="thinkingExpanded = !thinkingExpanded"
-    >
-      Thought for {{ thinkingSeconds }}s
-      <span class="thought-chevron" aria-hidden="true">{{ thinkingExpanded ? '▾' : '▸' }}</span>
-    </button>
-    <pre
-      v-if="safeThinkingText.trim() && thinkingExpanded"
-      ref="thinkingTextEl"
-      class="thinking-text"
-    >{{ safeThinkingText }}</pre>
+    <div v-if="showTrackSpine" class="timeline-track">
+      <div class="timeline-spine" aria-hidden="true" />
 
-    <div
-      v-if="!(agentMode && visibleSteps.length)"
-      class="stream-headline"
-      :class="{ shimmer: agentMode && steps.some((s) => s.status === 'active') }"
-    >
-      <span class="headline-glyph" aria-hidden="true">›</span>
-      <span class="headline-text">{{ displayHeadline }}</span>
-    </div>
+      <div v-if="showThinkingPending" class="timeline-node timeline-node--status">
+        <div class="timeline-marker">
+          <AgentSpinnerGlyph />
+        </div>
+        <div class="timeline-content">
+          <span class="status-label">{{ props.agentMode ? 'Thinking…' : plainStatusLabel }}</span>
+        </div>
+      </div>
 
-    <div v-if="agentMode && hiddenCount > 0" class="stream-expand">
-      <button type="button" class="expand-btn" @click="expanded = true">
-        Show {{ hiddenCount }} completed steps
-      </button>
-    </div>
+      <div v-if="safeThinkingText.trim()" class="timeline-node timeline-node--thought">
+        <div class="timeline-marker">
+          <span class="dot dot-thought" aria-hidden="true" />
+        </div>
+        <div class="timeline-content">
+          <button
+            type="button"
+            class="thought-toggle"
+            :aria-expanded="thinkingExpanded"
+            @click="thinkingExpanded = !thinkingExpanded"
+          >
+            Thought for {{ thinkingSeconds }}s
+            <span class="thought-chevron" aria-hidden="true">{{ thinkingExpanded ? '▾' : '›' }}</span>
+          </button>
+          <pre
+            v-if="thinkingExpanded"
+            ref="thinkingTextEl"
+            class="thinking-text"
+          >{{ safeThinkingText }}</pre>
+        </div>
+      </div>
 
-    <div v-if="agentMode && visibleSteps.length" class="stream-rows">
+      <div v-if="agentMode && hiddenCount > 0" class="timeline-node timeline-node--expand">
+        <div class="timeline-marker">
+          <span class="dot dot-muted" aria-hidden="true" />
+        </div>
+        <div class="timeline-content">
+          <button type="button" class="expand-btn" @click="expanded = true">
+            Show {{ hiddenCount }} completed step{{ hiddenCount > 1 ? 's' : '' }}
+          </button>
+        </div>
+      </div>
+
       <div
-        v-for="step in visibleSteps"
+        v-for="step in displaySteps"
         :key="step.id"
-        class="stream-step"
+        class="timeline-node"
         :class="[step.phase, step.status]"
       >
-        <div
-          class="stream-row"
-          :class="{ clickable: step.detail?.trim() && step.status !== 'active' }"
-          @click="toggleStepDetail(step)"
-        >
-          <span class="row-indicator" :class="step.status" aria-hidden="true">
-            <span v-if="step.status === 'error'" class="indicator-char">✗</span>
+        <div class="timeline-marker">
+          <span class="row-indicator" aria-hidden="true">
+            <span v-if="step.status === 'error'" class="indicator-char">×</span>
             <span v-else-if="step.status === 'done'" class="dot dot-done" />
-            <span v-else-if="step.phase === 'model'" class="dot dot-model">
-              <span class="dot-model-arc" />
-            </span>
-            <span v-else class="dot dot-active">
-              <span class="dot-pulse" />
-            </span>
+            <AgentSpinnerGlyph v-else />
           </span>
-          <span v-if="step.detail?.trim() && step.status !== 'active'" class="row-chevron" aria-hidden="true">
-            {{ isStepDetailOpen(step) ? '▾' : '▸' }}
-          </span>
-          <span class="row-primary">{{ primaryForStep(step) }}</span>
-          <span v-if="secondaryForStep(step)" class="row-secondary">{{ secondaryForStep(step) }}</span>
         </div>
-        <div v-if="isStepDetailOpen(step) && isBashStep(step)" class="bash-io-block">
-          <div v-if="step.summary?.trim()" class="bash-io-row">
-            <span class="io-label">IN</span>
-            <pre class="io-body">{{ step.summary }}</pre>
+        <div class="timeline-content">
+          <div
+            class="stream-row"
+            :class="{ clickable: hasStepExpandable(step) && step.status !== 'active' }"
+            @click="toggleStepDetail(step)"
+          >
+            <span class="row-primary">{{ primaryForStep(step) }}</span>
+            <span v-if="secondaryForStep(step)" class="row-secondary">{{ secondaryForStep(step) }}</span>
+            <span
+              v-if="hasStepExpandable(step) && step.status !== 'active'"
+              class="row-chevron"
+              aria-hidden="true"
+            >{{ isStepDetailOpen(step) ? '▾' : '›' }}</span>
           </div>
-          <div v-if="step.detail?.trim()" class="bash-io-row">
-            <span class="io-label">OUT</span>
-            <pre class="io-body">{{ step.detail }}</pre>
+          <div v-if="isStepDetailOpen(step) && isBashStep(step)" class="bash-io-block">
+            <div v-if="step.summary?.trim()" class="bash-io-row">
+              <span class="io-label">IN</span>
+              <pre class="io-body">{{ step.summary }}</pre>
+            </div>
+            <div v-if="step.detail?.trim()" class="bash-io-row">
+              <span class="io-label">OUT</span>
+              <pre class="io-body">{{ step.detail }}</pre>
+            </div>
           </div>
+          <pre v-else-if="isStepDetailOpen(step) && step.detail?.trim()" class="step-detail">{{ step.detail }}</pre>
         </div>
-        <pre v-else-if="isStepDetailOpen(step)" class="step-detail">{{ step.detail }}</pre>
       </div>
-    </div>
 
-    <div v-if="agentMode && subagentTasks.length" class="stream-rows subagent-rows">
       <div
-        v-for="task in subagentTasks"
+        v-if="agentMode"
+        v-for="task in displaySubagents"
         :key="task.id"
-        class="stream-row subagent"
+        class="timeline-node subagent"
         :class="task.status"
       >
-        <span class="row-indicator" :class="task.status" aria-hidden="true">
-          <span v-if="task.status === 'failed' || task.status === 'stopped'" class="indicator-char">✗</span>
-          <span v-else-if="task.status === 'completed'" class="dot dot-done" />
-          <span v-else class="dot dot-active">
-            <span class="dot-pulse" />
+        <div class="timeline-marker">
+          <span class="row-indicator" aria-hidden="true">
+            <span v-if="task.status === 'failed' || task.status === 'stopped'" class="indicator-char">×</span>
+            <span v-else-if="task.status === 'completed'" class="dot dot-done" />
+            <AgentSpinnerGlyph v-else />
           </span>
-        </span>
-        <span class="row-primary">Agent: {{ task.description }}</span>
+        </div>
+        <div class="timeline-content">
+          <div class="stream-row">
+            <span class="row-primary">Agent: {{ task.description }}</span>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div v-if="streamText.trim()" class="reasoning-block">
-      <pre class="reasoning-text">{{ streamText }}</pre>
+      <div v-if="showWandering" class="timeline-node timeline-node--status">
+        <div class="timeline-marker">
+          <AgentSpinnerGlyph />
+        </div>
+        <div class="timeline-content">
+          <span class="status-label status-label--wandering">Wandering…</span>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -268,7 +331,7 @@ const secondaryForStep = (step: AgentProgressStep) => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin: 0 0 10px;
+  margin: 0;
   padding: 0;
   border: none;
   background: none;
@@ -287,107 +350,123 @@ const secondaryForStep = (step: AgentProgressStep) => {
   opacity: 0.75;
 }
 
-.stream-headline {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--wc-text-muted);
+.status-label {
   font-size: 12px;
-  margin-bottom: 8px;
+  color: var(--wc-text-muted);
 }
 
-.stream-headline.shimmer .headline-text {
-  animation: stream-shimmer 1.4s ease-in-out infinite;
+.timeline-track {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 2px;
 }
 
-@keyframes stream-shimmer {
-  0%,
-  100% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 1;
-  }
+.timeline-spine {
+  position: absolute;
+  left: 4px;
+  top: 12px;
+  bottom: 12px;
+  width: 1px;
+  background: color-mix(in srgb, var(--wc-border) 85%, transparent);
+  pointer-events: none;
 }
 
-.headline-glyph {
-  display: none;
+.timeline-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 3px 0;
+  position: relative;
+  z-index: 1;
 }
 
-.stream-expand {
-  margin-bottom: 6px;
+.timeline-marker {
+  width: 9px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  padding-top: 5px;
+}
+
+.timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.dot-thought,
+.dot-muted {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--wc-text-dim);
+  opacity: 0.45;
+}
+
+.dot-muted {
+  opacity: 0.3;
 }
 
 .expand-btn {
   padding: 0;
   border: none;
   background: none;
-  color: var(--wc-accent, #7aa2f7);
-  font-size: 11px;
+  color: var(--wc-accent, #3794ff);
+  font-size: 12px;
   cursor: pointer;
   font-family: inherit;
+  opacity: 0.9;
 }
 
 .expand-btn:hover {
+  opacity: 1;
   text-decoration: underline;
-}
-
-.stream-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.stream-step {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
 }
 
 .stream-row {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 5px;
   min-width: 0;
+  line-height: 1.45;
 }
 
 .stream-row.clickable {
   cursor: pointer;
 }
 
-.stream-row.clickable:hover .row-primary {
-  color: var(--wc-accent, #7aa2f7);
+.stream-row.clickable:hover {
+  opacity: 0.88;
 }
 
 .row-chevron {
   flex-shrink: 0;
-  width: 10px;
+  margin-left: 2px;
   color: var(--wc-text-dim);
-  font-size: 10px;
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 .step-detail {
-  margin: 4px 0 0 18px;
-  padding: 8px 10px;
-  max-height: 220px;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 200px;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
-  line-height: 1.45;
-  color: var(--wc-text);
-  background: color-mix(in srgb, var(--wc-input-bg) 55%, var(--wc-panel));
-  border-radius: 6px;
+  line-height: 1.5;
+  color: var(--wc-text-dim);
 }
 
 .bash-io-block {
-  margin: 4px 0 0 18px;
+  margin: 4px 0 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 220px;
+  gap: 4px;
+  max-height: 200px;
   overflow: auto;
 }
 
@@ -395,19 +474,20 @@ const secondaryForStep = (step: AgentProgressStep) => {
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--wc-input-bg) 55%, var(--wc-panel));
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--wc-border) 80%, transparent);
+  background: color-mix(in srgb, var(--wc-input-bg) 30%, transparent);
 }
 
 .io-label {
   flex-shrink: 0;
   font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   color: var(--wc-text-dim);
-  padding-top: 2px;
+  opacity: 0.8;
 }
 
 .io-body {
@@ -419,20 +499,16 @@ const secondaryForStep = (step: AgentProgressStep) => {
   font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   line-height: 1.45;
-  color: var(--wc-text);
+  color: var(--wc-text-muted);
 }
 
 .stream-row.error .indicator-char {
   color: #c45c5c;
 }
 
-.stream-row.tool.active .row-primary {
-  color: var(--wc-accent, #7aa2f7);
-}
-
 .row-indicator {
-  width: 14px;
-  height: 14px;
+  width: 9px;
+  height: 9px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -440,147 +516,52 @@ const secondaryForStep = (step: AgentProgressStep) => {
 }
 
 .indicator-char {
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1;
+  color: var(--wc-text-dim);
 }
 
 .dot {
-  position: relative;
   display: block;
+  flex-shrink: 0;
 }
 
 .dot-done {
-  width: 7px;
-  height: 7px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: #3ecf8e;
-  box-shadow: 0 0 6px color-mix(in srgb, #3ecf8e 45%, transparent);
-  animation: dot-pop 0.35s ease-out;
+  background: #3d9a5f;
 }
 
-.dot-active {
-  width: 8px;
-  height: 8px;
-}
-
-.dot-pulse {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: var(--wc-accent, #7aa2f7);
-  animation: dot-breathe 1.2s ease-in-out infinite;
-}
-
-.dot-pulse::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  border: 1.5px solid var(--wc-accent, #7aa2f7);
-  animation: dot-ring 1.2s ease-out infinite;
-}
-
-.dot-model {
-  width: 10px;
-  height: 10px;
-}
-
-.dot-model-arc {
-  display: block;
-  width: 10px;
-  height: 10px;
-  border: 2px solid color-mix(in srgb, var(--wc-accent, #7aa2f7) 22%, transparent);
-  border-top-color: var(--wc-accent, #7aa2f7);
-  border-radius: 50%;
-  animation: dot-spin 0.75s linear infinite;
-}
-
-@keyframes dot-breathe {
-  0%,
-  100% {
-    transform: scale(0.82);
-    opacity: 0.55;
-  }
-  50% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes dot-ring {
-  0% {
-    transform: scale(0.75);
-    opacity: 0.55;
-  }
-  100% {
-    transform: scale(1.65);
-    opacity: 0;
-  }
-}
-
-@keyframes dot-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes dot-pop {
-  0% {
-    transform: scale(0);
-    opacity: 0;
-  }
-  70% {
-    transform: scale(1.2);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
+.timeline-marker :deep(.agent-spinner-glyph),
+.row-indicator :deep(.agent-spinner-glyph) {
+  width: 9px;
+  height: 9px;
+  font-size: 9px;
 }
 
 .row-primary {
   flex-shrink: 0;
-  font-weight: 600;
+  font-weight: 400;
   font-size: 13px;
   color: var(--wc-text);
 }
 
 .row-secondary {
   min-width: 0;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--wc-text-dim);
 }
 
-.subagent-rows {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--wc-border);
-}
-
-.reasoning-block {
-  margin-top: 8px;
-  padding: 8px 0 0 10px;
-  border-left: 2px solid var(--wc-border-light, var(--wc-border));
-  max-height: 220px;
-  overflow: auto;
-}
-
-.reasoning-text {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--wc-text-dim);
-}
-
-.thinking-text {
-  margin: 0 0 10px;
-  padding: 8px 10px;
-  max-height: 180px;
+.row-secondary {
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 160px;
   overflow-y: auto;
   overflow-anchor: none;
   white-space: pre-wrap;
@@ -589,7 +570,5 @@ const secondaryForStep = (step: AgentProgressStep) => {
   font-size: 11px;
   line-height: 1.5;
   color: var(--wc-text-dim);
-  background: color-mix(in srgb, var(--wc-input-bg) 55%, var(--wc-panel));
-  border-radius: 6px;
 }
 </style>

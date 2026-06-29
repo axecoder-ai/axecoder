@@ -367,11 +367,13 @@ defineExpose({ setHits, focusInput, setQuery })
 <style scoped>
 .search-panel {
   width: 100%;
+  height: 100%;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--wc-sidebar);
   min-height: 0;
+  overflow: hidden;
   font-size: 13px;
   line-height: 1.4;
 }

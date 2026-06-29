@@ -59,6 +59,22 @@ Always respond in 中文
     await expect(resolveWorkshopReplyLanguage(projectRoot)).resolves.toBe('中文')
   })
 
+  it('respond in 中文 变体可识别', async () => {
+    await writeConfig(testDir, 'en')
+    await fs.mkdir(path.join(testDir, 'rules'), { recursive: true })
+    await fs.writeFile(
+      path.join(testDir, 'rules', 'zh.mdc'),
+      `---
+description: zh
+alwaysApply: true
+---
+respond in 中文 always
+`,
+      'utf-8',
+    )
+    await expect(resolveWorkshopReplyLanguage(projectRoot)).resolves.toBe('中文')
+  })
+
   it('buildManagerTurnPrompt 使用动态语言', () => {
     const p = buildManagerTurnPrompt('任务', '', [], undefined, '中文')
     expect(p).toContain('message to the group in 中文')
