@@ -4,6 +4,11 @@ import {
   sliceProgressStepsForDisplay,
   type AgentProgressStep,
 } from '../../utils/agent-progress'
+import {
+  nextSpinnerVerb,
+  pickSpinnerVerb,
+  SPINNER_ROTATE_MS,
+} from '../../utils/spinner-verbs'
 import AgentSpinnerGlyph from './AgentSpinnerGlyph.vue'
 
 type SubagentTaskView = {
@@ -40,8 +45,10 @@ const thinkingTextEl = ref<HTMLElement | null>(null)
 const thinkingStartedAt = ref<number | null>(null)
 const thinkingTick = ref(0)
 let thinkingTimer: ReturnType<typeof setInterval> | undefined
-/** 用户手动展开的已完成 step */
+/** 用户手动展开的已完成 step（非 Bash） */
 const stepDetailExpanded = ref<Set<string>>(new Set())
+/** 用户手动收起的 Bash step（Bash 默认展开） */
+const bashCollapsed = ref<Set<string>>(new Set())
 
 const syncThinkingTimer = (active: boolean) => {
   if (active) {
@@ -74,7 +81,10 @@ watch(safeThinkingText, (text, prev) => {
   })
 })
 
-onUnmounted(() => syncThinkingTimer(false))
+onUnmounted(() => {
+  syncThinkingTimer(false)
+  syncSpinnerTimer(false)
+})
 
 const thinkingSeconds = computed(() => {
   void thinkingTick.value
@@ -89,9 +99,13 @@ watch(
   () => props.steps,
   (steps) => {
     const open = stepDetailExpanded.value
+    const collapsed = bashCollapsed.value
     const ids = new Set(steps.map((s) => s.id))
     for (const id of open) {
       if (!ids.has(id)) open.delete(id)
+    }
+    for (const id of collapsed) {
+      if (!ids.has(id)) collapsed.delete(id)
     }
   },
   { deep: true },
@@ -116,11 +130,19 @@ const hasStepExpandable = (step: AgentProgressStep) =>
 const isStepDetailOpen = (step: AgentProgressStep) => {
   if (step.status === 'active' && hasStepExpandable(step)) return true
   if (!hasStepExpandable(step)) return false
+  if (isBashStep(step)) return !bashCollapsed.value.has(step.id)
   return stepDetailExpanded.value.has(step.id)
 }
 
 const toggleStepDetail = (step: AgentProgressStep) => {
   if (!hasStepExpandable(step) || step.status === 'active') return
+  if (isBashStep(step)) {
+    const next = new Set(bashCollapsed.value)
+    if (next.has(step.id)) next.delete(step.id)
+    else next.add(step.id)
+    bashCollapsed.value = next
+    return
+  }
   const next = new Set(stepDetailExpanded.value)
   if (next.has(step.id)) next.delete(step.id)
   else next.add(step.id)
@@ -156,10 +178,40 @@ const showWandering = computed(
       displaySubagents.value.some((t) => t.status === 'running')),
 )
 
-const plainStatusLabel = computed(() => props.fallbackHeadline?.trim() || 'Thinking…')
+const plainStatusLabel = computed(() => props.fallbackHeadline?.trim() || pickSpinnerVerb())
+
+const spinnerLabel = ref(pickSpinnerVerb())
+let spinnerTimer: ReturnType<typeof setInterval> | undefined
+
+const showSpinnerRotation = computed(
+  () =>
+    props.agentMode &&
+    isRunning.value &&
+    !streamingReply.value &&
+    (showThinkingPending.value || showWandering.value),
+)
+
+const syncSpinnerTimer = (active: boolean) => {
+  if (active) {
+    spinnerLabel.value = pickSpinnerVerb()
+    if (!spinnerTimer) {
+      spinnerTimer = setInterval(() => {
+        spinnerLabel.value = nextSpinnerVerb(spinnerLabel.value)
+      }, SPINNER_ROTATE_MS)
+    }
+    return
+  }
+  if (spinnerTimer) {
+    clearInterval(spinnerTimer)
+    spinnerTimer = undefined
+  }
+}
+
+watch(showSpinnerRotation, syncSpinnerTimer, { immediate: true })
 
 const showTrackSpine = computed(
   () =>
+    isRunning.value ||
     showThinkingPending.value ||
     showWandering.value ||
     !!safeThinkingText.value.trim() ||
@@ -188,14 +240,14 @@ const secondaryForStep = (step: AgentProgressStep) => {
     </div>
 
     <div v-if="showTrackSpine" class="timeline-track">
-      <div class="timeline-spine" aria-hidden="true" />
-
       <div v-if="showThinkingPending" class="timeline-node timeline-node--status">
         <div class="timeline-marker">
           <AgentSpinnerGlyph />
         </div>
         <div class="timeline-content">
-          <span class="status-label">{{ props.agentMode ? 'Thinking…' : plainStatusLabel }}</span>
+          <span class="status-label">{{
+            showSpinnerRotation ? spinnerLabel : plainStatusLabel
+          }}</span>
         </div>
       </div>
 
@@ -299,7 +351,7 @@ const secondaryForStep = (step: AgentProgressStep) => {
           <AgentSpinnerGlyph />
         </div>
         <div class="timeline-content">
-          <span class="status-label status-label--wandering">Wandering…</span>
+          <span class="status-label">{{ spinnerLabel }}</span>
         </div>
       </div>
     </div>
@@ -362,21 +414,11 @@ const secondaryForStep = (step: AgentProgressStep) => {
   margin-bottom: 2px;
 }
 
-.timeline-spine {
-  position: absolute;
-  left: 4px;
-  top: 12px;
-  bottom: 12px;
-  width: 1px;
-  background: color-mix(in srgb, var(--wc-border) 85%, transparent);
-  pointer-events: none;
-}
-
 .timeline-node {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 3px 0;
+  padding: 7px 0;
   position: relative;
   z-index: 1;
 }
@@ -387,6 +429,38 @@ const secondaryForStep = (step: AgentProgressStep) => {
   display: flex;
   justify-content: center;
   padding-top: 5px;
+  position: relative;
+}
+
+.timeline-marker::before,
+.timeline-marker::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: color-mix(in srgb, var(--wc-border) 85%, transparent);
+  pointer-events: none;
+}
+
+/* 圆点/转圈上方线段 */
+.timeline-marker::before {
+  top: 0;
+  height: calc(5px + 4.5px - 3px);
+}
+
+/* 圆点/转圈下方线段 */
+.timeline-marker::after {
+  top: calc(5px + 4.5px + 3px);
+  bottom: -7px;
+}
+
+.timeline-track > .timeline-node:first-child .timeline-marker::before {
+  display: none;
+}
+
+.timeline-track > .timeline-node:last-child .timeline-marker::after {
+  display: none;
 }
 
 .timeline-content {
@@ -401,6 +475,8 @@ const secondaryForStep = (step: AgentProgressStep) => {
   border-radius: 50%;
   background: var(--wc-text-dim);
   opacity: 0.45;
+  position: relative;
+  z-index: 1;
 }
 
 .dot-muted {
@@ -427,9 +503,9 @@ const secondaryForStep = (step: AgentProgressStep) => {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
-  line-height: 1.45;
+  line-height: 1.65;
 }
 
 .stream-row.clickable {
@@ -513,6 +589,8 @@ const secondaryForStep = (step: AgentProgressStep) => {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  z-index: 1;
 }
 
 .indicator-char {
@@ -538,6 +616,8 @@ const secondaryForStep = (step: AgentProgressStep) => {
   width: 9px;
   height: 9px;
   font-size: 9px;
+  position: relative;
+  z-index: 1;
 }
 
 .row-primary {

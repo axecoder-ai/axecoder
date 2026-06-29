@@ -16,15 +16,19 @@ const electronApp = (): { isPackaged: boolean; getAppPath: () => string } | null
   }
 }
 
+/** asar 内 dist 只有编译产物，缺 node_modules；extraResources 才是完整运行时 */
+const isCompleteCodeGraphDist = (dir: string): boolean =>
+  fs.existsSync(path.join(dir, 'index.js')) &&
+  fs.existsSync(path.join(dir, 'node_modules', 'web-tree-sitter'))
+
 /** 开发：electron/main/codegraph/dist；打包：resources/codegraph（含 node_modules） */
 export const resolveCodeGraphDistRoot = (): string => {
   if (distRootCache) return distRootCache
 
   const candidates: string[] = []
   const app = electronApp()
-  // 打包后 asar 里也有 electron/main/codegraph/dist，但没有 node_modules；
-  // extraResources 拷到 Resources/codegraph 的才是完整运行时，必须优先。
-  if (app?.isPackaged) {
+  // Indexer Worker（ELECTRON_RUN_AS_NODE）里 electron.app 常为 undefined，但 resourcesPath 仍可用
+  if (process.resourcesPath) {
     candidates.push(path.join(process.resourcesPath, 'codegraph'))
   }
   if (process.env.APP_ROOT) {
@@ -37,7 +41,7 @@ export const resolveCodeGraphDistRoot = (): string => {
   candidates.push(path.join(here, 'dist'))
 
   for (const dir of candidates) {
-    if (fs.existsSync(path.join(dir, 'index.js'))) {
+    if (isCompleteCodeGraphDist(dir)) {
       distRootCache = dir
       return dir
     }

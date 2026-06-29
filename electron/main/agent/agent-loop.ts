@@ -44,6 +44,11 @@ import { executeAgentTool, type AgentContext, type PendingWriteInternal, type To
 import { emitAgentProgress } from './agent-progress-emit'
 import { formatModelCallDetail, formatToolResultDetail } from './agent-progress-detail'
 import { traceToolCall, traceToolResult } from '../ai-trace-store'
+import {
+  delegateTraceToolCall,
+  delegateTraceToolResult,
+  isAgentWorkerProcess,
+} from './main-process-delegate'
 import { formatAutoPlanNotice, resolveShouldAutoPlan } from './agent-auto-plan'
 import { countPatchLineStats } from './edit-utils'
 import { getConfig } from '../config-store'
@@ -87,6 +92,16 @@ import {
   type ChatModeId,
 } from './chat-mode'
 import { applyAgentRolePersonaToMessages } from './agent-role-persona'
+
+const emitTraceToolCall = (params: Parameters<typeof traceToolCall>[0]) => {
+  if (isAgentWorkerProcess()) delegateTraceToolCall(params)
+  else traceToolCall(params)
+}
+
+const emitTraceToolResult = (params: Parameters<typeof traceToolResult>[0]) => {
+  if (isAgentWorkerProcess()) delegateTraceToolResult(params)
+  else traceToolResult(params)
+}
 
 export { compactAgentMessages } from './agent-context-compact'
 export { runUserShellCommand } from './agent-user-shell'
@@ -199,7 +214,7 @@ const finalizeTurnCheckpointId = (sessionId: string, session: StoredAgentSession
 }
 
 const exportTurnMeta = (session: StoredAgentSession, sessionId?: string) => {
-  const fileChanges = [...session.turnFileChanges]
+  const fileChanges = [...(session.turnFileChanges ?? [])]
   if (!fileChanges.length) return {}
   const rewindCheckpointId = sessionId ? finalizeTurnCheckpointId(sessionId, session) : undefined
   return {
@@ -497,7 +512,7 @@ export const runAgentLoopUntilDoneOrPending = async (
           toolName: tc.name,
           summary: toolSummary,
         })
-        traceToolCall({
+        emitTraceToolCall({
           sessionId,
           turn: session.turn,
           toolName: tc.name,
@@ -520,7 +535,7 @@ export const runAgentLoopUntilDoneOrPending = async (
             log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
           }
           emitToolDoneProgress(tc.name, toolSummary, false, denied.content)
-          traceToolResult({
+          emitTraceToolResult({
             sessionId,
             turn: session.turn,
             toolName: tc.name,
@@ -541,7 +556,7 @@ export const runAgentLoopUntilDoneOrPending = async (
               log: { name: tc.name as AgentToolName, summary: 'hook blocked', ok: false },
             }
             emitToolDoneProgress(tc.name, 'hook blocked', false, blocked.content)
-            traceToolResult({
+            emitTraceToolResult({
               sessionId,
               turn: session.turn,
               toolName: tc.name,
@@ -570,7 +585,7 @@ export const runAgentLoopUntilDoneOrPending = async (
             log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
           }
           emitToolDoneProgress(tc.name, toolSummary, false, repeatBlock)
-          traceToolResult({
+          emitTraceToolResult({
             sessionId,
             turn: session.turn,
             toolName: tc.name,
@@ -587,7 +602,7 @@ export const runAgentLoopUntilDoneOrPending = async (
             log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
           }
           emitToolDoneProgress(tc.name, toolSummary, false, aborted.content)
-          traceToolResult({
+          emitTraceToolResult({
             sessionId,
             turn: session.turn,
             toolName: tc.name,
@@ -677,7 +692,7 @@ export const runAgentLoopUntilDoneOrPending = async (
           )
         }
 
-        traceToolResult({
+        emitTraceToolResult({
           sessionId,
           turn: session.turn,
           toolName: tc.name,

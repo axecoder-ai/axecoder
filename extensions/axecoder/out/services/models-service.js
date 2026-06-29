@@ -1,0 +1,20 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getProviderCapabilities = exports.pingModelHandler = exports.setActiveModelHandler = exports.toggleModelHandler = exports.deleteModelHandler = exports.saveModelHandler = exports.listModelsHandler = void 0;
+const models_store_1 = require("@axecoder/core/models-store");
+const models_types_1 = require("@axecoder/core/models-types");
+const listModelsHandler = async () => (0, models_store_1.listModels)();
+exports.listModelsHandler = listModelsHandler;
+const saveModelHandler = async (input) => (0, models_store_1.saveModel)(input);
+exports.saveModelHandler = saveModelHandler;
+const deleteModelHandler = async (id) => (0, models_store_1.deleteModel)(id);
+exports.deleteModelHandler = deleteModelHandler;
+const toggleModelHandler = async (id, enabled) => (0, models_store_1.toggleModel)(id, enabled);
+exports.toggleModelHandler = toggleModelHandler;
+const setActiveModelHandler = async (id) => (0, models_store_1.setActiveModel)(id);
+exports.setActiveModelHandler = setActiveModelHandler;
+const pingModelHandler = async (id) => (0, models_store_1.pingModel)(id);
+exports.pingModelHandler = pingModelHandler;
+const getProviderCapabilities = async () => (0, models_types_1.listAllProviderCapabilities)();
+exports.getProviderCapabilities = getProviderCapabilities;
+//# sourceMappingURL=models-service.js.map

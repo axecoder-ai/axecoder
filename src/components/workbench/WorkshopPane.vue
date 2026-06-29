@@ -196,6 +196,7 @@ const bindWorkshopAgentProgress = () => {
 
 const hasProject = computed(() => !!props.projectRoot?.trim())
 const pendingQuestion = computed(() => active.value?.pendingQuestion ?? '')
+const pendingSopGate = computed(() => !!active.value?.pendingSopGate)
 const mountedFiles = computed(() => active.value?.mountedFiles ?? [])
 const messages = computed(
   () => active.value?.messages.filter((m) => !m.hidden) ?? [],
@@ -515,6 +516,28 @@ const sendAnswer = async () => {
   }
 }
 
+const skipSopGate = async () => {
+  if (!active.value || loading.value || !pendingSopGate.value) return
+  loading.value = true
+  thinkingRole.value = 'manager'
+  clearStreamUi()
+  bindWorkshopAgentProgress()
+  try {
+    const res = await window.axecoder.workshopSkipSopGate(props.projectRoot, active.value.id)
+    if (!res.ok) {
+      window.alert(res.error)
+      return
+    }
+    active.value = res.session
+    await scrollToBottom(true)
+    await persist()
+  } finally {
+    loading.value = false
+    thinkingRole.value = null
+    clearProgressUi()
+  }
+}
+
 const openMountedFile = (rel: string) => {
   if (!props.projectRoot) return
   const full = rel.startsWith('/') ? rel : `${props.projectRoot}/${rel.replace(/^\.\//, '')}`
@@ -672,7 +695,18 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
       </div>
       <div v-if="hasProject" class="composer">
         <template v-if="pendingQuestion">
-          <p class="clarify-prompt">{{ pendingQuestion }}</p>
+          <div class="clarify-prompt-row">
+            <p class="clarify-prompt">{{ pendingQuestion }}</p>
+            <button
+              v-if="pendingSopGate"
+              type="button"
+              class="clarify-skip-btn"
+              :disabled="loading"
+              @click="() => void skipSopGate()"
+            >
+              忽略
+            </button>
+          </div>
           <div class="composer-user-hint">
             <span
               class="composer-avatar"
@@ -853,6 +887,36 @@ defineExpose({ loadModels, loadWorkshopUsers, selectSession, newSession, deleteS
 .composer {
   border-top: 1px solid var(--wc-border);
   flex-shrink: 0;
+}
+.composer .clarify-prompt-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px 0;
+}
+.composer .clarify-prompt-row .clarify-prompt {
+  padding: 0;
+  margin: 0;
+  flex: 1;
+}
+.clarify-skip-btn {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--wc-border);
+  background: transparent;
+  color: var(--wc-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.clarify-skip-btn:hover:not(:disabled) {
+  color: var(--wc-text);
+  border-color: var(--wc-text-muted);
+}
+.clarify-skip-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .composer .clarify-prompt {
   padding: 8px 16px 0;

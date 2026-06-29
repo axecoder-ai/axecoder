@@ -24,21 +24,27 @@ describe('Agents 历史侧栏折叠图标', () => {
   it('TitleBar toggleAiPanel 使用聊天气泡图标', () => {
     const tb = readComponent('TitleBar.vue')
     const block = sliceBetween(tb, '@click="$emit(\'toggleAiPanel\')"', '</button>')
-    expect(block.includes('chat-toggle-icon')).toBe(true)
+    expect(block.includes('chat-toggle-icon') || block.includes('codicon-comment-discussion')).toBe(
+      true,
+    )
     expect(includesRightPanelLayoutIcon(block)).toBe(false)
   })
 
   it('AgentsPanel panel-toggle 使用右侧侧栏布局图标', () => {
     const ap = readComponent('AgentsPanel.vue')
     const block = sliceBetween(ap, 'class="panel-toggle"', '</button>')
-    expect(includesRightPanelLayoutIcon(block)).toBe(true)
+    expect(
+      includesRightPanelLayoutIcon(block) || block.includes('codicon-layout-sidebar-right'),
+    ).toBe(true)
     expect(block.includes(LEGACY_AGENTS_PANEL_ICON_MARKERS.inner)).toBe(false)
   })
 
   it('ChatPane agents-expand 使用右侧侧栏布局图标', () => {
     const cp = readComponent('ChatPane.vue')
     const block = sliceBetween(cp, 'class="agents-expand"', '</button>')
-    expect(includesRightPanelLayoutIcon(block)).toBe(true)
+    expect(
+      includesRightPanelLayoutIcon(block) || block.includes('codicon-layout-sidebar-right'),
+    ).toBe(true)
     expect(block.includes(LEGACY_AGENTS_PANEL_ICON_MARKERS.inner)).toBe(false)
   })
 

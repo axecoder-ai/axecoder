@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { axecoderPath, ensureAxecoderDir } from '../axecoder-dir'
+import { discoverExtensionServers } from './lsp-extension-discovery'
 import type { LspConfigFile, ScopedLspServerConfig } from './types'
 
 const parseJson = (raw: string): LspConfigFile | null => {
@@ -24,6 +25,9 @@ const mergeServers = (
 
 export const loadLspConfig = async (projectRoot: string): Promise<LspConfigFile> => {
   const merged: Record<string, ScopedLspServerConfig> = {}
+
+  const discovered = await discoverExtensionServers()
+  mergeServers(merged, discovered)
 
   await ensureAxecoderDir()
   const userPath = axecoderPath('lsp.json')

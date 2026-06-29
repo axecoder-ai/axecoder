@@ -89,6 +89,66 @@ const writeArtifact = async (
   return path.relative(projectRoot, jsonPath)
 }
 
+const artifactBodiesForPhase = (phase: SopPipelinePhase, artifactBody: string, session: WorkshopSession) => {
+  let jsonBody = artifactBody
+  let mdBody = artifactBody
+  if (phase === 'prd') {
+    try {
+      const p = JSON.parse(artifactBody)
+      mdBody = prdToMarkdown(p)
+    } catch {
+      mdBody = artifactBody
+      jsonBody = JSON.stringify({ title: session.title, userStories: [artifactBody] })
+    }
+  } else if (phase === 'design') {
+    try {
+      const d = JSON.parse(artifactBody)
+      mdBody = designToMarkdown(d)
+    } catch {
+      mdBody = artifactBody
+    }
+  } else if (phase === 'tasks') {
+    try {
+      const t = JSON.parse(artifactBody)
+      mdBody = tasksToMarkdown(t)
+    } catch {
+      mdBody = artifactBody
+    }
+  }
+  return { jsonBody, mdBody }
+}
+
+const writePhaseArtifact = async (
+  phase: SopPipelinePhase,
+  artifactBody: string,
+  session: WorkshopSession,
+  pool: MessagePool,
+  projectRoot: string,
+  slug: string,
+) => {
+  const def = sopPhaseDef(phase)
+  if (!def?.artifact || !projectRoot || !artifactBody.trim()) return
+  const { jsonBody, mdBody } = artifactBodiesForPhase(phase, artifactBody, session)
+  const rel = await writeArtifact(projectRoot, slug, def.artifact, jsonBody, mdBody)
+  const last = pool.all().slice(-1)[0]
+  if (last) last.artifactPath = rel
+}
+
+const pauseForSopGate = (
+  session: WorkshopSession,
+  phase: SopPipelinePhase,
+  error: string,
+  pool: MessagePool,
+) => {
+  session.phase = 'waiting_user'
+  session.pendingAsks = undefined
+  session.pendingQuestion = error
+  session.pendingSopGate = phase
+  session.sopPhase = phase
+  pushChat(session, 'system', `SOP 暂停（${phase}）：${error}`, { hidden: true })
+  session.sopPoolMessages = pool.toJSON()
+}
+
 const runRolePhase = async (
   session: WorkshopSession,
   pool: MessagePool,
@@ -312,10 +372,12 @@ const runPipelineFromPhase = async (
             ? await validateImplementOnDisk(ran.relatedFiles, projectRoot)
             : gate
         if (!implGate.ok) {
-          session.phase = 'waiting_user'
-          session.pendingQuestion = implGate.error || resolvePendingQuestion('implement', ran.artifactBody)
-          session.sopPhase = 'implement'
-          session.sopPoolMessages = pool.toJSON()
+          pauseForSopGate(
+            session,
+            'implement',
+            implGate.error || resolvePendingQuestion('implement', ran.artifactBody),
+            pool,
+          )
           return { ok: true, session }
         }
         pool.publish({
@@ -351,11 +413,12 @@ const runPipelineFromPhase = async (
         ? await validateImplementOnDisk(impl.relatedFiles, projectRoot)
         : { ok: true as const }
       if (!implGate.ok) {
-        session.phase = 'waiting_user'
-        session.pendingQuestion = implGate.error || resolvePendingQuestion('implement', impl.summary)
-        session.sopPhase = 'implement'
-        pushChat(session, 'system', `SOP 暂停（implement）：${implGate.error}`, { hidden: true })
-        session.sopPoolMessages = pool.toJSON()
+        pauseForSopGate(
+          session,
+          'implement',
+          implGate.error || resolvePendingQuestion('implement', impl.summary),
+          pool,
+        )
         return { ok: true, session }
       }
 
@@ -391,44 +454,17 @@ const runPipelineFromPhase = async (
         ? await validateImplementOnDisk(ran.relatedFiles, projectRoot)
         : gate
     if (!implGate.ok) {
-      session.phase = 'waiting_user'
-      session.pendingAsks = undefined
-      session.pendingQuestion = implGate.error || resolvePendingQuestion(phase, ran.artifactBody)
-      session.sopPhase = phase
-      pushChat(session, 'system', `SOP 暂停（${phase}）：${implGate.error}`, { hidden: true })
-      session.sopPoolMessages = pool.toJSON()
+      pauseForSopGate(
+        session,
+        phase,
+        implGate.error || resolvePendingQuestion(phase, ran.artifactBody),
+        pool,
+      )
       return { ok: true, session }
     }
 
     if (def.artifact && projectRoot) {
-      let jsonBody = ran.artifactBody
-      let mdBody = ran.artifactBody
-      if (phase === 'prd') {
-        try {
-          const p = JSON.parse(ran.artifactBody)
-          mdBody = prdToMarkdown(p)
-        } catch {
-          mdBody = ran.artifactBody
-          jsonBody = JSON.stringify({ title: session.title, userStories: [ran.artifactBody] })
-        }
-      } else if (phase === 'design') {
-        try {
-          const d = JSON.parse(ran.artifactBody)
-          mdBody = designToMarkdown(d)
-        } catch {
-          mdBody = ran.artifactBody
-        }
-      } else if (phase === 'tasks') {
-        try {
-          const t = JSON.parse(ran.artifactBody)
-          mdBody = tasksToMarkdown(t)
-        } catch {
-          mdBody = ran.artifactBody
-        }
-      }
-      const rel = await writeArtifact(projectRoot, slug, def.artifact, jsonBody, mdBody)
-      const last = pool.all().slice(-1)[0]
-      if (last) last.artifactPath = rel
+      await writePhaseArtifact(phase, ran.artifactBody, session, pool, projectRoot, slug)
     }
 
     phase = nextRunnablePhase(phase, pool, intent)
@@ -619,6 +655,55 @@ export const runSopUserFollowUp = async (
   return { ok: true, session }
 }
 
+export const skipSopPipelineGate = async (
+  session: WorkshopSession,
+  speaker: RoleSpeaker,
+  onProgress?: WorkshopProgressHandler,
+  options?: SendSopPipelineOptions,
+): Promise<WorkshopRunResult> => {
+  const phase = session.pendingSopGate
+  if (!phase || phase === 'idle' || phase === 'done' || phase === 'requirement') {
+    return { ok: false, error: 'No SOP gate to skip' }
+  }
+  if (session.phase !== 'waiting_user') {
+    return { ok: false, error: 'Not waiting for gate' }
+  }
+
+  const projectRoot = options?.projectRoot?.trim() ?? ''
+  const usersFile = await listUsers()
+  const users = usersFile.users
+  const pool = hydrateMessagePool(session.sopPoolMessages)
+  const slug = session.sopSlug || slugFromBrief(session.userBrief)
+  const intent: SopIntent = session.sopIntent ?? 'greenfield'
+
+  pushChat(session, 'user', '（忽略闸门，继续）')
+  pool.publish({
+    causeBy: 'UserRequirement',
+    phase,
+    content: 'skip sop gate',
+  })
+
+  const lastForPhase = pool.all().filter((m) => m.phase === phase).slice(-1)[0]
+  const artifactBody = lastForPhase?.content?.trim() ?? ''
+  if (artifactBody) {
+    await writePhaseArtifact(phase, artifactBody, session, pool, projectRoot, slug)
+  }
+
+  session.pendingQuestion = undefined
+  session.pendingSopGate = undefined
+  session.pendingAsks = undefined
+  session.phase = 'running'
+  session.sopPoolMessages = pool.toJSON()
+
+  const next = nextRunnablePhase(phase, pool, intent)
+  if (!next || next === 'done') {
+    session.phase = 'done'
+    session.sopPhase = 'done'
+    return { ok: true, session }
+  }
+  return runPipelineFromPhase(session, pool, users, speaker, projectRoot, next, onProgress, options)
+}
+
 export const sendSopPipelineMessage = async (
   session: WorkshopSession,
   text: string,
@@ -649,6 +734,7 @@ export const sendSopPipelineMessage = async (
     })
     session.pendingQuestion = undefined
     session.pendingAsks = undefined
+    session.pendingSopGate = undefined
     session.phase = 'running'
     session.sopPoolMessages = pool.toJSON()
     const resume = session.sopPhase && session.sopPhase !== 'idle' ? session.sopPhase : 'prd'

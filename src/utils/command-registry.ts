@@ -1,4 +1,5 @@
 import type { PaletteCommand } from '../components/workbench/CommandPalette.vue'
+import type { CommandContribution } from '../../shared/workbench-contributions/types'
 
 export type RegistryCommand = PaletteCommand & {
   run: () => void | Promise<void>
@@ -65,6 +66,35 @@ export type WorkbenchCommandHandlers = {
   settings: () => void | Promise<void>
   toggleMetrics?: () => void
   toggleTrace?: () => void | Promise<void>
+}
+
+const manifestCommandAliases: Record<string, keyof WorkbenchCommandHandlers> = {
+  'workbench.action.openProject': 'openProject',
+  'workbench.action.toggleScm': 'toggleScm',
+  'axecoder.toggleChat': 'toggleChat',
+  'axecoder.openSettings': 'settings',
+  'axecoder.openModelsSettings': 'settings',
+}
+
+/** 将 manifest commands 注册到命令面板（已有 id 不覆盖） */
+export const registerManifestCommands = (
+  list: CommandContribution[],
+  handlers: WorkbenchCommandHandlers,
+) => {
+  const existing = new Set(commands.map((c) => c.id))
+  for (const c of list) {
+    if (existing.has(c.command)) continue
+    const alias = manifestCommandAliases[c.command]
+    const run = alias ? handlers[alias] : undefined
+    if (!run) continue
+    registerCommand({
+      id: c.command,
+      label: c.category ? `${c.category}: ${c.title}` : c.title,
+      shortcut: '',
+      run: () => run(),
+    })
+    existing.add(c.command)
+  }
 }
 
 export const setupWorkbenchCommands = (h: WorkbenchCommandHandlers) => {

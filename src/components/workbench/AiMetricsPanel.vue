@@ -477,14 +477,19 @@ const drawTpsGauge = (
   ctx.fillText('tok/s', cx, cy - (large ? 16 : 12))
 }
 
-const gaugeTargetTps = () => snapshot.value?.realtime.kpis.tps ?? 0
+const gaugeTargetTps = () => {
+  const snap = snapshot.value
+  if (!snap) return 0
+  if (snap.concurrent <= 0) return 0
+  return snap.realtime.kpis.tps
+}
 
 const tickGauge = (now: number) => {
   const dt = Math.min(48, now - gaugeLastFrame || now)
   gaugeLastFrame = now
   const target = gaugeTargetTps()
   const rising = target > gaugeNeedleTps
-  const tauMs = rising ? 520 : target === 0 ? 680 : 420
+  const tauMs = rising ? 380 : target === 0 ? 520 : 320
   const alpha = 1 - Math.exp(-dt / tauMs)
   gaugeNeedleTps += (target - gaugeNeedleTps) * alpha
   if (Math.abs(target - gaugeNeedleTps) < 0.08) gaugeNeedleTps = target

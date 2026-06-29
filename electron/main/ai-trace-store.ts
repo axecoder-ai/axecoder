@@ -1,4 +1,5 @@
 import { pushAiMetricsActivity } from './ai-metrics-store'
+import { isAgentWorkerProcess, requestMainProcess } from './agent/main-process-delegate'
 import { broadcastToRenderers } from './renderer-broadcast'
 
 export type AiTraceSource = 'chat' | 'agent' | 'workshop' | 'other'
@@ -105,6 +106,10 @@ export const traceModelCall = (input: {
   result: { ok: boolean; text?: string; content?: string; reasoningContent?: string; toolCalls?: unknown[]; error?: string }
   durationMs: number
 }) => {
+  if (isAgentWorkerProcess()) {
+    void requestMainProcess('traceModelCall', input)
+    return
+  }
   const turnTag = input.turn ? ` · T${input.turn}` : ''
   pushAiMetricsActivity({
     kind: 'model_call',

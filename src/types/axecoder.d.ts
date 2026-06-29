@@ -550,6 +550,7 @@ export type WorkshopSession = WorkshopSessionMeta & {
   messages: WorkshopMessage[]
   phase: WorkshopPhase
   pendingQuestion?: string
+  pendingSopGate?: SopPipelinePhase
   mountedFiles: string[]
   stepPlan?: WorkshopStep[]
   currentStepIndex?: number
@@ -864,10 +865,13 @@ export type CodeGraphPublicStatus = {
   distPath: string
 }
 
+export type WorkbenchContributions = import('../../shared/workbench-contributions/types').WorkbenchContributions
+
 export type AxeCoderFs = {
   getWindowLayout: () => Promise<WindowLayout>
   onWindowLayout: (callback: (layout: WindowLayout) => void) => () => void
   getWindowRole: () => Promise<WorkbenchWindowRole>
+  getWorkbenchContributions: () => Promise<WorkbenchContributions>
   isCompanionWindowOpen: () => Promise<boolean>
   openCompanionWindow: () => Promise<boolean>
   closeCompanionWindow: () => Promise<boolean>
@@ -1426,6 +1430,7 @@ export type AxeCoderFs = {
     workshopId: string,
     answer: string,
   ) => Promise<WorkshopRunResult>
+  workshopSkipSopGate: (projectRoot: string, workshopId: string) => Promise<WorkshopRunResult>
   workshopStop: (workshopId: string) => Promise<{ ok: true; stopped: number } | { ok: false; error: string }>
   onWorkshopProgress: (callback: (payload: WorkshopProgressPayload) => void) => () => void
   drawIoGetDiagram: (

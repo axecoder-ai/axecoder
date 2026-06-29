@@ -15,6 +15,7 @@ import {
   ensureLspForProject,
   getInitializationStatus,
   getLspServerManager,
+  isLspFileOpen,
   waitForInitialization,
 } from '../lsp/lsp-manager'
 import {
@@ -218,7 +219,7 @@ export const executeAgentLsp = async (
   const { method, params } = getMethodAndParams(input, absolutePath)
   const cwd = projectRoot
 
-  if (!manager.isFileOpen(absolutePath)) {
+  if (!(await isLspFileOpen(absolutePath))) {
     const st = await fs.stat(absolutePath)
     if (st.size > MAX_LSP_FILE_SIZE_BYTES) {
       return {

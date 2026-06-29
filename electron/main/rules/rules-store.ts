@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { app } from 'electron'
+import { lazyApp } from '../lazy-electron'
 import { ensureAxecoderDir, axecoderPath } from '../axecoder-dir'
 import type { RuleDetail, RuleListItem, RuleSaveInput, RulesListResult, RuleScope } from './rules-types'
 import { parseRuleFile, ruleDisplayTitle, serializeRuleFile } from './rules-parse'
@@ -9,7 +9,7 @@ const userRulesDir = () => axecoderPath('rules')
 const projectRulesDir = (projectRoot: string) =>
   path.join(path.resolve(projectRoot.trim()), '.cursor', 'rules')
 
-const lastProjectFile = () => path.join(app.getPath('userData'), 'last-project.json')
+const lastProjectFile = () => path.join(lazyApp()?.getPath('userData') ?? '', 'last-project.json')
 
 export const readLastProjectRoot = async (): Promise<string | null> => {
   try {

@@ -16,4 +16,4 @@ All operations require:
 - line: The line number (1-based, as shown in editors)
 - character: The character offset (1-based, as shown in editors)
 
-Note: LSP servers must be configured in ~/.axecoder/lsp.json or .axecoder/lsp.json. If no server is available, an error will be returned.`
+Note: LSP servers are auto-discovered from installed VS Code/Cursor extensions; optional override in ~/.axecoder/lsp.json or .axecoder/lsp.json. If no server is available, an error will be returned.`

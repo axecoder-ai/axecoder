@@ -26,6 +26,7 @@ import { releaseHeldProjectLock } from './project-lock'
 import { launchNewAppInstance } from './launch-new-instance'
 import { registerAiMetricsIpc } from './ai-metrics-ipc'
 import { registerAiTraceIpc } from './ai-trace-ipc'
+import { registerWorkbenchContributionsIpc } from './workbench-contributions-ipc'
 import { getConfig } from './config-store'
 import { themeBackgroundColor } from './theme-colors'
 import Store from 'electron-store'
@@ -516,6 +517,7 @@ app.whenReady().then(async () => {
   registerDrawIoIpc(() => win)
   registerAiMetricsIpc()
   registerAiTraceIpc()
+  registerWorkbenchContributionsIpc()
   ipcMain.handle('app:getStartupProjectPath', () => startupProjectPath ?? null)
   ipcMain.handle('app:confirm', async (event, message: string) => {
     const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined
@@ -596,6 +598,14 @@ ipcMain.on('app:confirmQuit', async () => {
   closeMetricsWindow()
   closeTraceWindow()
   killTerminalPty()
+  const { shutdownAgentWorkerBridge } = await import('./agent-worker-bridge')
+  shutdownAgentWorkerBridge()
+  const { shutdownWorkshopWorkerBridge } = await import('./workshop-worker-bridge')
+  shutdownWorkshopWorkerBridge()
+  const { shutdownIndexerWorkerBridge } = await import('./indexer-worker-bridge')
+  shutdownIndexerWorkerBridge()
+  const { shutdownExtensionHostBridge } = await import('./extension-host-bridge')
+  shutdownExtensionHostBridge()
   await releaseHeldProjectLock()
   const { shutdownLspServerManager } = await import('./lsp/lsp-manager')
   await shutdownLspServerManager()

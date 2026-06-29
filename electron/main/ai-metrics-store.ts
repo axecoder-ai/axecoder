@@ -125,12 +125,23 @@ const MAX_ACTIVITY = 50
 const SERIES_BUCKETS = 24
 const BUCKET_MS = 2500
 const HOUR_MS = 3600_000
+const TPS_WINDOW_MS = 1000
+const STREAM_METRICS_BROADCAST_MS = 250
 
 let seq = 0
 let activitySeq = 0
+let lastStreamMetricsBroadcastAt = 0
 const active = new Map<
   string,
-  { startedAt: number; firstTokenAt: number | null; modelName: string; modelId: string; source: AiMetricsSource }
+  {
+    startedAt: number
+    firstTokenAt: number | null
+    outputChars: number
+    streamTicks: { ts: number; chars: number }[]
+    modelName: string
+    modelId: string
+    source: AiMetricsSource
+  }
 >()
 const records: AiMetricsCallRecord[] = []
 const activityLines: AiMetricsActivityLine[] = []
@@ -142,7 +153,25 @@ const percentile = (values: number[], p: number): number => {
   return sorted[idx]!
 }
 
-const estimateTokensFromChars = (chars: number) => Math.max(1, Math.round(chars / 4))
+const estimateTokensFromChars = (chars: number) => Math.max(0, Math.round(chars / 4))
+
+const charsInWindow = (ticks: { ts: number; chars: number }[], now: number, windowMs: number) => {
+  const since = now - windowMs
+  return ticks.filter((t) => t.ts >= since).reduce((sum, t) => sum + t.chars, 0)
+}
+
+const pruneStreamTicks = (ticks: { ts: number; chars: number }[], now: number) => {
+  const keepSince = now - TPS_WINDOW_MS - 200
+  let i = 0
+  while (i < ticks.length && ticks[i]!.ts < keepSince) i += 1
+  if (i > 0) ticks.splice(0, i)
+}
+
+const maybeBroadcastStreamMetrics = (now: number) => {
+  if (now - lastStreamMetricsBroadcastAt < STREAM_METRICS_BROADCAST_MS) return
+  lastStreamMetricsBroadcastAt = now
+  broadcastToRenderers('aiMetrics:update', getAiMetricsSnapshot())
+}
 
 const callDurationMs = (r: AiMetricsCallRecord) => Math.max(1, r.endedAt - r.startedAt)
 
@@ -159,6 +188,8 @@ const activeDurationMs = (list: AiMetricsCallRecord[]) =>
   list.reduce((sum, r) => sum + callDurationMs(r), 0)
 
 const genId = () => `m-${Date.now()}-${++seq}`
+
+export const createAiMetricsCallId = () => genId()
 
 const normalizeFilter = (filter?: AiMetricsFilter | string): AiMetricsFilter => {
   if (typeof filter === 'string') {
@@ -187,20 +218,34 @@ export const pushAiMetricsActivity = (line: Omit<AiMetricsActivityLine, 'id' | '
 
 export const getAiMetricsActivityLog = (): AiMetricsActivityLine[] => [...activityLines]
 
+export const beginAiMetricsCallWithId = (
+  callId: string,
+  input: {
+    modelId: string
+    modelName: string
+    provider: string
+    source: AiMetricsSource
+  },
+) => {
+  active.set(callId, {
+    startedAt: Date.now(),
+    firstTokenAt: null,
+    outputChars: 0,
+    streamTicks: [],
+    modelName: input.modelName,
+    modelId: input.modelId,
+    source: input.source,
+  })
+}
+
 export const beginAiMetricsCall = (input: {
   modelId: string
   modelName: string
   provider: string
   source: AiMetricsSource
 }): string => {
-  const id = genId()
-  active.set(id, {
-    startedAt: Date.now(),
-    firstTokenAt: null,
-    modelName: input.modelName,
-    modelId: input.modelId,
-    source: input.source,
-  })
+  const id = createAiMetricsCallId()
+  beginAiMetricsCallWithId(id, input)
   return id
 }
 
@@ -214,6 +259,16 @@ export const markAiMetricsFirstToken = (callId: string) => {
     modelId: row.modelId,
     source: row.source,
   })
+}
+
+export const tickAiMetricsStream = (callId: string, deltaChars: number) => {
+  const row = active.get(callId)
+  if (!row || deltaChars <= 0) return
+  const now = Date.now()
+  row.outputChars += deltaChars
+  row.streamTicks.push({ ts: now, chars: deltaChars })
+  pruneStreamTicks(row.streamTicks, now)
+  maybeBroadcastStreamMetrics(now)
 }
 
 export const endAiMetricsCall = (
@@ -260,6 +315,7 @@ export const endAiMetricsCall = (
   }
   records.push(rec)
   if (records.length > MAX_RECORDS) records.splice(0, records.length - MAX_RECORDS)
+  broadcastToRenderers('aiMetrics:update', getAiMetricsSnapshot())
 }
 
 export const resetAiMetricsStore = () => {
@@ -453,6 +509,18 @@ const collectMetaLists = (list: AiMetricsCallRecord[]) => ({
   sources: [...new Set(list.map((r) => r.source))].sort(),
 })
 
+const liveTpsFromActive = (now: number): number => {
+  const vals: number[] = []
+  for (const row of active.values()) {
+    if (!row.firstTokenAt) continue
+    const chars = charsInWindow(row.streamTicks, now, TPS_WINDOW_MS)
+    if (chars <= 0) continue
+    vals.push(estimateTokensFromChars(chars))
+  }
+  if (!vals.length) return 0
+  return vals.reduce((a, b) => a + b, 0) / vals.length
+}
+
 export const getAiMetricsSnapshot = (filter?: AiMetricsFilter | string): AiMetricsSnapshot => {
   const now = Date.now()
   const windowMs = SERIES_BUCKETS * BUCKET_MS
@@ -472,8 +540,7 @@ export const getAiMetricsSnapshot = (filter?: AiMetricsFilter | string): AiMetri
   const meta = collectMetaLists(records)
 
   const realtimeKpis = buildKpis(realtimeList, 'realtime', windowSec)
-  // 无进行中的调用时，实时 TPS 归零（时速表语义）
-  if (active.size === 0) realtimeKpis.tps = 0
+  if (active.size > 0) realtimeKpis.tps = liveTpsFromActive(now)
 
   return {
     updatedAt: now,

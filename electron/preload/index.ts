@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('axecoder', {
   },
   getWindowRole: () =>
     ipcRenderer.invoke('window:getRole') as Promise<'main' | 'companion' | 'metrics' | 'trace'>,
+  getWorkbenchContributions: () =>
+    ipcRenderer.invoke('workbench:getContributions') as Promise<
+      import('../../shared/workbench-contributions/types').WorkbenchContributions
+    >,
   isCompanionWindowOpen: () => ipcRenderer.invoke('window:isCompanionOpen') as Promise<boolean>,
   openCompanionWindow: () => ipcRenderer.invoke('window:openCompanion') as Promise<boolean>,
   closeCompanionWindow: () => ipcRenderer.invoke('window:closeCompanion') as Promise<boolean>,
@@ -937,6 +941,12 @@ contextBridge.exposeInMainWorld('axecoder', {
       cloneForIpc(projectRoot),
       cloneForIpc(workshopId),
       cloneForIpc(answer),
+    ) as Promise<import('../../src/types/axecoder').WorkshopRunResult>,
+  workshopSkipSopGate: (projectRoot: string, workshopId: string) =>
+    ipcRenderer.invoke(
+      'workshop:skipSopGate',
+      cloneForIpc(projectRoot),
+      cloneForIpc(workshopId),
     ) as Promise<import('../../src/types/axecoder').WorkshopRunResult>,
   workshopStop: (workshopId: string) =>
     ipcRenderer.invoke('workshop:stop', cloneForIpc(workshopId)) as Promise<

@@ -864,12 +864,22 @@ const onChatKindChange = (kind: SessionKind) => {
   activeSessionKind.value = kind
 }
 
-const onWorkshopSessionsChanged = async () => {
-  await agentsPanelRef.value?.load()
+let agentsPanelLoadTimer: ReturnType<typeof setTimeout> | undefined
+
+const scheduleAgentsPanelLoad = () => {
+  if (agentsPanelLoadTimer) clearTimeout(agentsPanelLoadTimer)
+  agentsPanelLoadTimer = setTimeout(() => {
+    agentsPanelLoadTimer = undefined
+    void agentsPanelRef.value?.load()
+  }, 400)
 }
 
-const onChatSessionsChanged = async () => {
-  await agentsPanelRef.value?.load()
+const onWorkshopSessionsChanged = () => {
+  scheduleAgentsPanelLoad()
+}
+
+const onChatSessionsChanged = () => {
+  scheduleAgentsPanelLoad()
 }
 
 onMounted(async () => {
@@ -1012,6 +1022,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (agentsPanelLoadTimer) clearTimeout(agentsPanelLoadTimer)
   if (onWindowResize) window.removeEventListener('resize', onWindowResize)
   offWindowLayout?.()
   offCompanionWindowState?.()
@@ -1403,7 +1414,7 @@ onUnmounted(() => {
   touch-action: none;
   user-select: none;
   position: relative;
-  z-index: 1;
+  z-index: 2;
   background: transparent;
 }
 

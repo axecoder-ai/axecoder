@@ -1,4 +1,4 @@
-import { shell } from 'electron'
+import { lazyShell } from './lazy-electron'
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js'
 import type {
   OAuthClientInformationMixed,
@@ -48,7 +48,7 @@ export class AxecoderMcpOAuthProvider implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
-    await shell.openExternal(authorizationUrl.toString())
+    await lazyShell()?.openExternal(authorizationUrl.toString())
   }
 
   async saveCodeVerifier(codeVerifier: string): Promise<void> {

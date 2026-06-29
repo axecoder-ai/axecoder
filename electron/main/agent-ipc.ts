@@ -54,6 +54,7 @@ import {
 } from './agent/agent-output-styles'
 import { getConfig, setConfig } from './config-store'
 import { t } from './i18n'
+import { withAgentRuntime } from './agent-runtime-proxy'
 
 export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => {
   ipcMain.handle(
@@ -82,57 +83,94 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
       if (!history.some((m) => m.role === 'user')) {
         return { ok: false as const, error: 'No user message' }
       }
-      return startAgentTurn(
-        projectRoot,
-        modelId,
-        history,
-        chatMode,
-        assigneeUserId,
-        roleWorkflowInvoke === true,
-        reasoningEffort,
-        clientChatId,
+      return withAgentRuntime(
+        () =>
+          startAgentTurn(
+            projectRoot,
+            modelId,
+            history,
+            chatMode,
+            assigneeUserId,
+            roleWorkflowInvoke === true,
+            reasoningEffort,
+            clientChatId,
+          ),
+        (b) =>
+          b.call('send', {
+            projectRoot,
+            modelId,
+            messages: history,
+            chatMode,
+            assigneeUserId,
+            roleWorkflowInvoke: roleWorkflowInvoke === true,
+            reasoningEffort,
+            clientChatId,
+          }),
       )
     },
   )
 
-  ipcMain.handle('agent:stop', async (_, sessionId: string) => stopAgentTurn(sessionId))
+  ipcMain.handle('agent:stop', async (_, sessionId: string) =>
+    withAgentRuntime(
+      () => stopAgentTurn(sessionId),
+      (b) => b.call('stop', { sessionId }),
+    ),
+  )
 
-  ipcMain.handle('agent:confirmWrite', async (_, sessionId: string, pendingId: string) => {
-    return confirmAgentWrite(sessionId, pendingId)
-  })
+  ipcMain.handle('agent:confirmWrite', async (_, sessionId: string, pendingId: string) =>
+    withAgentRuntime(
+      () => confirmAgentWrite(sessionId, pendingId),
+      (b) => b.call('confirmWrite', { sessionId, pendingId }),
+    ),
+  )
 
-  ipcMain.handle('agent:confirmAllWrites', async (_, sessionId: string) => {
-    return confirmAgentAllWrites(sessionId)
-  })
+  ipcMain.handle('agent:confirmAllWrites', async (_, sessionId: string) =>
+    withAgentRuntime(
+      () => confirmAgentAllWrites(sessionId),
+      (b) => b.call('confirmAllWrites', { sessionId }),
+    ),
+  )
 
   ipcMain.handle(
     'agent:rejectWrite',
-    async (_, sessionId: string, pendingId: string, reason?: string) => {
-      return rejectAgentWrite(sessionId, pendingId, reason)
-    },
+    async (_, sessionId: string, pendingId: string, reason?: string) =>
+      withAgentRuntime(
+        () => rejectAgentWrite(sessionId, pendingId, reason),
+        (b) => b.call('rejectWrite', { sessionId, pendingId, reason }),
+      ),
   )
 
   ipcMain.handle(
     'agent:rejectAllWrites',
-    async (_, sessionId: string, reason?: string) => {
-      return rejectAgentAllWrites(sessionId, reason)
-    },
+    async (_, sessionId: string, reason?: string) =>
+      withAgentRuntime(
+        () => rejectAgentAllWrites(sessionId, reason),
+        (b) => b.call('rejectAllWrites', { sessionId, reason }),
+      ),
   )
 
-  ipcMain.handle('agent:confirmBash', async (_, sessionId: string, pendingId: string) => {
-    return confirmAgentBash(sessionId, pendingId)
-  })
+  ipcMain.handle('agent:confirmBash', async (_, sessionId: string, pendingId: string) =>
+    withAgentRuntime(
+      () => confirmAgentBash(sessionId, pendingId),
+      (b) => b.call('confirmBash', { sessionId, pendingId }),
+    ),
+  )
 
   ipcMain.handle(
     'agent:rejectBash',
-    async (_, sessionId: string, pendingId: string, reason?: string) => {
-      return rejectAgentBash(sessionId, pendingId, reason)
-    },
+    async (_, sessionId: string, pendingId: string, reason?: string) =>
+      withAgentRuntime(
+        () => rejectAgentBash(sessionId, pendingId, reason),
+        (b) => b.call('rejectBash', { sessionId, pendingId, reason }),
+      ),
   )
 
-  ipcMain.handle('agent:runUserShell', async (_, projectRoot: string, command: string) => {
-    return runUserShellCommand(projectRoot, command)
-  })
+  ipcMain.handle('agent:runUserShell', async (_, projectRoot: string, command: string) =>
+    withAgentRuntime(
+      () => runUserShellCommand(projectRoot, command),
+      (b) => b.call('runUserShell', { projectRoot, command }),
+    ),
+  )
 
   ipcMain.handle(
     'chat:compact',
@@ -333,14 +371,19 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
     }
   })
 
-  ipcMain.handle('agent:listSessions', async () => ({
-    ok: true as const,
-    sessions: listAgentSessions(),
-  }))
+  ipcMain.handle('agent:listSessions', async () =>
+    withAgentRuntime(
+      () => ({ ok: true as const, sessions: listAgentSessions() }),
+      (b) => b.call('listSessions'),
+    ),
+  )
 
   ipcMain.handle('agent:listCheckpoints', async (_, sessionId: string) => {
     if (!sessionId?.trim()) return { ok: false as const, error: t('errors.missingSessionId') }
-    return { ok: true as const, checkpoints: listAgentCheckpoints(sessionId) }
+    return withAgentRuntime(
+      () => ({ ok: true as const, checkpoints: listAgentCheckpoints(sessionId) }),
+      (b) => b.call('listCheckpoints', { sessionId }),
+    )
   })
 
   ipcMain.handle(
@@ -348,7 +391,10 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
     async (_, sessionId: string, checkpointId?: string) => {
       const session = getSession(sessionId)
       if (!session) return { ok: false as const, error: t('errors.agentSessionMissing') }
-      return rewindAgentCheckpoint(sessionId, session, checkpointId)
+      return withAgentRuntime(
+        () => rewindAgentCheckpoint(sessionId, session, checkpointId),
+        (b) => b.call('rewind', { sessionId, checkpointId }),
+      )
     },
   )
 
@@ -357,27 +403,40 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
     async (_, sessionId: string, projectRoot: string, checkpointId?: string) => {
       if (!sessionId?.trim()) return { ok: false as const, error: t('errors.missingSessionId') }
       if (!projectRoot?.trim()) return { ok: false as const, error: t('errors.noProject') }
-      return restoreCheckpointFilesOnly(sessionId.trim(), projectRoot.trim(), checkpointId)
+      return withAgentRuntime(
+        () => restoreCheckpointFilesOnly(sessionId.trim(), projectRoot.trim(), checkpointId),
+        (b) => b.call('restoreCheckpointFiles', { sessionId, projectRoot, checkpointId }),
+      )
     },
   )
 
-  ipcMain.handle('agent:listBackgroundTasks', async (_, sessionId?: string) => ({
-    ok: true as const,
-    tasks: listBackgroundRuns(sessionId).map((t) => ({
-      id: t.id,
-      description: t.description,
-      status: t.status,
-      startedAt: t.startedAt,
-    })),
-  }))
+  ipcMain.handle('agent:listBackgroundTasks', async (_, sessionId?: string) =>
+    withAgentRuntime(
+      () => ({
+        ok: true as const,
+        tasks: listBackgroundRuns(sessionId).map((t) => ({
+          id: t.id,
+          description: t.description,
+          status: t.status,
+          startedAt: t.startedAt,
+        })),
+      }),
+      (b) => b.call('listBackgroundTasks', { sessionId }),
+    ),
+  )
 
   ipcMain.handle(
     'agent:resolveBackgroundTasks',
     async (_, projectRoot: string, taskIds: string[]) => {
       if (!projectRoot?.trim()) return { ok: false as const, error: t('errors.noProject') }
       const ids = Array.isArray(taskIds) ? taskIds : []
-      const tasks = await resolveBackgroundTasks(projectRoot.trim(), ids)
-      return { ok: true as const, tasks }
+      return withAgentRuntime(
+        () => resolveBackgroundTasks(projectRoot.trim(), ids).then((tasks) => ({
+          ok: true as const,
+          tasks,
+        })),
+        (b) => b.call('resolveBackgroundTasks', { projectRoot, taskIds: ids }),
+      )
     },
   )
 
@@ -427,18 +486,26 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
       sessionId: string,
       pendingId: string,
       answers: Record<string, string | string[]>,
-    ) => {
-      return answerAgentQuestions(sessionId, pendingId, answers)
-    },
+    ) =>
+      withAgentRuntime(
+        () => answerAgentQuestions(sessionId, pendingId, answers),
+        (b) => b.call('answerQuestions', { sessionId, pendingId, answers }),
+      ),
   )
 
-  ipcMain.handle('agent:buildPlan', async (_, sessionId: string, pendingId: string) => {
-    return buildAgentPlan(sessionId, pendingId)
-  })
+  ipcMain.handle('agent:buildPlan', async (_, sessionId: string, pendingId: string) =>
+    withAgentRuntime(
+      () => buildAgentPlan(sessionId, pendingId),
+      (b) => b.call('buildPlan', { sessionId, pendingId }),
+    ),
+  )
 
-  ipcMain.handle('agent:dismissPlan', async (_, sessionId: string, pendingId: string) => {
-    return dismissAgentPlan(sessionId, pendingId)
-  })
+  ipcMain.handle('agent:dismissPlan', async (_, sessionId: string, pendingId: string) =>
+    withAgentRuntime(
+      () => dismissAgentPlan(sessionId, pendingId),
+      (b) => b.call('dismissPlan', { sessionId, pendingId }),
+    ),
+  )
 
   ipcMain.handle('agent:composePlanBuild', async (_, projectRoot: string, planPath: string) => {
     return composePlanBuildMessage(projectRoot, planPath)

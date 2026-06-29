@@ -46,6 +46,8 @@ export type WorkshopSession = WorkshopSessionMeta & {
   messages: WorkshopMessage[]
   phase: WorkshopPhase
   pendingQuestion?: string
+  /** SOP 闸门未通过时可点「忽略」跳过 */
+  pendingSopGate?: import('../sop/sop-types').SopPipelinePhase
   mountedFiles: string[]
   stepPlan?: WorkshopStep[]
   currentStepIndex?: number

@@ -224,6 +224,13 @@ const checkoutBranch = async (b: string) => {
   await runGitAction(() => window.axecoder.gitCheckout(props.projectRoot, b))
 }
 
+const gitPull = () => runGitAction(() => window.axecoder.gitPull(props.projectRoot))
+const gitPush = () => runGitAction(() => window.axecoder.gitPush(props.projectRoot))
+const gitFetch = () => runGitAction(() => window.axecoder.gitFetch(props.projectRoot))
+const gitStash = () => runGitAction(() => window.axecoder.gitStash(props.projectRoot))
+const gitStashPop = () => runGitAction(() => window.axecoder.gitStashPop(props.projectRoot))
+const gitUnstageAll = () => runGitAction(() => window.axecoder.gitUnstageAll(props.projectRoot))
+
 const closeMenus = () => {
   branchMenuOpen.value = false
   moreMenuOpen.value = false
@@ -281,15 +288,15 @@ defineExpose({ refresh })
             <span class="codicon codicon-ellipsis" />
           </button>
           <div v-if="moreMenuOpen" class="scm-dropdown" @click.stop>
-            <button type="button" @click="runGitAction(() => window.axecoder.gitPull(projectRoot))">Pull</button>
-            <button type="button" @click="runGitAction(() => window.axecoder.gitPush(projectRoot))">Push</button>
-            <button type="button" @click="runGitAction(() => window.axecoder.gitFetch(projectRoot))">Fetch</button>
+            <button type="button" @click="gitPull">Pull</button>
+            <button type="button" @click="gitPush">Push</button>
+            <button type="button" @click="gitFetch">Fetch</button>
             <button type="button" @click="sync">Sync</button>
             <div class="scm-dropdown-sep" />
-            <button type="button" @click="runGitAction(() => window.axecoder.gitStash(projectRoot))">Stash</button>
-            <button type="button" @click="runGitAction(() => window.axecoder.gitStashPop(projectRoot))">Stash Pop</button>
+            <button type="button" @click="gitStash">Stash</button>
+            <button type="button" @click="gitStashPop">Stash Pop</button>
             <div class="scm-dropdown-sep" />
-            <button type="button" @click="runGitAction(() => window.axecoder.gitUnstageAll(projectRoot))">
+            <button type="button" @click="gitUnstageAll">
               Unstage All Changes
             </button>
           </div>

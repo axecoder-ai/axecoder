@@ -21,22 +21,11 @@ const ACTIVITY_MAX = 50
 const POPOVER_W = 380
 
 const pickDisplayTps = (snap: AiMetricsSnapshot): number => {
+  if (snap.concurrent <= 0) return 0
   const rt = snap.realtime.kpis.tps
   if (rt > 0.05) return rt
-  if (snap.concurrent > 0) {
-    const cum = snap.cumulative.kpis.tps
-    if (cum > 0.05) return cum
-    const tpm = snap.realtime.kpis.tokensPerMin
-    if (tpm > 0) return tpm / 60
-  }
-  if (props.live) {
-    const pts = snap.series
-    for (let i = pts.length - 1; i >= 0; i--) {
-      if (pts[i]!.tps > 0.05) return pts[i]!.tps
-    }
-    const cum = snap.cumulative.kpis.tps
-    if (cum > 0.05) return cum
-  }
+  const tpm = snap.realtime.kpis.tokensPerMin
+  if (tpm > 0) return tpm / 60
   return 0
 }
 

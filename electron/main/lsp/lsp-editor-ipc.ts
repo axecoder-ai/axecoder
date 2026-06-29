@@ -1,8 +1,9 @@
-import { ipcMain, type BrowserWindow } from 'electron'
+import type { BrowserWindow } from 'electron'
+import { lazyIpcMain } from '../lazy-electron'
 import path from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import type { Diagnostic, Location, LocationLink } from 'vscode-languageserver-types'
-import { ensureLspForProject, getLspServerManager } from './lsp-manager'
+import { ensureLspForProject, getLspServerManager, lspWorkspaceSymbol, setLspDiagnosticsCallback } from './lsp-manager'
 import { logOutput } from '../output-channel'
 
 export type EditorDiagnostic = {
@@ -39,15 +40,21 @@ const toEditorDiagnostic = (uri: string, d: Diagnostic): EditorDiagnostic => ({
 
 const bindDiagnostics = (getWin: () => BrowserWindow | null) => {
   if (diagnosticsBound) return
+
+  const forward = (params: unknown) => {
+    const p = params as { uri?: string; diagnostics?: Diagnostic[] }
+    if (!p.uri) return
+    const list = (p.diagnostics ?? []).map((d) => toEditorDiagnostic(p.uri!, d))
+    getWin()?.webContents.send('lsp:diagnostics', { file: fileURLToPath(p.uri), diagnostics: list })
+  }
+
+  setLspDiagnosticsCallback(forward)
+
   const mgr = getLspServerManager()
-  if (!mgr) return
-  for (const server of mgr.getAllServers().values()) {
-    server.onNotification('textDocument/publishDiagnostics', (params: unknown) => {
-      const p = params as { uri?: string; diagnostics?: Diagnostic[] }
-      if (!p.uri) return
-      const list = (p.diagnostics ?? []).map((d) => toEditorDiagnostic(p.uri!, d))
-      getWin()?.webContents.send('lsp:diagnostics', { file: fileURLToPath(p.uri), diagnostics: list })
-    })
+  if (mgr) {
+    for (const server of mgr.getAllServers().values()) {
+      server.onNotification('textDocument/publishDiagnostics', forward)
+    }
   }
   diagnosticsBound = true
 }
@@ -72,6 +79,8 @@ export const notifyLspFileRefresh = (filePath: string) => {
 }
 
 export const registerLspEditorIpc = (getWin: () => BrowserWindow | null) => {
+  const ipcMain = lazyIpcMain()
+  if (!ipcMain) return
   setLspEditorNotifyWin(getWin)
   ipcMain.handle('lsp:ensureProject', async (_, projectRoot: string) => {
     if (!projectRoot?.trim()) return { ok: false as const, error: 'No project' }
@@ -200,20 +209,9 @@ export const registerLspEditorIpc = (getWin: () => BrowserWindow | null) => {
   )
 
   ipcMain.handle('lsp:workspaceSymbol', async (_, projectRoot: string, query: string) => {
-    const mgr = getLspServerManager()
-    if (!mgr) return { ok: true as const, result: [] }
-    const servers = mgr.getAllServers()
-    const out: unknown[] = []
-    for (const server of servers.values()) {
-      if (server.state !== 'running') continue
-      try {
-        const res = await server.sendRequest<unknown[]>('workspace/symbol', { query })
-        if (Array.isArray(res)) out.push(...res)
-      } catch {
-        /* skip server */
-      }
-    }
-    return { ok: true as const, result: out }
+    await ensureLspForProject(projectRoot)
+    const result = await lspWorkspaceSymbol(query)
+    return { ok: true as const, result }
   })
 
   ipcMain.handle('lsp:refreshDiagnostics', async (_, projectRoot: string, filePath: string) => {

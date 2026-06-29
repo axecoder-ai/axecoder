@@ -168,6 +168,9 @@ const workshopLoading = computed(() => !!workshopSectionRef.value?.loading)
 const workshopPendingQuestion = computed(
   () => workshopSectionRef.value?.pendingQuestion ?? '',
 )
+const workshopPendingSopGate = computed(
+  () => !!workshopSectionRef.value?.pendingSopGate,
+)
 const workshopPendingAsks = computed(
   () => workshopSectionRef.value?.pendingAsks ?? [],
 )
@@ -2079,6 +2082,12 @@ const onWorkshopAnswerAsk = async (
   })
 }
 
+const onWorkshopSkipSopGate = async () => {
+  if (workshopLoading.value || !workshopPendingSopGate.value) return
+  if (!(await ensureChatSession())) return
+  await workshopSectionRef.value?.skipSopGate()
+}
+
 const send = async () => {
   if (isWorkshopEmbeddedInAgentChat.value) {
     const text = input.value.trim()
@@ -3124,7 +3133,18 @@ defineExpose({
         />
       </div>
       <div v-else-if="workshopPendingQuestion" class="workshop-clarify-hint" role="status">
-        <span class="workshop-clarify-hint-label">待你回答</span>
+        <div class="workshop-clarify-hint-head">
+          <span class="workshop-clarify-hint-label">待你回答</span>
+          <button
+            v-if="workshopPendingSopGate"
+            type="button"
+            class="workshop-clarify-skip"
+            :disabled="workshopLoading"
+            @click="onWorkshopSkipSopGate"
+          >
+            忽略
+          </button>
+        </div>
         <p>{{ workshopPendingQuestion }}</p>
       </div>
       <SlashCommandPicker
@@ -3158,6 +3178,7 @@ defineExpose({
           :busy="pendingBusy"
           :relative-path="(p) => relativeToProject(projectRoot, p) ?? p"
           @review="onTurnChangesReview"
+          @open-file="onTurnChangesOpenFile"
           @undo-all="onTurnChangesUndo"
           @dismiss="onTurnChangesDismiss"
         />
@@ -3664,6 +3685,7 @@ defineExpose({
   flex: 1;
   overflow: auto;
   overflow-anchor: none;
+  scrollbar-gutter: stable;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -4042,6 +4064,34 @@ defineExpose({
   font-weight: 600;
   color: var(--wc-accent, #6eb6ff);
   margin-bottom: 4px;
+}
+.workshop-clarify-hint-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.workshop-clarify-hint-head .workshop-clarify-hint-label {
+  margin-bottom: 0;
+}
+.workshop-clarify-skip {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--wc-border);
+  background: transparent;
+  color: var(--wc-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.workshop-clarify-skip:hover:not(:disabled) {
+  color: var(--wc-text);
+  border-color: var(--wc-text-muted);
+}
+.workshop-clarify-skip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .workshop-clarify-hint p {
   margin: 0;

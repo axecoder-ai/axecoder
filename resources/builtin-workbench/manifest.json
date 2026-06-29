@@ -1,0 +1,43 @@
+{
+  "viewsContainers": {
+    "activitybar": [
+      {
+        "id": "workbench-primary",
+        "title": "Primary Sidebar",
+        "icon": "files"
+      }
+    ]
+  },
+  "views": {
+    "workbench-primary": [
+      {
+        "id": "explorer",
+        "name": "Explorer",
+        "type": "webview",
+        "webviewEntry": "explorer"
+      },
+      {
+        "id": "search",
+        "name": "Search",
+        "type": "webview",
+        "webviewEntry": "search"
+      },
+      {
+        "id": "scm",
+        "name": "Source Control",
+        "type": "webview",
+        "webviewEntry": "scm"
+      }
+    ]
+  },
+  "commands": [
+    { "command": "workbench.action.openProject", "title": "Open Project", "category": "File" },
+    { "command": "workbench.action.toggleScm", "title": "Source Control", "category": "View" }
+  ],
+  "themes": [
+    { "id": "vscode", "label": "VS Code Dark" },
+    { "id": "aura-dark", "label": "Aura Dark" },
+    { "id": "aura-light", "label": "Aura Light" },
+    { "id": "claude", "label": "Claude" }
+  ]
+}

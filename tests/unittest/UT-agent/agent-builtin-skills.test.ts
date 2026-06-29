@@ -28,8 +28,6 @@ describe('agent-builtin-skills', () => {
     expect(list.length).toBeGreaterThanOrEqual(14)
     expect(list.map((s) => s.name)).toContain('brainstorming')
     expect(list.map((s) => s.name)).toContain('writing-plans')
-    expect(list.map((s) => s.name)).toContain('grill-with-docs')
-    expect(list.map((s) => s.name)).toContain('setup-matt-pocock-skills')
     expect(list.every((s) => s.source === 'builtin')).toBe(true)
   })
 

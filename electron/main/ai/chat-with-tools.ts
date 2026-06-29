@@ -4,8 +4,9 @@ import {
   beginAiMetricsCall,
   endAiMetricsCall,
   markAiMetricsFirstToken,
+  tickAiMetricsStream,
   type AiMetricsSource,
-} from '../ai-metrics-store'
+} from '../ai-metrics-bridge'
 import { traceModelCall, type AiTraceSource } from '../ai-trace-store'
 import type { AiTraceContext } from './chat-with-provider'
 import { estimateTokenUsage } from './parse-token-usage'
@@ -60,6 +61,10 @@ export const chatWithToolsForModel = async (
     onDelta && adapter.capabilities.supportsSseStream
       ? (delta: OpenAiStreamDelta) => {
           markAiMetricsFirstToken(callId)
+          tickAiMetricsStream(
+            callId,
+            (delta.content?.length ?? 0) + (delta.reasoning?.length ?? 0),
+          )
           onDelta(delta)
         }
       : undefined

@@ -36,9 +36,20 @@ export default defineConfig(({ command }) => {
         '@shared': path.resolve(__dirname, 'shared'),
       },
     },
+    build: {
+      rollupOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          workbenchShell: path.resolve(__dirname, 'workbench-shell.html'),
+        },
+      },
+    },
     // 只从 AxeCoder 的 index.html 扫描依赖，避免扫到根目录 opencode 符号链接里的 Solid 项目
     optimizeDeps: {
-      entries: [path.resolve(__dirname, 'index.html')],
+      entries: [
+        path.resolve(__dirname, 'index.html'),
+        path.resolve(__dirname, 'workbench-shell.html'),
+      ],
     },
     server: isServe
       ? {
@@ -59,7 +70,13 @@ export default defineConfig(({ command }) => {
       electron({
         main: {
           // Shortcut of `build.lib.entry`
-          entry: 'electron/main/index.ts',
+          entry: [
+            'electron/main/index.ts',
+            'electron/main/agent-worker-process.ts',
+            'electron/main/extension-host-process.ts',
+            'electron/main/workshop-worker-process.ts',
+            'electron/main/indexer-worker-process.ts',
+          ],
           onstart({ startup }) {
             if (process.env.VSCODE_DEBUG) {
               console.log(/* For `.vscode/.debug.script.mjs` */'[startup] Electron App')

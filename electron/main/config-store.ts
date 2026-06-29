@@ -44,6 +44,10 @@ const defaults: AppConfig = {
   aiRequestMaxRetries: 2,
   aiRateLimitRetryDelaySec: 60,
   agentLoopGuardEnabled: true,
+  agentWorkerEnabled: true,
+  extensionHostLspEnabled: true,
+  workshopWorkerEnabled: true,
+  indexerWorkerEnabled: true,
   agentLoopGuardStormThreshold: 3,
   agentLoopGuardRepeatSuccessThreshold: 2,
   agentMaxToolRounds: 0,
@@ -122,6 +126,10 @@ export const getConfig = async (): Promise<AppConfig> => {
     aiRateLimitRetryDelaySec:
       raw.aiRateLimitRetryDelaySec ?? defaults.aiRateLimitRetryDelaySec,
     agentLoopGuardEnabled: raw.agentLoopGuardEnabled ?? defaults.agentLoopGuardEnabled,
+    agentWorkerEnabled: raw.agentWorkerEnabled ?? defaults.agentWorkerEnabled,
+    extensionHostLspEnabled: raw.extensionHostLspEnabled ?? defaults.extensionHostLspEnabled,
+    workshopWorkerEnabled: raw.workshopWorkerEnabled ?? defaults.workshopWorkerEnabled,
+    indexerWorkerEnabled: raw.indexerWorkerEnabled ?? defaults.indexerWorkerEnabled,
     agentLoopGuardStormThreshold:
       raw.agentLoopGuardStormThreshold ?? defaults.agentLoopGuardStormThreshold,
     agentLoopGuardRepeatSuccessThreshold:
@@ -229,6 +237,22 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
       partial.agentLoopGuardEnabled !== undefined
         ? partial.agentLoopGuardEnabled
         : cur.agentLoopGuardEnabled,
+    agentWorkerEnabled:
+      partial.agentWorkerEnabled !== undefined
+        ? partial.agentWorkerEnabled
+        : cur.agentWorkerEnabled,
+    extensionHostLspEnabled:
+      partial.extensionHostLspEnabled !== undefined
+        ? partial.extensionHostLspEnabled
+        : cur.extensionHostLspEnabled,
+    workshopWorkerEnabled:
+      partial.workshopWorkerEnabled !== undefined
+        ? partial.workshopWorkerEnabled
+        : cur.workshopWorkerEnabled,
+    indexerWorkerEnabled:
+      partial.indexerWorkerEnabled !== undefined
+        ? partial.indexerWorkerEnabled
+        : cur.indexerWorkerEnabled,
     agentLoopGuardStormThreshold:
       partial.agentLoopGuardStormThreshold !== undefined
         ? partial.agentLoopGuardStormThreshold

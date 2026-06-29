@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { app } from 'electron'
+import { lazyApp } from '../lazy-electron'
 
 const CMD_TIMEOUT_MS = 45_000
 const VALID_ACTIONS = new Set(['navigate', 'snapshot', 'click', 'type', 'screenshot', 'search'])
@@ -25,7 +25,7 @@ export const resolveBrowserRunnerPath = (): string => {
   const here = path.dirname(fileURLToPath(import.meta.url))
   const candidates = [
     path.join(here, 'browser-runner.mjs'),
-    path.join(app.getAppPath(), 'electron/main/agent/browser-runner.mjs'),
+    path.join(lazyApp()?.getAppPath() ?? process.cwd(), 'electron/main/agent/browser-runner.mjs'),
   ]
   for (const p of candidates) {
     if (fs.existsSync(p)) return p

@@ -4,6 +4,7 @@ export { validateSopGate } from './sop-gates'
 export { rppitPhaseHint, RPPIT_STEP_TO_SOP_PHASE } from './rppit-phase-map'
 export {
   sendSopPipelineMessage,
+  skipSopPipelineGate,
   scriptedSopSpeaker,
   type SendSopPipelineOptions,
 } from './sop-pipeline-engine'

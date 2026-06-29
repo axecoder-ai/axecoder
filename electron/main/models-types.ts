@@ -121,6 +121,14 @@ export type AppConfig = {
   aiRateLimitRetryDelaySec?: number
   /** Agent loop guard（防呆）：拦截重复失败与重复写操作 */
   agentLoopGuardEnabled?: boolean
+  /** Agent 是否在独立 Worker 子进程运行（默认 true） */
+  agentWorkerEnabled?: boolean
+  /** LSP 是否在 Extension Host 子进程运行（默认 true） */
+  extensionHostLspEnabled?: boolean
+  /** Workshop 是否在独立 Worker 子进程运行（默认 true） */
+  workshopWorkerEnabled?: boolean
+  /** CodeGraph 索引是否在独立 Indexer Worker 子进程运行（默认 true） */
+  indexerWorkerEnabled?: boolean
   /** 同一错误连续失败多少次后注入 [loop guard]（默认 3） */
   agentLoopGuardStormThreshold?: number
   /** 写操作同参成功多少次后 block 下一次（默认 2，即第 3 次拦） */

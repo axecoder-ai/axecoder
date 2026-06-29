@@ -1,4 +1,5 @@
 import type { ChatModeId } from './chat-modes'
+import { formatSpinnerVerb, SPINNER_VERBS } from './spinner-verbs'
 
 export type AgentProgressPhase = 'model' | 'tool'
 
@@ -70,12 +71,8 @@ export const labelForToolStart = (toolName: string, summary: string) =>
 export const labelForToolDone = (toolName: string, summary: string, ok: boolean) =>
   ok ? `${toolName} done` : `${toolName} failed：${summary}`
 
-/** Rotating hints when chat has no tool progress */
-export const CHAT_IDLE_HINTS = [
-  'Thinking…',
-  'Organizing reply…',
-  'Still working, please wait…',
-]
+/** Rotating hints when chat has no tool progress (Claude Code spinner verbs) */
+export const CHAT_IDLE_HINTS = SPINNER_VERBS.map(formatSpinnerVerb)
 
 let stepSeq = 0
 const nextStepId = () => `step-${Date.now()}-${stepSeq++}`

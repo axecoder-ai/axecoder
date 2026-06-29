@@ -11,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   review: [file: AgentTurnFileChange]
+  openFile: [filePath: string]
   undoAll: []
   dismiss: [filePath: string]
 }>()
@@ -57,7 +58,7 @@ const statsLabel = (f: AgentTurnFileChange) => {
           type="button"
           class="turn-changes-file"
           :title="relativePath(f.filePath)"
-          @click="emit('review', f)"
+          @click="emit('openFile', f.filePath)"
         >
           <span class="turn-changes-file-name">{{ relativePath(f.filePath) }}</span>
           <span class="turn-changes-stats">
@@ -65,6 +66,15 @@ const statsLabel = (f: AgentTurnFileChange) => {
             <span v-if="f.deletions > 0" class="stat-del">{{ `-${f.deletions}` }}</span>
             <span v-if="!f.additions && !f.deletions" class="stat-neutral">{{ statsLabel(f) }}</span>
           </span>
+        </button>
+        <button
+          type="button"
+          class="btn-diff"
+          title="Open diff"
+          :disabled="busy"
+          @click="emit('review', f)"
+        >
+          <span class="codicon codicon-diff" />
         </button>
         <button
           type="button"
@@ -223,6 +233,7 @@ const statsLabel = (f: AgentTurnFileChange) => {
   filter: brightness(1.08);
 }
 
+.btn-diff,
 .btn-dismiss {
   width: 22px;
   height: 22px;
@@ -235,12 +246,21 @@ const statsLabel = (f: AgentTurnFileChange) => {
   line-height: 1;
   cursor: pointer;
   opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
+.btn-diff .codicon {
+  font-size: 14px;
+}
+
+.turn-changes-row:hover .btn-diff,
 .turn-changes-row:hover .btn-dismiss {
   opacity: 1;
 }
 
+.btn-diff:hover:not(:disabled),
 .btn-dismiss:hover:not(:disabled) {
   background: var(--wc-hover, rgba(255, 255, 255, 0.08));
   color: var(--wc-text);
@@ -248,6 +268,7 @@ const statsLabel = (f: AgentTurnFileChange) => {
 
 .btn-undo:disabled,
 .btn-review:disabled,
+.btn-diff:disabled,
 .btn-dismiss:disabled {
   opacity: 0.45;
   cursor: default;

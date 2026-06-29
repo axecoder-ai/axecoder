@@ -9,6 +9,7 @@ import {
   getAiMetricsSnapshot,
   markAiMetricsFirstToken,
   resetAiMetricsStore,
+  tickAiMetricsStream,
 } from '../../../electron/main/ai-metrics-store'
 
 const meta = {
@@ -158,7 +159,7 @@ describe('ai-metrics-store', () => {
     expect(snap.inputTokenHistogram.some((b) => b.count > 0)).toBe(true)
   })
 
-  it('realtime TPS is zero when no active calls', () => {
+  it('realtime TPS reflects completed calls in the realtime window', () => {
     const id = beginAiMetricsCall(meta)
     vi.advanceTimersByTime(200)
     markAiMetricsFirstToken(id)
@@ -171,8 +172,32 @@ describe('ai-metrics-store', () => {
 
     const snap = getAiMetricsSnapshot()
     expect(snap.concurrent).toBe(0)
-    expect(snap.realtime.kpis.tps).toBe(0)
+    expect(snap.realtime.kpis.tps).toBeGreaterThan(0)
     expect(snap.cumulative.kpis.tps).toBeGreaterThan(0)
+  })
+
+  it('live TPS during active streaming', () => {
+    const id = beginAiMetricsCall(meta)
+    vi.advanceTimersByTime(200)
+    markAiMetricsFirstToken(id)
+    tickAiMetricsStream(id, 400)
+    vi.advanceTimersByTime(800)
+
+    const snap = getAiMetricsSnapshot()
+    expect(snap.concurrent).toBe(1)
+    expect(snap.realtime.kpis.tps).toBeGreaterThan(0)
+  })
+
+  it('live TPS uses rolling 1s window and decays when idle', () => {
+    const id = beginAiMetricsCall(meta)
+    markAiMetricsFirstToken(id)
+    tickAiMetricsStream(id, 400)
+    expect(getAiMetricsSnapshot().realtime.kpis.tps).toBe(100)
+
+    vi.advanceTimersByTime(1100)
+    const snap = getAiMetricsSnapshot()
+    expect(snap.concurrent).toBe(1)
+    expect(snap.realtime.kpis.tps).toBe(0)
   })
 
   it('exposes providers and sources meta lists', () => {

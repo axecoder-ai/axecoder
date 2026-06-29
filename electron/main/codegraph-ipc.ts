@@ -5,6 +5,7 @@ import {
   startBackgroundCodeGraphIndex,
   type CodeGraphPublicStatus,
 } from './codegraph/manager'
+import { withIndexerRuntime } from './indexer-runtime-proxy'
 
 export const registerCodeGraphIpc = (getMainWindow: () => BrowserWindow | null) => {
   void getMainWindow
@@ -14,9 +15,12 @@ export const registerCodeGraphIpc = (getMainWindow: () => BrowserWindow | null) 
     `[codegraph] sqlite=${boot.sqliteAvailable} engine=${boot.engineAvailable} dist=${boot.distPath || '(none)'}`,
   )
 
-  ipcMain.handle('codegraph:status', (_, projectRoot: string): CodeGraphPublicStatus => {
-    return getCodeGraphPublicStatus(typeof projectRoot === 'string' ? projectRoot : '')
-  })
+  ipcMain.handle('codegraph:status', async (_, projectRoot: string): Promise<CodeGraphPublicStatus> =>
+    withIndexerRuntime(
+      () => getCodeGraphPublicStatus(typeof projectRoot === 'string' ? projectRoot : ''),
+      (b) => b.call<CodeGraphPublicStatus>('status', { projectRoot }),
+    ),
+  )
 
   ipcMain.handle('codegraph:index', async (_, projectRoot: string) => {
     const root = typeof projectRoot === 'string' ? projectRoot.trim() : ''
@@ -27,8 +31,13 @@ export const registerCodeGraphIpc = (getMainWindow: () => BrowserWindow | null) 
       return { ok: false as const, error: 'CodeGraph 已在设置中关闭（agentFeatureCodeGraph）' }
     }
 
-    startBackgroundCodeGraphIndex(root)
-    return { ok: true as const }
+    return withIndexerRuntime(
+      () => {
+        startBackgroundCodeGraphIndex(root)
+        return { ok: true as const }
+      },
+      (b) => b.call('index', { projectRoot: root }),
+    )
   })
 }
 
@@ -38,5 +47,12 @@ export const maybeAutoIndexCodeGraph = async (projectRoot: string) => {
   if (!root) return
   const cfg = await getConfig()
   if (cfg.agentFeatureCodeGraph === false) return
-  startBackgroundCodeGraphIndex(root)
+  await withIndexerRuntime(
+    () => {
+      startBackgroundCodeGraphIndex(root)
+    },
+    async (b) => {
+      await b.call('index', { projectRoot: root })
+    },
+  )
 }

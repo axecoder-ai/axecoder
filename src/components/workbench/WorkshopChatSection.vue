@@ -225,6 +225,7 @@ const liveTurnState = createWorkshopLiveTurnState()
 
 const hasProject = computed(() => !!props.projectRoot?.trim())
 const pendingQuestion = computed(() => active.value?.pendingQuestion ?? '')
+const pendingSopGate = computed(() => !!active.value?.pendingSopGate)
 const locallyDismissedAskIds = ref(new Set<string>())
 const pendingAsks = computed(() =>
   (active.value?.pendingAsks ?? []).filter((a) => !locallyDismissedAskIds.value.has(a.id)),
@@ -744,6 +745,40 @@ const sendText = async (raw: string, isClarify: boolean) => {
   })
 }
 
+const skipSopGate = async (): Promise<{ ok: true } | { ok: false; error: string }> => {
+  if (!hasProject.value || loading.value || !active.value?.pendingSopGate) {
+    return { ok: false, error: 'Nothing to skip' }
+  }
+  loading.value = true
+  thinkingRole.value = 'manager'
+  clearStreamUi()
+  bindWorkshopAgentProgress()
+  try {
+    const res = await window.axecoder.workshopSkipSopGate(props.projectRoot, active.value.id)
+    if (!res.ok) {
+      pushLocalSystemMessage(res.error)
+      await scrollBottom(true)
+      return res
+    }
+    active.value = res.session
+    activePersisted = true
+    emitWorkshopActive(res.session.id)
+    await hydrateWorkshopImagePreviews(res.session.messages)
+    await scrollBottom(true)
+    emit('sessionsChanged')
+    return { ok: true }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    pushLocalSystemMessage(`跳过闸门失败：${msg}`)
+    await scrollBottom(true)
+    return { ok: false, error: msg }
+  } finally {
+    loading.value = false
+    thinkingRole.value = null
+    clearProgressUi()
+  }
+}
+
 const sendWithPayload = async (opts: {
   text: string
   apiText?: string
@@ -965,7 +1000,9 @@ defineExpose({
   runningAgentSessionId,
   stopRun,
   pendingQuestion,
+  pendingSopGate,
   pendingAsks,
+  skipSopGate,
 })
 </script>
 
@@ -1053,7 +1090,18 @@ defineExpose({
     </div>
     <div v-if="hasProject && !embeddedInAgentChat" class="composer">
       <template v-if="pendingQuestion">
-        <p class="clarify-prompt">{{ pendingQuestion }}</p>
+        <div class="clarify-prompt-row">
+          <p class="clarify-prompt">{{ pendingQuestion }}</p>
+          <button
+            v-if="pendingSopGate"
+            type="button"
+            class="clarify-skip-btn"
+            :disabled="loading"
+            @click="() => void skipSopGate()"
+          >
+            忽略
+          </button>
+        </div>
         <div v-if="loading" class="composer-running">
           <p class="composer-hint">Collaboration in progress…</p>
           <button type="button" class="stop-btn" title="Stop" @click="() => void stopRun()">
@@ -1200,6 +1248,35 @@ defineExpose({
   flex-shrink: 0;
   border-top: 1px solid var(--wc-border);
   padding: 8px 12px;
+}
+.clarify-prompt-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.clarify-prompt-row .clarify-prompt {
+  margin: 0;
+  flex: 1;
+}
+.clarify-skip-btn {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--wc-border);
+  background: transparent;
+  color: var(--wc-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.clarify-skip-btn:hover:not(:disabled) {
+  color: var(--wc-text);
+  border-color: var(--wc-text-muted);
+}
+.clarify-skip-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .clarify-prompt {
   font-size: 12px;

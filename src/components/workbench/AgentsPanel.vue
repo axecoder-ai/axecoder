@@ -154,7 +154,6 @@ defineExpose({ load })
   flex-shrink: 0;
   min-height: 0;
   position: relative;
-  z-index: 2;
 }
 
 .panel-top {
@@ -239,6 +238,7 @@ defineExpose({ load })
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 4px 12px 12px;
 }
 
