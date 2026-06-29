@@ -26,6 +26,7 @@ import {
   getSessionSpecificGuidanceSection,
   getSimpleToneAndStyleSection,
   getUsingYourToolsSection,
+  getCodingDisciplineSection,
   getSimpleDoingTasksSection,
   getSimpleIntroSection,
   getSimpleSystemSection,
@@ -99,6 +100,18 @@ describe('agent-system-prompt getSimpleDoingTasksSection', () => {
     expect(doing).toMatch(/OWASP top 10/)
     expect(doing).toMatch(/premature abstraction/)
     expect(doing).not.toMatch(/collaborator, not just an executor/) // Ant 内部
+  })
+})
+
+describe('agent-system-prompt getCodingDisciplineSection', () => {
+  it('含编码前思考与目标驱动两条内置准则', () => {
+    const discipline = getCodingDisciplineSection()
+    expect(discipline).toMatch(/Think before coding/)
+    expect(discipline).toMatch(/State assumptions explicitly/)
+    expect(discipline).toMatch(/Goal-driven execution/)
+    expect(discipline).toMatch(/verifiable success criteria/)
+    expect(discipline).not.toMatch(/Simplicity First/)
+    expect(discipline).not.toMatch(/Surgical Changes/)
   })
 })
 
@@ -249,6 +262,7 @@ describe('agent-system-prompt buildAgentSystemPrompt', () => {
     const intro = getSimpleIntroSection()
     const system = getSimpleSystemSection()
     const doing = getSimpleDoingTasksSection()
+    const discipline = getCodingDisciplineSection()
     const actions = getActionsSection()
     const usingTools = getUsingYourToolsSection()
     const tone = getSimpleToneAndStyleSection()
@@ -259,7 +273,8 @@ describe('agent-system-prompt buildAgentSystemPrompt', () => {
     expect(full.indexOf(intro)).toBe(0)
     expect(full.indexOf(system)).toBeGreaterThan(full.indexOf(intro))
     expect(full.indexOf(doing)).toBeGreaterThan(full.indexOf(system))
-    expect(full.indexOf(actions)).toBeGreaterThan(full.indexOf(doing))
+    expect(full.indexOf(discipline)).toBeGreaterThan(full.indexOf(doing))
+    expect(full.indexOf(actions)).toBeGreaterThan(full.indexOf(discipline))
     expect(full.indexOf(usingTools)).toBeGreaterThan(full.indexOf(actions))
     expect(full.indexOf(tone)).toBeGreaterThan(full.indexOf(usingTools))
     expect(full.indexOf(outputEff)).toBeGreaterThan(full.indexOf(tone))

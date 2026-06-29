@@ -61,6 +61,24 @@ export const getSimpleDoingTasksSection = (): string =>
 - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
 - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. Three similar lines of code is better than a premature abstraction.`
 
+/** Karpathy-inspired gaps: think before coding + goal-driven execution (simplicity/surgical already in §5) */
+export const getCodingDisciplineSection = (): string =>
+  `# Think before coding
+- Don't assume. Don't hide confusion. Surface tradeoffs.
+- State assumptions explicitly. If uncertain, ask rather than guess.
+- When multiple interpretations exist, present them — don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop, name what's confusing, and ask.
+
+# Goal-driven execution
+- Define verifiable success criteria before implementing. Loop until verified.
+- "Add validation" → write tests for invalid inputs, then make them pass.
+- "Fix the bug" → write a test that reproduces it, then make it pass.
+- "Refactor X" → ensure tests pass before and after.
+- For multi-step tasks, state a brief plan: \`[Step] → verify: [check]\`.
+- Strong success criteria let you loop independently; weak criteria ("make it work") require constant clarification.
+- For trivial one-line fixes, use judgment; these guidelines target non-trivial work.`
+
 /** Claude Code `getActionsSection` — `claude-code-system-prompts-full.md` §6（文档省略处按公开完整句补全） */
 export const getActionsSection = (): string =>
   `Carefully consider the reversibility and blast radius of actions. Generally you can freely take local, reversible actions like editing files or running tests. But for actions that are hard to reverse, affect shared systems beyond your local environment, or could otherwise be risky or destructive, check with the user before proceeding. Do not take risky actions without explicit approval, even if the user asked you to complete a task.
@@ -368,6 +386,10 @@ export const buildAgentSystemPrompt = async (
     outputStyleConfig === null ||
     outputStyleConfig.keepCodingInstructions === true
       ? getSimpleDoingTasksSection()
+      : null,
+    outputStyleConfig === null ||
+    outputStyleConfig.keepCodingInstructions === true
+      ? getCodingDisciplineSection()
       : null,
     getActionsSection(),
     getUsingYourToolsSection(),
