@@ -1,4 +1,4 @@
-/** Claude Code (Tengu) spinner verbs — from levindixon/tengu_spinner_words */
+/** Rotating status verbs shown while the agent is working */
 export const SPINNER_VERBS = [
   'Accomplishing',
   'Actioning',
@@ -10,7 +10,7 @@ export const SPINNER_VERBS = [
   'Cerebrating',
   'Channelling',
   'Churning',
-  'Clauding',
+  'Coding',
   'Coalescing',
   'Cogitating',
   'Combobulating',

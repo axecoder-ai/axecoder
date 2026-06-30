@@ -2,7 +2,7 @@
 
 ## 2a 选型摘要
 
-**需求：** 对齐 Claude Code §11 动态段（`SYSTEM_PROMPT_DYNAMIC_BOUNDARY` 之后），接入 `buildAgentSystemPrompt`。
+**需求：** 对齐 同类 Agent §11 动态段（`SYSTEM_PROMPT_DYNAMIC_BOUNDARY` 之后），接入 `buildAgentSystemPrompt`。
 
 | 维度 | 提案 1 | 提案 2 |
 |------|--------|--------|

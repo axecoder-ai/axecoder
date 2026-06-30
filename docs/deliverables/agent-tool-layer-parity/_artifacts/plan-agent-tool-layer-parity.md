@@ -2,7 +2,7 @@
 
 ## 当前背景
 
-AxeCoder Agent 现有 10 个内置工具；与 Claude Code `getAllBaseTools()` 相比缺 Todo、联网、Notebook、Plan、Skill、MCP、子代理 I/O、ToolSearch、扩展工具及 Agent 类型/并行/Bash 规则。
+AxeCoder Agent 现有 10 个内置工具；与 同类 Agent `getAllBaseTools()` 相比缺 Todo、联网、Notebook、Plan、Skill、MCP、子代理 I/O、ToolSearch、扩展工具及 Agent 类型/并行/Bash 规则。
 
 ## 需求
 

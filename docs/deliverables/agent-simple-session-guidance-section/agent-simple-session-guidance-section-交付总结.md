@@ -10,7 +10,7 @@
 
 ## 1. 概述
 
-对齐 Claude Code 系统提示 **§8 Session-specific guidance**（`getSessionSpecificGuidanceSection`），在 Agent 系统提示中按会话能力注入「工具被拒怎么办」「用户自跑 shell」等说明。
+对齐 同类 Agent 系统提示 **§8 Session-specific guidance**（`getSessionSpecificGuidanceSection`），在 Agent 系统提示中按会话能力注入「工具被拒怎么办」「用户自跑 shell」等说明。
 
 - **选型：** 提案 1（动态拼接，无项返回 `null`）
 - **交付目录：** `docs/deliverables/agent-simple-session-guidance-section/`

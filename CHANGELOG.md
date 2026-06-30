@@ -79,7 +79,7 @@ WritCraft 起步，后更名为 AxeCoder。
 - **初始版本**（WritCraft）：Electron + Vue 3 + Monaco 工作台，多模型对话，项目会话持久化，聊天引用资源管理器文件
 - Agent：**文件读写工具**与可扩展 **tool** 框架
 - 背景资料 **`/init`**、欢迎页
-- 对齐 **Claude Code 工具层**、运行时缺口与斜杠命令生态
+- 对齐 **同类 Agent 工具层**、运行时缺口与斜杠命令生态
 - **MCP SDK**：真实 `CallMcpTool` 与资源读写
 - UI：Agent **SSE 终端风进度流**；工作台布局与聊天**多标签**
 - **协作工坊**（Workshop）：多角色 Agent、回合制路由、与 Chat 统一 UI

@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-为 AxeCoder Agent 补齐 Claude Code 风格的权限管理：**Settings Permissions 页**可视化编辑 + **全局 config.json / 项目 permissions.json** 双文件配置。用户选定提案 2（规则引擎 + 项目级 JSON）。
+为 AxeCoder Agent 补齐 同类 Agent 风格的权限管理：**Settings Permissions 页**可视化编辑 + **全局 config.json / 项目 permissions.json** 双文件配置。用户选定提案 2（规则引擎 + 项目级 JSON）。
 
 交付目录：`docs/deliverables/agent-permissions-ui/`
 

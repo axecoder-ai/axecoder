@@ -2,7 +2,7 @@
 
 ## 功能
 
-- 新增 `getSimpleToneAndStyleSection()`（Claude Code §9 外部版）。
+- 新增 `getSimpleToneAndStyleSection()`（同类 Agent §9 外部版）。
 - `buildAgentSystemPrompt` 在 §7 与 §8 之间插入 tone 段。
 
 ## 修改文件

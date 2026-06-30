@@ -4,7 +4,7 @@
 
 ## 功能
 
-- [x] `getSimpleIntroSection` 结构与 Claude Code §2 一致（含 cyber + URL）
+- [x] `getSimpleIntroSection` 结构与 同类 Agent §2 一致（含 cyber + URL）
 - [x] 用户调整：开场身份为 AxeCoder
 - [x] `buildAgentSystemPrompt` 正确拼接 intro + 工具规则 + project root
 - [x] `agent-loop.ts` 通过 re-export 无破坏性变更

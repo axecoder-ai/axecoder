@@ -13,7 +13,7 @@
 
 ## 1. 概述
 
-在 AxeCoder Agent 系统提示中 **1:1 接入** Claude Code `getSimpleDoingTasksSection`（§5 全员），并按 §15 置于 system 段与工具路径规则之间；同时实现 `AskUserQuestion` 结构化问答工具闭环。
+在 AxeCoder Agent 系统提示中 **1:1 接入** 同类 Agent `getSimpleDoingTasksSection`（§5 全员），并按 §15 置于 system 段与工具路径规则之间；同时实现 `AskUserQuestion` 结构化问答工具闭环。
 
 **选型：** 推荐并选定提案 1；用户要求实现 AskUserQuestion。
 

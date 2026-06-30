@@ -27,7 +27,7 @@
 
 **推荐：提案 1 – 扩展 TaskStop 统一取消后台任务**
 
-理由：agent-bash-parity 已建立「后台 Bash → task_id → TaskOutput」路径；扩展 TaskStop 最小 diff、无新工具名，与 Claude Code TaskStop 习惯一致。
+理由：agent-bash-parity 已建立「后台 Bash → task_id → TaskOutput」路径；扩展 TaskStop 最小 diff、无新工具名，与 同类 Agent TaskStop 习惯一致。
 
 ## 用户最终选择
 

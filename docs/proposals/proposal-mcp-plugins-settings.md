@@ -14,7 +14,7 @@
   - `electron/main/agent/agent-mcp-runtime.ts:34-55` — stdio / Streamable HTTP / SSE 传输。
   - `src/components/workbench/SettingsPanel.vue` — Settings Tab 壳层；`ModelsTab.vue` — 列表 + 开关参考。
   - `electron/main/secrets-store.ts` — `~/.axecoder/secrets.json` 密钥存储。
-  - **调研缺口：** 尚无 `docs/research/research-mcp-plugins-settings.md`；`research-axecoder-vs-claude-code.md` MCP 行已过时。
+  - **调研缺口：** 尚无 `docs/research/research-mcp-plugins-settings.md`；`research-axecoder-vs-参考实现.md` MCP 行已过时。
 - **上游提案：** `docs/proposals/proposal-mcp-plugins-settings.md`（make-proposals 三方案版）
 - **选定基础：** 提案 1 – 内置插件注册表 + `plugins.json` 状态层 + Settings Tab
 - **用户调整摘要：** 无额外调整，按提案 1 原稿确认。
@@ -106,7 +106,7 @@
 - **待解决问题：**
   - 实施前是否补 `docs/research/research-mcp-plugins-settings.md`（OAuth V2、Marketplace 路线）。
   - Phase 2：内置 Skill、Browse 市场占位、自定义 MCP 表单（见未采纳提案 3）。
-  - 更新 `research-axecoder-vs-claude-code.md` MCP 行为描述。
+  - 更新 `research-axecoder-vs-参考实现.md` MCP 行为描述。
 
 ### 未采纳方案说明
 

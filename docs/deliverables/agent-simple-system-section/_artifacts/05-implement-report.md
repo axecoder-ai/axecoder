@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-- 新增 `getSimpleSystemSection()`，内容为 Claude Code `claude-code-system-prompts-full.md` §4 六条 bullet 英文原文。
+- 新增 `getSimpleSystemSection()`，内容为 同类 Agent `参考实现-system-prompts-full.md` §4 六条 bullet 英文原文。
 - `buildAgentSystemPrompt` 组装顺序对齐 §15：`getSimpleIntroSection()` → `getSimpleSystemSection()` → `AGENT_DOING_TASKS_SECTION` → project root。
 - `agent-tool-defs.ts` re-export `getSimpleSystemSection`。
 

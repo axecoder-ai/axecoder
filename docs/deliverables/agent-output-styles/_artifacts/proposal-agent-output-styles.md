@@ -7,7 +7,7 @@
 
 ## 概述
 
-新增 `electron/main/agent/agent-output-styles.ts`，1:1 移植 Claude Code `OUTPUT_STYLE_CONFIG`（Default / Explanatory / Learning，含 `keepCodingInstructions: true`）。扩展 `getSimpleIntroSection(outputStyleConfig)`、`getOutputStyleSection`；`buildAgentSystemPrompt` 在 language 之后插入 output style 动态段，并按 `keepCodingInstructions` 决定是否包含 `getSimpleDoingTasksSection`。`AppConfig.agentOutputStyle` 持久化，`GeneralTab` 提供下拉，`agent-loop` 读取配置。
+新增 `electron/main/agent/agent-output-styles.ts`，1:1 移植 同类 Agent `OUTPUT_STYLE_CONFIG`（Default / Explanatory / Learning，含 `keepCodingInstructions: true`）。扩展 `getSimpleIntroSection(outputStyleConfig)`、`getOutputStyleSection`；`buildAgentSystemPrompt` 在 language 之后插入 output style 动态段，并按 `keepCodingInstructions` 决定是否包含 `getSimpleDoingTasksSection`。`AppConfig.agentOutputStyle` 持久化，`GeneralTab` 提供下拉，`agent-loop` 读取配置。
 
 **不做：** 自定义 `output-styles` 目录、插件强制风格、MCP。
 

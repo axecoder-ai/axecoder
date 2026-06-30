@@ -6,7 +6,7 @@
 
 ## 目标
 
-闭合 `research-axecoder-vs-claude-code.md` §5：会话 checkpoint + `/rewind`；`/resume` `/export` `/init` `/memory`；子代理后台任务 UI 与进度；Ollama Agent tools；更新调研中「并行顺序执行」表述。
+闭合 `research-axecoder-vs-参考实现.md` §5：会话 checkpoint + `/rewind`；`/resume` `/export` `/init` `/memory`；子代理后台任务 UI 与进度；Ollama Agent tools；更新调研中「并行顺序执行」表述。
 
 ## 关键变更
 

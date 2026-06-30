@@ -4,7 +4,7 @@
 
 **上下文：**
 - **请求：** 在 IDE 内新增独立于 Agent Coding 的 **Collab Workshop**：多角色（技术经理 / 后端 / 前端 / 测试）轮流群聊；思考「…」动画；用户澄清挂起；文件 chip 与编辑器跳转；每轮员工发言后系统确认；与 Agent 数据隔离。
-- **调研来源：** `docs/research/research-axecoder-vs-claude-code.md`（Agent 循环、`AskUserQuestion`）、`docs/research/research-ide-basics.md`（架构/IPC）、`docs/proposals/proposal-chat.md`（项目级会话持久化）。
+- **调研来源：** `docs/research/research-axecoder-vs-参考实现.md`（Agent 循环、`AskUserQuestion`）、`docs/research/research-ide-basics.md`（架构/IPC）、`docs/proposals/proposal-chat.md`（项目级会话持久化）。
 - **上游提案：** `docs/proposals/proposal-collab-workshop.md`（make-proposals 双方案版）
 - **选定基础：** **提案 1** — 独立 Workshop 域（Orchestrator + 专用存储/UI）
 - **用户调整摘要：** 无额外调整；按提案 1 实施；V1 写盘仅「建议 + 跳转」，不自动 apply。

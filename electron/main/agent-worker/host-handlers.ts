@@ -1,5 +1,7 @@
 import { broadcastToRenderers } from '../renderer-broadcast'
 import { notifyLspFileRefresh } from '../lsp/lsp-editor-ipc'
+import { syncAgentFileToLsp } from '../lsp/lsp-agent-sync'
+import { buildPostEditDiagnosticsBlock } from '../agent/agent-lsp-post-edit'
 import {
   beginAiMetricsCallWithId,
   endAiMetricsCall,
@@ -23,7 +25,7 @@ type AiMetricsEndParams = {
 export const handleAgentWorkerHostRequest = async (
   method: string,
   params: unknown,
-): Promise<void> => {
+): Promise<unknown> => {
   switch (method) {
     case 'emitProgress':
       broadcastToRenderers('agent:progress', params as AgentProgressPayload)
@@ -31,6 +33,16 @@ export const handleAgentWorkerHostRequest = async (
     case 'notifyLspFileRefresh':
       notifyLspFileRefresh(String(params ?? ''))
       return
+    case 'afterAgentFileWrite': {
+      const p = params as { projectRoot?: string; absPaths?: string[] }
+      const projectRoot = String(p.projectRoot ?? '')
+      const absPaths = Array.isArray(p.absPaths) ? p.absPaths.map(String) : []
+      for (const abs of absPaths) {
+        await syncAgentFileToLsp(projectRoot, abs)
+        notifyLspFileRefresh(abs)
+      }
+      return buildPostEditDiagnosticsBlock(projectRoot, absPaths)
+    }
     case 'traceToolCall':
       traceToolCall(params as Parameters<typeof traceToolCall>[0])
       return

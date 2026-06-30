@@ -13,6 +13,7 @@ const emit = defineEmits<{
   review: [file: AgentTurnFileChange]
   openFile: [filePath: string]
   undoAll: []
+  undoFile: [file: AgentTurnFileChange]
   dismiss: [filePath: string]
 }>()
 
@@ -66,6 +67,15 @@ const statsLabel = (f: AgentTurnFileChange) => {
             <span v-if="f.deletions > 0" class="stat-del">{{ `-${f.deletions}` }}</span>
             <span v-if="!f.additions && !f.deletions" class="stat-neutral">{{ statsLabel(f) }}</span>
           </span>
+        </button>
+        <button
+          type="button"
+          class="btn-row-undo"
+          title="Undo this file"
+          :disabled="busy"
+          @click="emit('undoFile', f)"
+        >
+          Undo
         </button>
         <button
           type="button"
@@ -233,6 +243,28 @@ const statsLabel = (f: AgentTurnFileChange) => {
   filter: brightness(1.08);
 }
 
+.btn-row-undo {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--wc-text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.turn-changes-row:hover .btn-row-undo {
+  opacity: 1;
+}
+
+.btn-row-undo:hover:not(:disabled) {
+  color: var(--wc-text);
+  background: var(--wc-hover, rgba(255, 255, 255, 0.08));
+}
+
 .btn-diff,
 .btn-dismiss {
   width: 22px;
@@ -256,7 +288,8 @@ const statsLabel = (f: AgentTurnFileChange) => {
 }
 
 .turn-changes-row:hover .btn-diff,
-.turn-changes-row:hover .btn-dismiss {
+.turn-changes-row:hover .btn-dismiss,
+.turn-changes-row:hover .btn-row-undo {
   opacity: 1;
 }
 
@@ -268,6 +301,7 @@ const statsLabel = (f: AgentTurnFileChange) => {
 
 .btn-undo:disabled,
 .btn-review:disabled,
+.btn-row-undo:disabled,
 .btn-diff:disabled,
 .btn-dismiss:disabled {
   opacity: 0.45;

@@ -17,6 +17,8 @@ import {
 import { getSession } from './agent-session-store'
 import { PATH_OUTSIDE_PROJECT_ERROR, relativeInProject, resolvePathInProject } from './agent-path'
 import { applyStringReplace, patchToUnifiedDiff } from './edit-utils'
+import { planUnifiedPatch } from './apply-patch'
+import { revertFileWithPatch } from './agent-revert'
 import {
   formatBackgroundBashStarted,
   formatBashToolContent,
@@ -36,15 +38,9 @@ import {
 } from './agent-fs'
 import { executeExtendedAgentTool } from './agent-ext-executor'
 import { notifyLspFileRefresh } from '../lsp/lsp-editor-ipc'
-import { delegateNotifyLspFileRefresh, isAgentWorkerProcess } from './main-process-delegate'
-
-const refreshLspForFile = (filePath: string) => {
-  if (isAgentWorkerProcess()) {
-    delegateNotifyLspFileRefresh(filePath)
-    return
-  }
-  notifyLspFileRefresh(filePath)
-}
+import { syncAgentFileToLsp } from '../lsp/lsp-agent-sync'
+import { buildPostEditDiagnosticsBlock } from './agent-lsp-post-edit'
+import { isAgentWorkerProcess, requestMainProcess } from './main-process-delegate'
 import { createSubagentAgentId } from './agent-subagent-store'
 import {
   createBackgroundRunId,
@@ -58,13 +54,35 @@ import {
 } from './agent-subagent-tasks'
 import { buildSubAgentToolList } from './agent-tool-registry'
 import { getAgentRunAbortSignal } from './agent-run-abort'
-import { trackCheckpointFileCtx } from './agent-checkpoint'
+import { trackCheckpointFileCtx, restoreCheckpointFilesOnly } from './agent-checkpoint'
 import { writeScratchpadNote } from './agent-scratchpad'
 import { resolveModelIdForTask } from '../ai/model-resolve'
 import { getConfig } from '../config-store'
 import { buildGitForgeContext, forgeEnvForBash } from '../git-forge/detect-forge'
-import { getSubagentTypeConfig, normalizeSubagentType } from './agent-subagent-types'
+import {
+  runGitDiffForAgent,
+  runGitLogForAgent,
+  runGitStatusForAgent,
+} from '../git-forge/git-agent-read'
+import { resolveSubagentForExecution } from './agent-custom-subagents'
 import { normalizeAgentToolCall } from './agent-tool-aliases'
+
+const finishAgentFileWrites = async (ctx: AgentContext, absPaths: string[]): Promise<string> => {
+  if (!absPaths.length) return ''
+  if (isAgentWorkerProcess()) {
+    const block = await requestMainProcess('afterAgentFileWrite', {
+      projectRoot: ctx.projectRoot,
+      absPaths,
+    })
+    return typeof block === 'string' ? block : ''
+  }
+  for (const p of absPaths) {
+    await syncAgentFileToLsp(ctx.projectRoot, p)
+    notifyLspFileRefresh(p)
+  }
+  return buildPostEditDiagnosticsBlock(ctx.projectRoot, absPaths)
+}
+
 export type AgentContext = {
   projectRoot: string
   readCache: Set<string>
@@ -83,6 +101,12 @@ export type AgentContext = {
   drawIoWorkshopId?: string
   /** 本轮主 Agent 启动的后台 Task id（assistant 落盘前汇总） */
   backgroundTaskIds?: string[]
+  /** Smart Mode 用户已放行的 toolCallId */
+  smartReviewBypassIds?: Set<string>
+  /** EnterWorktree 前的仓库根（用于 ExitWorktree 恢复） */
+  worktreeOriginalRoot?: string
+  /** 当前 Agent 会话使用的 worktree 路径 */
+  worktreePath?: string
 }
 
 export type PendingAskUserInternal = PendingAskUserPublic & {
@@ -106,6 +130,11 @@ export type ToolRunResult =
   | { kind: 'bash_pending'; pendingBash: PendingBashInternal; log: AgentToolLogEntry }
   | { kind: 'ask_pending'; pendingAsk: PendingAskUserInternal; log: AgentToolLogEntry }
   | { kind: 'plan_pending'; pendingPlan: PendingPlanInternal; log: AgentToolLogEntry }
+  | {
+      kind: 'smart_pending'
+      pendingSmart: import('./agent-smart-review').PendingSmartApprovalInternal
+      log: AgentToolLogEntry
+    }
 
 export type PendingWriteInternal = PendingWritePublic & {
   toolCallId: string
@@ -162,7 +191,7 @@ export const parseAskUserQuestions = (
 let pendingSeq = 0
 const nextPendingId = () => `pw-${Date.now()}-${pendingSeq++}`
 
-const PLAN_BLOCKED = new Set(['Edit', 'Write', 'Delete', 'Move', 'Bash'])
+const PLAN_BLOCKED = new Set(['Edit', 'Write', 'Delete', 'Move', 'Bash', 'ApplyPatch'])
 
 export const executeAgentTool = async (
   ctx: AgentContext,
@@ -278,8 +307,8 @@ export const executeAgentTool = async (
           const rel = relativeInProject(ctx.projectRoot, resolved)
           if (rel) trackCheckpointFileCtx(ctx, rel, oldContent)
           await writeProjectFile(resolved, newContent)
-          refreshLspForFile(resolved)
-          return { ok: true as const, content: 'Applied.', logOk: true }
+          const diag = await finishAgentFileWrites(ctx, [resolved])
+          return { ok: true as const, content: `Applied.${diag}`, logOk: true }
         },
       },
     }
@@ -318,11 +347,112 @@ export const executeAgentTool = async (
           const rel = relativeInProject(ctx.projectRoot, resolved)
           if (rel) trackCheckpointFileCtx(ctx, rel, oldContent)
           await writeProjectFile(resolved, content)
-          refreshLspForFile(resolved)
           ctx.readCache.add(resolved)
-          return { ok: true as const, content: 'Applied.', logOk: true }
+          const diag = await finishAgentFileWrites(ctx, [resolved])
+          return { ok: true as const, content: `Applied.${diag}`, logOk: true }
         },
       },
+    }
+  }
+
+  if (name === 'ApplyPatch') {
+    const patch = str(args.patch) || str(args.patchText)
+    if (!patch) {
+      return {
+        kind: 'immediate',
+        content: 'Error: patch is required',
+        log: { name, summary: 'ApplyPatch', ok: false },
+      }
+    }
+    const planned = await planUnifiedPatch(
+      (rel) => resolvePathInProject(ctx.projectRoot, rel),
+      patch,
+    )
+    if (!planned.ok) {
+      return {
+        kind: 'immediate',
+        content: `Error: ${planned.error}`,
+        log: { name, summary: 'ApplyPatch', ok: false },
+      }
+    }
+    const batchFiles = planned.files.map((f) => ({
+      filePath: f.absPath,
+      patchText: f.patchText,
+    }))
+    const summaryNames = planned.files.map((f) => f.relPath).join(', ')
+    const combinedPatch = planned.files.map((f) => f.patchText).join('\n')
+    const primaryPath = planned.files[0]!.absPath
+    const id = nextPendingId()
+    return {
+      kind: 'pending',
+      log: { name, summary: `ApplyPatch ${summaryNames}`, ok: true },
+      pending: {
+        id,
+        toolCallId: call.id,
+        tool: 'ApplyPatch',
+        filePath: primaryPath,
+        summary: `ApplyPatch ${summaryNames}`,
+        patchText: combinedPatch,
+        batchFiles,
+        apply: async () => {
+          for (const f of planned.files) {
+            const rel = relativeInProject(ctx.projectRoot, f.absPath)
+            if (rel) trackCheckpointFileCtx(ctx, rel, f.oldContent)
+            await writeProjectFile(f.absPath, f.newContent)
+            ctx.readCache.add(f.absPath)
+          }
+          const diag = await finishAgentFileWrites(
+            ctx,
+            planned.files.map((f) => f.absPath),
+          )
+          return { ok: true as const, content: `Applied.${diag}` }
+        },
+      },
+    }
+  }
+
+  if (name === 'RevertTurn') {
+    const scope = (str(args.scope) || 'file').toLowerCase()
+    if (scope === 'file') {
+      const file_path = str(args.file_path)
+      const patch = str(args.patch) || str(args.patchText)
+      if (!file_path || !patch) {
+        return {
+          kind: 'immediate',
+          content: 'Error: file_path and patch are required when scope=file',
+          log: { name, summary: 'RevertTurn', ok: false },
+        }
+      }
+      const res = await revertFileWithPatch(ctx.projectRoot, file_path, patch)
+      return {
+        kind: 'immediate',
+        content: res.ok ? 'Reverted file.' : `Error: ${res.error}`,
+        log: { name, summary: `RevertTurn ${file_path}`, ok: res.ok },
+      }
+    }
+    if (scope === 'turn' || scope === 'all') {
+      const sid = ctx.sessionId?.trim()
+      if (!sid) {
+        return {
+          kind: 'immediate',
+          content: 'Error: no active session for turn revert',
+          log: { name, summary: 'RevertTurn', ok: false },
+        }
+      }
+      const cpId = str(args.checkpoint_id) || str(args.checkpointId) || undefined
+      const res = await restoreCheckpointFilesOnly(sid, ctx.projectRoot, cpId || undefined)
+      return {
+        kind: 'immediate',
+        content: res.ok
+          ? `Restored ${res.restoredFiles} file(s) from checkpoint.`
+          : `Error: ${res.error}`,
+        log: { name, summary: 'RevertTurn turn', ok: res.ok },
+      }
+    }
+    return {
+      kind: 'immediate',
+      content: 'Error: scope must be file, turn, or all',
+      log: { name, summary: 'RevertTurn', ok: false },
     }
   }
 
@@ -388,6 +518,38 @@ export const executeAgentTool = async (
           return { ok: true as const }
         },
       },
+    }
+  }
+
+  if (name === 'GitStatus') {
+    const res = await runGitStatusForAgent(ctx.projectRoot)
+    return {
+      kind: 'immediate',
+      content: res.ok ? res.text : `Error: ${res.error}`,
+      log: { name, summary: 'GitStatus', ok: res.ok },
+    }
+  }
+
+  if (name === 'GitDiff') {
+    const staged = args.staged === true
+    const ref = str(args.ref) || undefined
+    const res = await runGitDiffForAgent(ctx.projectRoot, { staged, ref })
+    return {
+      kind: 'immediate',
+      content: res.ok ? res.text : `Error: ${res.error}`,
+      log: { name, summary: ref ? `GitDiff ${ref}` : staged ? 'GitDiff staged' : 'GitDiff', ok: res.ok },
+    }
+  }
+
+  if (name === 'GitLog') {
+    const limitRaw = args.limit
+    const limit = typeof limitRaw === 'number' ? limitRaw : undefined
+    const ref = str(args.ref) || undefined
+    const res = await runGitLogForAgent(ctx.projectRoot, { limit, ref })
+    return {
+      kind: 'immediate',
+      content: res.ok ? res.text : `Error: ${res.error}`,
+      log: { name, summary: 'GitLog', ok: res.ok },
     }
   }
 
@@ -501,20 +663,48 @@ export const executeAgentTool = async (
       }
     }
 
-    const subagentType = normalizeSubagentType(str(args.subagent_type) || 'generalPurpose')
-    const typeCfg = getSubagentTypeConfig(subagentType)
+    const rawSubagentType = str(args.subagent_type) || 'generalPurpose'
+    const resolved = await resolveSubagentForExecution(
+      ctx.projectRoot,
+      rawSubagentType,
+      args.readonly === true,
+    )
+    const subagentType =
+      resolved.kind === 'builtin' ? resolved.type : resolved.name
+    const typeCfg =
+      resolved.kind === 'builtin' ?
+        resolved.cfg
+      : {
+          readOnly: resolved.readOnly,
+          shellOnly: false,
+          maxTurns: resolved.maxTurns,
+          modelTaskKind: resolved.modelTaskKind,
+          promptPrefix: resolved.promptPrefix,
+        }
     const modelOverride = str(args.model)
-    const subModelId = modelOverride || (await resolveModelIdForTask(typeCfg.modelTaskKind))
-    const readonly = args.readonly === true
-    const runInBackground = args.run_in_background === true
+    const customModel =
+      resolved.kind === 'custom' ? resolved.model?.trim() : undefined
+    const subModelId =
+      modelOverride ||
+      customModel ||
+      (await resolveModelIdForTask(typeCfg.modelTaskKind))
+    const readonly = args.readonly === true || typeCfg.readOnly
+    const runInBackground =
+      args.run_in_background === true ||
+      (args.run_in_background === undefined &&
+        resolved.kind === 'custom' &&
+        resolved.isBackground)
     const resumeAgentId = str(args.resume)
     const fileAttachments = Array.isArray(args.file_attachments) ?
         args.file_attachments.filter((p): p is string => typeof p === 'string' && p.trim())
       : []
 
     const runOpts = {
-      subagentType,
-      tools: buildSubAgentToolList(subagentType, readonly),
+      subagentType: rawSubagentType,
+      tools: buildSubAgentToolList(
+        resolved.kind === 'builtin' ? resolved.type : 'generalPurpose',
+        readonly,
+      ),
       readonly,
       modelIdOverride: modelOverride || undefined,
       sessionId: ctx.sessionId,
@@ -692,6 +882,37 @@ export const executeAgentTool = async (
     }
   }
 
+  if (name === 'Brief') {
+    const cfg = await getConfig()
+    if (!cfg.agentFeatureBrief) {
+      return {
+        kind: 'immediate',
+        content: 'Error: Brief disabled. Enable agentFeatureBrief.',
+        log: { name, summary: 'Brief', ok: false },
+      }
+    }
+    const message = str(args.message).trim() || '请简要说明你需要用户确认或补充的内容'
+    const id = nextPendingId()
+    return {
+      kind: 'ask_pending',
+      log: { name, summary: 'Brief', ok: true },
+      pendingAsk: {
+        id,
+        toolCallId: call.id,
+        questions: [
+          {
+            id: 'brief',
+            prompt: message,
+            options: [
+              { id: 'skip', label: '暂无补充，请继续' },
+              { id: 'will_reply', label: '我将在「其他」中填写简要说明' },
+            ],
+          },
+        ],
+      },
+    }
+  }
+
   const ext = await executeExtendedAgentTool(ctx, call)
   if (ext) return ext
 
@@ -701,3 +922,4 @@ export const executeAgentTool = async (
     log: { name, summary: String(name), ok: false },
   }
 }
+

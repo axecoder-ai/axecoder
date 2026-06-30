@@ -4,7 +4,7 @@
 
 ### 一句话需求回顾
 
-将 Claude Code 的 `Bash` 工具能力对齐到 AxeCoder。本轮边界：不引入 CC 级 sandbox/bash classifier；Windows 持久 shell 后续再做。
+将 同类 Agent 的 `Bash` 工具能力对齐到 AxeCoder。本轮边界：不引入 CC 级 sandbox/bash classifier；Windows 持久 shell 后续再做。
 
 ### 方案对比表
 

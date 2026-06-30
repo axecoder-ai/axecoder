@@ -5,7 +5,7 @@ import { getScratchpadPath } from './agent-scratchpad'
 const MAX_TODO_LINES = 20
 const MAX_SCRATCHPAD_CHARS = 4000
 
-/** 对齐 Claude Code `todo_reminder` attachment 文案（精简） */
+
 export const buildTodoReminderInjection = (sessionId: string): string | null => {
   const todos = getSessionTodos(sessionId)
   if (!todos.length) return null

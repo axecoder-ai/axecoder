@@ -51,7 +51,7 @@ export const detectAiTerminalClis = (): DetectedTerminalCli[] => {
 }
 
 const missingCliMessage = (kind: Exclude<TerminalKind, 'shell'>): string => {
-  if (kind === 'claude') return 'Claude Code CLI (claude) not found in PATH'
+  if (kind === 'claude') return 'claude CLI not found in PATH'
   if (kind === 'codex') return 'Codex CLI (codex) not found in PATH'
   return 'Cursor Agent CLI (cursor agent) not found in PATH'
 }

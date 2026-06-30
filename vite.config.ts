@@ -76,6 +76,7 @@ export default defineConfig(({ command }) => {
             'electron/main/extension-host-process.ts',
             'electron/main/workshop-worker-process.ts',
             'electron/main/indexer-worker-process.ts',
+            'electron/main/acp-cli.ts',
           ],
           onstart({ startup }) {
             if (process.env.VSCODE_DEBUG) {

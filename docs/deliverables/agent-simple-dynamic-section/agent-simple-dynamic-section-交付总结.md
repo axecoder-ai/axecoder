@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-**需求：** 对齐 Claude Code `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` 之后的 §11 动态段，接入 AxeCoder `buildAgentSystemPrompt`。
+**需求：** 对齐 同类 Agent `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` 之后的 §11 动态段，接入 AxeCoder `buildAgentSystemPrompt`。
 
 **选型：** 提案 1（用户跳过 AskQuestion，采用推荐方案）；语言默认中文。
 

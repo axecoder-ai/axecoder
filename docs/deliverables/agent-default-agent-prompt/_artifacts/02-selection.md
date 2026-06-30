@@ -2,7 +2,7 @@
 
 ## 2a 选型摘要
 
-**需求：** 1:1 实现 Claude Code §13 `DEFAULT_AGENT_PROMPT` + `enhanceSystemPromptWithEnvDetails` Notes；身份 AxeCoder；并具备最小 Agent 子代理委派能力。
+**需求：** 1:1 实现 同类 Agent §13 `DEFAULT_AGENT_PROMPT` + `enhanceSystemPromptWithEnvDetails` Notes；身份 AxeCoder；并具备最小 Agent 子代理委派能力。
 
 | 维度 | 提案 1 仅提示词 | 提案 2 提示词 + Agent 工具 |
 |------|----------------|---------------------------|

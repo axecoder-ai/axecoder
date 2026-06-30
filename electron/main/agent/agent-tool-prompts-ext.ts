@@ -6,6 +6,7 @@ import {
   CODEGRAPH_NODE_DESCRIPTION,
   CODEGRAPH_SEARCH_DESCRIPTION,
 } from './agent-codegraph-prompt'
+import { SMART_MODE_APPROVAL_PROPERTIES } from './agent-smart-review-params'
 
 const pad = (text: string, min = 420) => {
   let s = text.trim()
@@ -82,6 +83,7 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
   ),
   obj('WebFetch', 'Fetch a URL and return readable text content. HTTPS only.', {
     url: { type: 'string' },
+    ...SMART_MODE_APPROVAL_PROPERTIES,
   }, ['url']),
   obj('WebSearch', 'Search the web: Serper API (cloud) when key set, else Playwright (local browser).', {
     search_term: { type: 'string', description: 'Search query' },
@@ -98,6 +100,7 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
       url: { type: 'string', description: 'URL for navigate' },
       selector: { type: 'string', description: 'CSS selector for click/type' },
       text: { type: 'string', description: 'Text for type action' },
+      ...SMART_MODE_APPROVAL_PROPERTIES,
     },
     ['action'],
   ),
@@ -161,10 +164,14 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
     },
     ['command'],
   ),
-  obj('CallMcpTool', 'Invoke an MCP tool on a configured server.', {
+  obj(
+    'CallMcpTool',
+    'Invoke an MCP tool on a configured server. Prefer this over Bash when an MCP server covers the task — do not install or run CLI clients (e.g. mongosh, mysql) for work an MCP server can do.',
+    {
     server: { type: 'string' },
     toolName: { type: 'string' },
     arguments: { type: 'object' },
+    ...SMART_MODE_APPROVAL_PROPERTIES,
   }, ['server', 'toolName']),
   obj(
     'McpAuth',
@@ -212,7 +219,7 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
   }, ['operation', 'filePath', 'line', 'character']),
   obj(
     'ReadLints',
-    'Read linter/IDE diagnostics for project files via LSP. Use after edits to verify no type or lint errors. Requires agentFeatureLsp and LSP servers in lsp.json.',
+    'Read linter/IDE diagnostics for project files via LSP. Write/Edit/ApplyPatch auto-attach error/warning diagnostics when enabled. Use for broader checks across paths.',
     {
       paths: {
         type: 'array',
@@ -225,7 +232,7 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
   ),
   obj(
     'FixLints',
-    'Auto-fix linter/IDE diagnostics via LSP codeAction (quickfix / fixAll). Applies WorkspaceEdit then re-runs ReadLints. Requires agentFeatureLsp. Not available in plan mode.',
+    'Auto-fix linter/IDE diagnostics via LSP codeAction (quickfix / fixAll). Applies WorkspaceEdit then re-runs ReadLints. Not available in plan mode.',
     {
       paths: {
         type: 'array',
@@ -253,21 +260,22 @@ export const buildExtendedAgentTools = (): AgentToolDef[] => [
     file: { type: 'string', description: 'Disambiguate overloads by file path or basename' },
     line: { type: 'number', description: 'Disambiguate by line number' },
   }, ['symbol']),
-  obj('EnterWorktree', 'Create/use a git worktree for isolated work. Requires agentFeatureWorktree.', {
-    name: { type: 'string' },
+  obj('EnterWorktree', 'Create/use a git worktree for isolated work. Switches Agent projectRoot. Requires agentFeatureWorktree.', {
+    name: { type: 'string', description: 'Branch/worktree name (default axecoder-agent)' },
   }, []),
-  obj('ExitWorktree', 'Leave the current git worktree.', {}, []),
+  obj('ExitWorktree', 'Leave the current git worktree and restore Agent projectRoot.', {}, []),
   obj('Sleep', 'Wait for a duration in ms (background polling). Requires agentFeatureSleep.', {
     ms: { type: 'number' },
   }, ['ms']),
-  obj('Brief', 'Request a brief structured summary from the user.', {
-    message: { type: 'string' },
+  obj('Brief', 'Request a brief summary from the user (shows Ask card; use「其他」for free text). Requires agentFeatureBrief.', {
+    message: { type: 'string', description: 'Prompt shown to the user' },
   }, ['message']),
   obj('Config', 'Read agent-related config keys from AxeCoder settings.', {
     keys: { type: 'array', items: { type: 'string' } },
   }, []),
-  obj('Workflow', 'Run a named workflow stub. Requires agentFeatureWorkflow.', {
-    name: { type: 'string' },
+  obj('Workflow', 'Load a named workflow playbook (skill, custom command, or builtin command). Requires agentFeatureWorkflow.', {
+    name: { type: 'string', description: 'Workflow slug, e.g. rppit or research-codebase' },
+    notes: { type: 'string', description: 'Optional user notes appended to the playbook' },
   }, ['name']),
   obj(
     'Remember',

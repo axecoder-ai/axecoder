@@ -1,12 +1,17 @@
-/** 主 Agent + 子代理可用工具名（对齐 Claude Code getAllBaseTools 缺口表） */
+/** 主 Agent + 子代理可用工具名 */
 export type AgentToolName =
   | 'Read'
   | 'Edit'
   | 'Write'
+  | 'ApplyPatch'
+  | 'RevertTurn'
   | 'Glob'
   | 'Grep'
   | 'Delete'
   | 'Move'
+  | 'GitStatus'
+  | 'GitDiff'
+  | 'GitLog'
   | 'AskUserQuestion'
   | 'Bash'
   | 'Task'
@@ -106,15 +111,17 @@ export type AgentToolCall = {
 
 export type PendingWritePublic = {
   id: string
-  tool: 'Edit' | 'Write' | 'Delete' | 'Move'
+  tool: 'Edit' | 'Write' | 'Delete' | 'Move' | 'ApplyPatch'
   filePath: string
   summary: string
   patchText: string
+  batchFiles?: { filePath: string; patchText: string }[]
 }
 
 export type AgentTurnFileChange = {
+  pendingId?: string
   filePath: string
-  tool: 'Edit' | 'Write' | 'Delete' | 'Move'
+  tool: 'Edit' | 'Write' | 'Delete' | 'Move' | 'ApplyPatch'
   patchText: string
   additions: number
   deletions: number
@@ -141,6 +148,14 @@ export type PendingPlanPublic = {
   plan: string
   filePath: string
   todos?: { id: string; content: string }[]
+}
+
+export type PendingSmartApprovalPublic = {
+  id: string
+  toolName: AgentToolName
+  blockReason: string
+  summary: string
+  detail: string
 }
 
 export type AgentToolLogEntry = {
@@ -173,6 +188,7 @@ export type AgentSendResult =
       pendingBashes?: PendingBashPublic[]
       pendingAsks?: PendingAskUserPublic[]
       pendingPlans?: PendingPlanPublic[]
+      pendingSmartApprovals?: PendingSmartApprovalPublic[]
       assistantText: string
       toolLog: AgentToolLogEntry[]
     } & AgentReplyMeta &
@@ -194,6 +210,7 @@ export type AgentContinueResult =
       pendingBashes?: PendingBashPublic[]
       pendingAsks?: PendingAskUserPublic[]
       pendingPlans?: PendingPlanPublic[]
+      pendingSmartApprovals?: PendingSmartApprovalPublic[]
       assistantText: string
       toolLog: AgentToolLogEntry[]
     } & AgentReplyMeta)
@@ -203,10 +220,15 @@ export const CORE_AGENT_TOOL_NAMES: AgentToolName[] = [
   'Read',
   'Edit',
   'Write',
+  'ApplyPatch',
+  'RevertTurn',
   'Glob',
   'Grep',
   'Delete',
   'Move',
+  'GitStatus',
+  'GitDiff',
+  'GitLog',
   'Bash',
   'Task',
   'Agent',

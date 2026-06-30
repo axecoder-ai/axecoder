@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { getConfig } from '../config-store'
 import { isDangerousGitCommand, MAX_BASH_STDIN_CHARS, trimBashOutput } from './agent-bash'
+import { rejectMcpDuplicateCli } from './agent-bash-mcp-guard'
 import { evaluateExecPolicy } from './agent-execpolicy'
 import { buildShellSpawnSpec } from './agent-sandbox'
 
@@ -112,6 +113,9 @@ export const startBackgroundBash = async (
       error: `Rejected dangerous git operation (${gitRisk}). Do not run without explicit user approval.`,
     }
   }
+
+  const mcpDup = await rejectMcpDuplicateCli(projectRoot, cmd)
+  if (mcpDup) return { ok: false, error: mcpDup }
 
   const sandboxOn =
     opts?.sandboxEnabled !== undefined

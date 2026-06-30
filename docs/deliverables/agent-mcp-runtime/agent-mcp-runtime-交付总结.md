@@ -87,7 +87,7 @@
 
 1. Agent 会话结束时调用 `disconnectAllMcpServers`。
 2. 对无 `sse` 路径的 URL 连接失败时尝试 SSE 回退。
-3. 更新 `research-axecoder-vs-claude-code.md` §2 MCP 行为为「已实现」。
+3. 更新 `research-axecoder-vs-参考实现.md` §2 MCP 行为为「已实现」。
 
 ---
 

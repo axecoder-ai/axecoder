@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-在 AxeCoder Agent 系统提示中 **1:1 接入** Claude Code `getSimpleSystemSection`（§4），并按 §15 置于 `getSimpleIntroSection` 与工具规则之间。
+在 AxeCoder Agent 系统提示中 **1:1 接入** 同类 Agent `getSimpleSystemSection`（§4），并按 §15 置于 `getSimpleIntroSection` 与工具规则之间。
 
 **选型：** 推荐并选定提案 1（英文原文）；无额外调整。
 

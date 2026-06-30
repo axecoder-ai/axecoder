@@ -2,7 +2,7 @@
 
 ## 2a 选型摘要（节选）
 
-- **需求：** 对齐 Claude Code `getAllBaseTools()` 工具层缺口并完整落地。
+- **需求：** 对齐 同类 Agent `getAllBaseTools()` 工具层缺口并完整落地。
 - **推荐（2a）：** 提案 1 – 分波交付。
 - **用户最终选定：** **提案 2 – 单次大单集全量 1:1**
 - **调整说明：** **Wave 4 也要最小可调用实现**（WebSearch/LSP/Worktree 等可 stub + 配置开关，不可仅文档遗留）。

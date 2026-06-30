@@ -2,7 +2,7 @@
 
 ## 2a 摘要
 
-- **需求：** 1:1 对齐 Claude Code §5 `getSimpleDoingTasksSection`；与 §2–4 同模式接入 `buildAgentSystemPrompt`。
+- **需求：** 1:1 对齐 同类 Agent §5 `getSimpleDoingTasksSection`；与 §2–4 同模式接入 `buildAgentSystemPrompt`。
 - **推荐：** 提案 1 – 独立 `getSimpleDoingTasksSection()` + 工具路径规则独立段。
 
 ## 2b 用户选择

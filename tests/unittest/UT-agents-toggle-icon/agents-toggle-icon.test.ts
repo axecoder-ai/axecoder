@@ -39,18 +39,24 @@ describe('Agents 历史侧栏折叠图标', () => {
     expect(block.includes(LEGACY_AGENTS_PANEL_ICON_MARKERS.inner)).toBe(false)
   })
 
-  it('ChatPane agents-expand 使用右侧侧栏布局图标', () => {
+  it('ChatPane 历史侧栏收起时显示时钟按钮', () => {
     const cp = readComponent('ChatPane.vue')
-    const block = sliceBetween(cp, 'class="agents-expand"', '</button>')
+    expect(cp.includes('codicon-history')).toBe(true)
+    expect(cp.includes('toggleHistoryFlyout')).toBe(true)
+    expect(cp.includes('agents-history-flyout')).toBe(true)
+  })
+
+  it('ChatPane 侧栏展开/收起使用布局图标', () => {
+    const cp = readComponent('ChatPane.vue')
+    const block = sliceBetween(cp, 'class="chat-tabs-actions"', '</div>')
     expect(
-      includesRightPanelLayoutIcon(block) || block.includes('codicon-layout-sidebar-right'),
+      block.includes('codicon-layout-sidebar-right') || includesRightPanelLayoutIcon(block),
     ).toBe(true)
-    expect(block.includes(LEGACY_AGENTS_PANEL_ICON_MARKERS.inner)).toBe(false)
   })
 
   it('ChatPane 标签栏提供关闭 AI 面板按钮', () => {
     const cp = readComponent('ChatPane.vue')
-    expect(cp.includes('class="chat-pane-close"')).toBe(true)
+    expect(cp.includes('chat-pane-close')).toBe(true)
     expect(cp.includes("@click=\"emit('close')\"")).toBe(true)
   })
 

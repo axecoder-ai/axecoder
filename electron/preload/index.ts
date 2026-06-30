@@ -293,14 +293,19 @@ contextBridge.exposeInMainWorld('axecoder', {
       enabled,
       projectRoot ? cloneForIpc(projectRoot) : undefined,
     ) as Promise<import('../../src/types/axecoder').McpPluginMutationResult>,
-  setMcpPluginApiKey: (id: string, apiKey: string) =>
-    ipcRenderer.invoke('mcpPlugins:setApiKey', id, apiKey) as Promise<
-      import('../../src/types/axecoder').McpPluginMutationResult
-    >,
-  testMcpPlugin: (id: string) =>
-    ipcRenderer.invoke('mcpPlugins:test', id) as Promise<
-      import('../../src/types/axecoder').McpPluginTestResult
-    >,
+  setMcpPluginApiKey: (id: string, apiKey: string, projectRoot?: string) =>
+    ipcRenderer.invoke(
+      'mcpPlugins:setApiKey',
+      id,
+      apiKey,
+      projectRoot ? cloneForIpc(projectRoot) : undefined,
+    ) as Promise<import('../../src/types/axecoder').McpPluginMutationResult>,
+  testMcpPlugin: (id: string, projectRoot?: string) =>
+    ipcRenderer.invoke(
+      'mcpPlugins:test',
+      id,
+      projectRoot ? cloneForIpc(projectRoot) : undefined,
+    ) as Promise<import('../../src/types/axecoder').McpPluginTestResult>,
   listUsers: () =>
     ipcRenderer.invoke('users:list') as Promise<import('../../src/types/axecoder').UsersFile>,
   saveUser: (input: import('../../src/types/axecoder').UserSaveInput) =>
@@ -370,6 +375,30 @@ contextBridge.exposeInMainWorld('axecoder', {
   ) =>
     ipcRenderer.invoke('skills:delete', scope, folderName, projectRoot) as Promise<
       import('../../src/types/axecoder').SkillsMutationResult
+    >,
+  listSubagents: (projectRoot?: string | null) =>
+    ipcRenderer.invoke('subagents:list', projectRoot) as Promise<
+      import('../../src/types/axecoder').SubagentsMutationResult
+    >,
+  readSubagent: (
+    scope: import('../../src/types/axecoder').SubagentScope,
+    fileName: string,
+    projectRoot?: string,
+  ) =>
+    ipcRenderer.invoke('subagents:read', scope, fileName, projectRoot) as Promise<
+      import('../../src/types/axecoder').SubagentsReadResult
+    >,
+  saveSubagent: (input: import('../../src/types/axecoder').SubagentSaveInput) =>
+    ipcRenderer.invoke('subagents:save', input) as Promise<
+      import('../../src/types/axecoder').SubagentsMutationResult
+    >,
+  deleteSubagent: (
+    scope: 'user' | 'project',
+    fileName: string,
+    projectRoot?: string,
+  ) =>
+    ipcRenderer.invoke('subagents:delete', scope, fileName, projectRoot) as Promise<
+      import('../../src/types/axecoder').SubagentsMutationResult
     >,
   expandChatUserWithFiles: (projectRoot: string, text: string, filePaths: string[]) =>
     ipcRenderer.invoke(
@@ -459,8 +488,17 @@ contextBridge.exposeInMainWorld('axecoder', {
       | { ok: true; text: string; exitCode: number | null }
       | { ok: false; error: string }
     >,
-  chatCompact: (messages: import('../../src/types/axecoder').AiChatMessage[]) =>
-    ipcRenderer.invoke('chat:compact', JSON.parse(JSON.stringify(messages))) as Promise<
+  chatCompact: (
+    messages: import('../../src/types/axecoder').AiChatMessage[],
+    modelId?: string,
+    sessionId?: string,
+  ) =>
+    ipcRenderer.invoke(
+      'chat:compact',
+      JSON.parse(JSON.stringify(messages)),
+      modelId,
+      sessionId,
+    ) as Promise<
       | { ok: true; messages: import('../../src/types/axecoder').AiChatMessage[]; summary: string }
       | { ok: false; error: string }
     >,
@@ -593,6 +631,13 @@ contextBridge.exposeInMainWorld('axecoder', {
       | { ok: true; restoredFiles: number }
       | { ok: false; error: string }
     >,
+  agentRevertFilePatch: (projectRoot: string, filePath: string, patchText: string) =>
+    ipcRenderer.invoke(
+      'agent:revertFilePatch',
+      cloneForIpc(projectRoot),
+      cloneForIpc(filePath),
+      patchText,
+    ) as Promise<{ ok: true } | { ok: false; error: string }>,
   agentListBackgroundTasks: (sessionId?: string) =>
     ipcRenderer.invoke('agent:listBackgroundTasks', sessionId) as Promise<{
       ok: true
@@ -650,6 +695,14 @@ contextBridge.exposeInMainWorld('axecoder', {
     >,
   agentRejectBash: (sessionId: string, pendingId: string, reason?: string) =>
     ipcRenderer.invoke('agent:rejectBash', sessionId, pendingId, reason) as Promise<
+      import('../../src/types/axecoder').AgentContinueResult
+    >,
+  agentConfirmSmartApproval: (sessionId: string, pendingId: string) =>
+    ipcRenderer.invoke('agent:confirmSmartApproval', sessionId, pendingId) as Promise<
+      import('../../src/types/axecoder').AgentContinueResult
+    >,
+  agentRejectSmartApproval: (sessionId: string, pendingId: string, reason?: string) =>
+    ipcRenderer.invoke('agent:rejectSmartApproval', sessionId, pendingId, reason) as Promise<
       import('../../src/types/axecoder').AgentContinueResult
     >,
   agentAnswerQuestions: (
@@ -727,6 +780,10 @@ contextBridge.exposeInMainWorld('axecoder', {
     >,
   gitCommitPushPrPrompt: (cwd: string) =>
     ipcRenderer.invoke('git:commitPushPrPrompt', cloneForIpc(cwd)) as Promise<
+      { ok: true; text: string } | { ok: false; error: string }
+    >,
+  gitInvestigateCiPrompt: (cwd: string, linkedPrUrl?: string) =>
+    ipcRenderer.invoke('git:investigateCiPrompt', cloneForIpc(cwd), linkedPrUrl) as Promise<
       { ok: true; text: string } | { ok: false; error: string }
     >,
   gitOpenUrl: (url: string) =>

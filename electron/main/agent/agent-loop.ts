@@ -19,6 +19,7 @@ import type {
   PendingAskUserPublic,
   PendingBashPublic,
   PendingPlanPublic,
+  PendingSmartApprovalPublic,
   PendingWritePublic,
 } from './agent-types'
 import { composePlanBuildUserMessage, userWantsCreatePlan } from './agent-create-plan'
@@ -36,6 +37,7 @@ import {
   pendingAskToPublic,
   pendingBashToPublic,
   pendingPlanToPublic,
+  pendingSmartToPublic,
   pendingToPublic,
   putSession,
   type StoredAgentSession,
@@ -57,9 +59,10 @@ import { extractToolSubject } from './agent-permission-rules'
 import { isReadOnlyBashCommand } from './agent-bash-readonly'
 import { extractPullRequestFromOutput } from '../git-forge/git-operation-tracking'
 import { buildGitForgeContext } from '../git-forge/detect-forge'
+import { ensureLspForProject } from '../lsp/lsp-manager'
 import { runHooks } from './agent-hooks'
 import { clearOldToolResults, dropOrphanToolMessages, capToolMessageContent } from './agent-frc'
-import { compactAgentMessages, compactAgentMessagesWithLlm, shouldAutoCompact } from './agent-context-compact'
+import { compactAgentMessages, compactAgentMessagesWithLlm, extractPriorCompactSummary, shouldAutoCompact } from './agent-context-compact'
 import { getTokenBudgetSection } from './agent-token-budget'
 import { maybeInjectProactiveReminder } from './agent-proactive'
 import { ensureScratchpadDir } from './agent-scratchpad'
@@ -82,6 +85,18 @@ import {
 import { interruptBackgroundRun, listBackgroundRuns } from './agent-subagent-tasks'
 import { stopShellTasksForSession } from './agent-bash-tasks'
 import { refreshCustomOutputStylesCache } from './agent-output-styles-custom'
+import {
+  createSmartPendingId,
+  formatSmartReviewBlockMessage,
+  formatSmartReviewDetail,
+  getSmartModeBlockReason,
+  isRequestSmartModeApproval,
+  isSmartModeApprovalEnabled,
+  runSmartReview,
+  shouldSmartReviewTool,
+  summarizeSmartReviewTool,
+  type PendingSmartApprovalInternal,
+} from './agent-smart-review'
 import type { AgentToolName } from './agent-types'
 import {
   applyChatModeToNewSession,
@@ -192,17 +207,23 @@ const replyMeta = (
 }
 
 const recordTurnFileChange = (session: StoredAgentSession, pending: PendingWriteInternal) => {
-  const { additions, deletions } = countPatchLineStats(pending.patchText)
-  const entry: AgentTurnFileChange = {
-    filePath: pending.filePath,
-    tool: pending.tool,
-    patchText: pending.patchText,
-    additions,
-    deletions,
+  const buildEntry = (filePath: string, patchText: string): AgentTurnFileChange => {
+    const { additions, deletions } = countPatchLineStats(patchText)
+    return {
+      pendingId: pending.id,
+      filePath,
+      tool: pending.tool,
+      patchText,
+      additions,
+      deletions,
+    }
   }
-  const idx = session.turnFileChanges.findIndex((f) => f.filePath === pending.filePath)
-  if (idx >= 0) session.turnFileChanges[idx] = entry
-  else session.turnFileChanges.push(entry)
+  const entries = pending.batchFiles?.length
+    ? pending.batchFiles.map((bf) => buildEntry(bf.filePath, bf.patchText))
+    : [buildEntry(pending.filePath, pending.patchText)]
+  for (const entry of entries) {
+    session.turnFileChanges.push(entry)
+  }
 }
 
 const finalizeTurnCheckpointId = (sessionId: string, session: StoredAgentSession) => {
@@ -288,6 +309,7 @@ const finishPending = (
   pendingBashes: PendingBashPublic[],
   pendingAsks: PendingAskUserPublic[],
   pendingPlans: PendingPlanPublic[],
+  pendingSmartApprovals: PendingSmartApprovalPublic[],
   assistantText: string,
   content?: string,
   reasoningContent?: string,
@@ -299,6 +321,7 @@ const finishPending = (
   ...(pendingBashes.length ? { pendingBashes } : {}),
   ...(pendingAsks.length ? { pendingAsks } : {}),
   ...(pendingPlans.length ? { pendingPlans } : {}),
+  ...(pendingSmartApprovals.length ? { pendingSmartApprovals } : {}),
   assistantText,
   toolLog: [...session.toolLog],
   ...replyMeta(session, content, reasoningContent),
@@ -310,13 +333,15 @@ const collectPendingPublic = (session: StoredAgentSession) => ({
   bashes: [...session.pendingBashById.values()].map(pendingBashToPublic),
   asks: [...session.pendingAskById.values()].map(pendingAskToPublic),
   plans: [...session.pendingPlanById.values()].map(pendingPlanToPublic),
+  smartApprovals: [...(session.pendingSmartById?.values() ?? [])].map(pendingSmartToPublic),
 })
 
 const hasPendingInSession = (session: StoredAgentSession) =>
   session.pendingById.size > 0 ||
   session.pendingBashById.size > 0 ||
   session.pendingAskById.size > 0 ||
-  session.pendingPlanById.size > 0
+  session.pendingPlanById.size > 0 ||
+  (session.pendingSmartById?.size ?? 0) > 0
 
 const stripBudgetReminders = (messages: AgentLoopMessage[]) =>
   messages.filter(
@@ -333,16 +358,22 @@ const prepareSessionBeforeModel = async (sessionId: string, session: StoredAgent
   const cfg = await getConfig()
   const isWorkshop = sessionId.startsWith('workshop-')
   const keepTools = isWorkshop ? 4 : (cfg.agentFrcKeepToolMessages ?? 8)
-  clearOldToolResults(session.messages, keepTools)
   const threshold = isWorkshop ? 60_000 : (cfg.agentContextCompactThreshold ?? 120_000)
   if (shouldAutoCompact(session.messages, threshold)) {
+    const priorSummary =
+      session.rollingCompactSummary?.trim() ||
+      extractPriorCompactSummary(session.messages) ||
+      undefined
     const compacted = await compactAgentMessagesWithLlm(session.messages, isWorkshop ? 12 : 24, {
       modelId: session.modelId,
       sessionId,
+      priorSummary,
     })
     session.messages = compacted.messages
+    session.rollingCompactSummary = compacted.summary || session.rollingCompactSummary
     session.compactedOnce = true
   }
+  clearOldToolResults(session.messages, keepTools)
   session.messages = dropOrphanToolMessages(session.messages)
   session.messages = stripBudgetReminders(session.messages)
   session.messages = stripContextInjectReminders(session.messages)
@@ -474,6 +505,7 @@ export const runAgentLoopUntilDoneOrPending = async (
 
       const pendingPublic: PendingWritePublic[] = []
       const pendingBashPublic: PendingBashPublic[] = []
+      const pendingSmartPublic: PendingSmartApprovalPublic[] = []
       const pendingAskPublic: PendingAskUserPublic[] = []
       const pendingPlanPublic: PendingPlanPublic[] = []
 
@@ -612,6 +644,97 @@ export const runAgentLoopUntilDoneOrPending = async (
           return { tc, run: aborted }
         }
 
+        const toolArgs = tc.arguments as Record<string, unknown>
+        if (
+          isSmartModeApprovalEnabled(cfg) &&
+          shouldSmartReviewTool(tc.name as AgentToolName, toolArgs) &&
+          !session.ctx.smartReviewBypassIds?.has(tc.id)
+        ) {
+          if (isRequestSmartModeApproval(toolArgs)) {
+            const blockReason = getSmartModeBlockReason(toolArgs)
+            if (!blockReason) {
+              const err =
+                'Error: smartModeBlockReason is required when requestSmartModeApproval is true.'
+              const blocked: ToolRunResult = {
+                kind: 'immediate',
+                content: err,
+                log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
+              }
+              emitToolDoneProgress(tc.name, toolSummary, false, err)
+              emitTraceToolResult({
+                sessionId,
+                turn: session.turn,
+                toolName: tc.name,
+                ok: false,
+                content: err,
+              })
+              return { tc, run: blocked }
+            }
+            const pendingSmart: PendingSmartApprovalInternal = {
+              id: createSmartPendingId(),
+              toolCallId: tc.id,
+              toolName: tc.name as AgentToolName,
+              toolCall: tc,
+              blockReason,
+              summary: summarizeSmartReviewTool(tc.name as AgentToolName, toolArgs),
+              detail: formatSmartReviewDetail(tc.name as AgentToolName, toolArgs),
+              apply: async () => {
+                if (!session.ctx.smartReviewBypassIds) {
+                  session.ctx.smartReviewBypassIds = new Set()
+                }
+                session.ctx.smartReviewBypassIds.add(tc.id)
+                return executeAgentTool(session.ctx, tc)
+              },
+            }
+            const smartRun: ToolRunResult = {
+              kind: 'smart_pending',
+              pendingSmart,
+              log: {
+                name: tc.name as AgentToolName,
+                summary: 'Smart Mode approval',
+                ok: true,
+              },
+            }
+            emitToolDoneProgress(
+              tc.name,
+              toolSummary,
+              true,
+              'Pending Smart Mode user approval.',
+            )
+            emitTraceToolResult({
+              sessionId,
+              turn: session.turn,
+              toolName: tc.name,
+              ok: true,
+              content: 'smart_pending',
+            })
+            return { tc, run: smartRun }
+          }
+          const review = await runSmartReview(tc.name as AgentToolName, toolArgs, {
+            chatModelId: session.modelId,
+            classifierModelId: cfg.agentAutoPlanClassifierModelId,
+          })
+          if (review.action === 'block') {
+            const blockMsg = formatSmartReviewBlockMessage(
+              review.reason || 'Risky operation flagged by Auto-review',
+            )
+            const blocked: ToolRunResult = {
+              kind: 'immediate',
+              content: blockMsg,
+              log: { name: tc.name as AgentToolName, summary: toolSummary, ok: false },
+            }
+            emitToolDoneProgress(tc.name, toolSummary, false, blockMsg)
+            emitTraceToolResult({
+              sessionId,
+              turn: session.turn,
+              toolName: tc.name,
+              ok: false,
+              content: blockMsg,
+            })
+            return { tc, run: blocked }
+          }
+        }
+
         let run = await executeAgentTool(session.ctx, tc)
 
         if (run.kind === 'pending') {
@@ -665,7 +788,9 @@ export const runAgentLoopUntilDoneOrPending = async (
             ? run.content
             : run.kind === 'pending' || run.kind === 'bash_pending'
               ? 'Pending user approval for this change.'
-              : 'Pending user answers to structured questions.'
+              : run.kind === 'smart_pending'
+                ? 'Pending Smart Mode user approval.'
+                : 'Pending user answers to structured questions.'
         emitToolDoneProgress(run.log.name, run.log.summary, run.log.ok, toolResultContent)
 
         if (
@@ -716,7 +841,9 @@ export const runAgentLoopUntilDoneOrPending = async (
             ? run.content
             : run.kind === 'pending' || run.kind === 'bash_pending'
               ? 'Pending user approval for this change.'
-              : 'Pending user answers to structured questions.',
+              : run.kind === 'smart_pending'
+                ? 'Pending Smart Mode user approval.'
+                : 'Pending user answers to structured questions.',
         ok: run.log.ok,
       }))
       const storm = applyStormBreaker(
@@ -751,6 +878,15 @@ export const runAgentLoopUntilDoneOrPending = async (
             toolCallId: tc.id,
             name: tc.name,
             content: 'Pending user approval to run this command.',
+          })
+        } else if (run.kind === 'smart_pending') {
+          session.pendingSmartById.set(run.pendingSmart.id, run.pendingSmart)
+          pendingSmartPublic.push(pendingSmartToPublic(run.pendingSmart))
+          session.messages.push({
+            role: 'tool',
+            toolCallId: tc.id,
+            name: tc.name,
+            content: 'Pending Smart Mode user approval.',
           })
         } else if (run.kind === 'ask_pending') {
           session.pendingAskById.set(run.pendingAsk.id, run.pendingAsk)
@@ -789,13 +925,15 @@ export const runAgentLoopUntilDoneOrPending = async (
         pendingPublic.length ||
         pendingBashPublic.length ||
         pendingAskPublic.length ||
-        pendingPlanPublic.length
+        pendingPlanPublic.length ||
+        pendingSmartPublic.length
       ) {
         const cfg = await getConfig()
         if (
           (cfg.agentAutoApplyWrites || session.ctx.workshopAutoApply) &&
           !pendingAskPublic.length &&
-          !pendingPlanPublic.length
+          !pendingPlanPublic.length &&
+          !pendingSmartPublic.length
         ) {
           const applied = await applyAllPendingInSession(session)
           if (!applied.ok) return { ok: false, error: applied.error }
@@ -809,6 +947,7 @@ export const runAgentLoopUntilDoneOrPending = async (
           pendingBashPublic,
           pendingAskPublic,
           pendingPlanPublic,
+          pendingSmartPublic,
           pendingReplyText,
           res.content,
           res.reasoningContent,
@@ -855,6 +994,10 @@ export const startAgentTurn = async (
   )
   if (visionBlocked) return visionBlocked
   const cfg = await getConfig()
+
+  if (cfg.agentFeatureLsp) {
+    void ensureLspForProject(projectRoot).catch(() => {})
+  }
 
   const sessionId = createSessionId()
   const revealedToolNames = new Set<import('./agent-types').AgentToolName>()
@@ -934,6 +1077,7 @@ export const startAgentTurn = async (
     pendingBashById: new Map(),
     pendingAskById: new Map(),
     pendingPlanById: new Map(),
+    pendingSmartById: new Map(),
     turn: 0,
     planMode: false,
     chatMode: 'agent',
@@ -1012,6 +1156,16 @@ const rejectAllPendingInSession = (
     }
   }
   session.pendingBashById.clear()
+
+  for (const pending of (session.pendingSmartById ?? new Map()).values()) {
+    const toolMsg = session.messages.find(
+      (m) => m.role === 'tool' && m.toolCallId === pending.toolCallId,
+    )
+    if (toolMsg && toolMsg.role === 'tool') {
+      toolMsg.content = `Rejected by user: ${rejectReason}`
+    }
+  }
+  session.pendingSmartById?.clear()
 }
 
 export const confirmAgentAllWrites = async (
@@ -1063,9 +1217,9 @@ export const confirmAgentWrite = async (
     toolMsg.content = `Applied: ${pending.summary}`
   }
 
-  const { writes, bashes, asks, plans } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length || plans.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
+  const { writes, bashes, asks, plans, smartApprovals } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length || smartApprovals.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, smartApprovals, '')
   }
 
   return runAgentLoopUntilDoneOrPending(sessionId, session)
@@ -1095,9 +1249,9 @@ export const confirmAgentBash = async (
   )
   if (logEntry) logEntry.ok = applied.logOk
 
-  const { writes, bashes, asks, plans } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length || plans.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
+  const { writes, bashes, asks, plans, smartApprovals } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length || smartApprovals.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, smartApprovals, '')
   }
 
   return runAgentLoopUntilDoneOrPending(sessionId, session)
@@ -1121,9 +1275,9 @@ export const rejectAgentWrite = async (
     toolMsg.content = `Rejected by user: ${reason?.trim() || 'User rejected'}`
   }
 
-  const { writes, bashes, asks, plans } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length || plans.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
+  const { writes, bashes, asks, plans, smartApprovals } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length || smartApprovals.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, smartApprovals, '')
   }
 
   return runAgentLoopUntilDoneOrPending(sessionId, session)
@@ -1147,11 +1301,112 @@ export const rejectAgentBash = async (
     toolMsg.content = `Rejected by user: ${reason?.trim() || 'User rejected'}`
   }
 
-  const { writes, bashes, asks, plans } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length || plans.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
+  const { writes, bashes, asks, plans, smartApprovals } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length || smartApprovals.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, smartApprovals, '')
   }
 
+  return runAgentLoopUntilDoneOrPending(sessionId, session)
+}
+
+const routeApprovedSmartToolRun = async (
+  sessionId: string,
+  session: StoredAgentSession,
+  pending: PendingSmartApprovalInternal,
+  run: ToolRunResult,
+): Promise<AgentContinueResult> => {
+  const tc = pending.toolCall
+  const toolMsg = session.messages.find(
+    (m) => m.role === 'tool' && m.toolCallId === pending.toolCallId,
+  )
+
+  if (run.kind === 'pending') {
+    recordTurnFileChange(session, run.pending)
+    session.pendingById.set(run.pending.id, run.pending)
+    if (toolMsg?.role === 'tool') toolMsg.content = 'Pending user approval for this change.'
+  } else if (run.kind === 'bash_pending') {
+    session.pendingBashById.set(run.pendingBash.id, run.pendingBash)
+    if (toolMsg?.role === 'tool') toolMsg.content = 'Pending user approval to run this command.'
+  } else if (run.kind === 'ask_pending') {
+    session.pendingAskById.set(run.pendingAsk.id, run.pendingAsk)
+    if (toolMsg?.role === 'tool') toolMsg.content = 'Pending user answers to structured questions.'
+  } else if (run.kind === 'plan_pending') {
+    session.pendingPlanById.set(run.pendingPlan.id, run.pendingPlan)
+    if (toolMsg?.role === 'tool') {
+      toolMsg.content = `Plan saved to ${run.pendingPlan.filePath}. Awaiting user Build or Dismiss.`
+    }
+  } else if (run.kind === 'immediate') {
+    if (toolMsg?.role === 'tool') toolMsg.content = capToolMessageContent(run.content)
+    const logEntry = session.toolLog.find((e) => e.name === tc.name)
+    if (logEntry) logEntry.ok = run.log.ok
+  }
+
+  const cfg = await getConfig()
+  const mergedPermPolicy = await buildMergedPermissionsPolicy(cfg, session.projectRoot)
+  const bashCommand =
+    tc.name === 'Bash' && typeof tc.arguments.command === 'string' ? tc.arguments.command : ''
+  const bashReadOnly = bashCommand ? isReadOnlyBashCommand(bashCommand) : false
+  const perm = resolveToolPermission(cfg, tc.name as AgentToolName, {
+    subject: extractToolSubject(tc.arguments as Record<string, unknown>),
+    mergedPolicy: mergedPermPolicy,
+  })
+  const effectivePerm = bashReadOnly && perm === 'ask' ? 'allow' : perm
+  if (
+    (effectivePerm === 'allow' || cfg.agentAutoApplyWrites || session.ctx.workshopAutoApply) &&
+    (run.kind === 'pending' || run.kind === 'bash_pending')
+  ) {
+    const applied = await applyPendingToolRun(session, run)
+    if (!applied.ok) return { ok: false, error: applied.error }
+    if (toolMsg?.role === 'tool') toolMsg.content = applied.content
+    if (run.kind === 'bash_pending') {
+      const logEntry = session.toolLog.find((e) => e.name === 'Bash')
+      if (logEntry) logEntry.ok = applied.logOk
+      session.pendingBashById.delete(run.pendingBash.id)
+    } else {
+      session.pendingById.delete(run.pending.id)
+    }
+  }
+
+  const { writes, bashes, asks, plans, smartApprovals } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length || smartApprovals.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, smartApprovals, '')
+  }
+  return runAgentLoopUntilDoneOrPending(sessionId, session)
+}
+
+export const confirmAgentSmartApproval = async (
+  sessionId: string,
+  pendingId: string,
+): Promise<AgentContinueResult> => {
+  const session = getSession(sessionId)
+  if (!session) return { ok: false, error: t('errors.sessionExpired') }
+  const pending = session.pendingSmartById.get(pendingId)
+  if (!pending) return { ok: false, error: 'Pending Smart Mode approval not found' }
+  session.pendingSmartById.delete(pendingId)
+  const run = await pending.apply()
+  return routeApprovedSmartToolRun(sessionId, session, pending, run)
+}
+
+export const rejectAgentSmartApproval = async (
+  sessionId: string,
+  pendingId: string,
+  reason?: string,
+): Promise<AgentContinueResult> => {
+  const session = getSession(sessionId)
+  if (!session) return { ok: false, error: t('errors.sessionExpired') }
+  const pending = session.pendingSmartById.get(pendingId)
+  if (!pending) return { ok: false, error: 'Pending Smart Mode approval not found' }
+  session.pendingSmartById.delete(pendingId)
+  const toolMsg = session.messages.find(
+    (m) => m.role === 'tool' && m.toolCallId === pending.toolCallId,
+  )
+  if (toolMsg?.role === 'tool') {
+    toolMsg.content = `Rejected by user: ${reason?.trim() || 'User rejected'}`
+  }
+  const { writes, bashes, asks, plans, smartApprovals } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length || smartApprovals.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, smartApprovals, '')
+  }
   return runAgentLoopUntilDoneOrPending(sessionId, session)
 }
 
@@ -1196,9 +1451,9 @@ export const answerAgentQuestions = async (
     toolMsg.content = JSON.stringify({ answers })
   }
 
-  const { writes, bashes, asks, plans } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length || plans.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
+  const { writes, bashes, asks, plans, smartApprovals } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length || smartApprovals.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, smartApprovals, '')
   }
 
   return runAgentLoopUntilDoneOrPending(sessionId, session)
@@ -1271,9 +1526,9 @@ export const dismissAgentPlan = async (
     toolMsg.content = 'User dismissed the plan.'
   }
 
-  const { writes, bashes, asks, plans } = collectPendingPublic(session)
-  if (writes.length || bashes.length || asks.length || plans.length) {
-    return finishPending(sessionId, session, writes, bashes, asks, plans, '')
+  const { writes, bashes, asks, plans, smartApprovals } = collectPendingPublic(session)
+  if (writes.length || bashes.length || asks.length || plans.length || smartApprovals.length) {
+    return finishPending(sessionId, session, writes, bashes, asks, plans, smartApprovals, '')
   }
 
   return runAgentLoopUntilDoneOrPending(sessionId, session)
@@ -1318,6 +1573,8 @@ export type WorkshopAgentTurnOptions = {
   sopBuiltinRole?: import('../users-types').BuiltinUserRole
   /** Software Co.：该角色回合与 Chat Agent 同等效率 */
   sopAgentParity?: boolean
+  /** Multi-Agent：工具全开 + session 复用，但保持 agent chatMode（非 SOP 流水线） */
+  workshopAgentParity?: boolean
 }
 
 const finishWorkshopTurn = async (
@@ -1398,7 +1655,8 @@ export const runWorkshopRoleAgentTurn = async (
   const revealedToolNames = new Set<AgentToolName>()
   const allTools = buildFullAgentTools()
   const baseTools = getSessionActiveTools(allTools, revealedToolNames)
-  const activeTools = options?.sopAgentParity
+  const fullAgentTools = options?.sopAgentParity || options?.workshopAgentParity
+  const activeTools = fullAgentTools
     ? baseTools
     : filterToolsForSopRole(baseTools, options?.sopBuiltinRole)
   const workshopChatMode: ChatModeId = options?.sopAgentParity ? 'software-company' : 'agent'
@@ -1473,6 +1731,7 @@ export const runWorkshopRoleAgentTurn = async (
     pendingBashById: new Map(),
     pendingAskById: new Map(),
     pendingPlanById: new Map(),
+    pendingSmartById: new Map(),
     turn: 0,
     planMode: false,
     chatMode: workshopChatMode,

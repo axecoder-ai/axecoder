@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-1. **§13 提示词**：`DEFAULT_AGENT_PROMPT`（AxeCoder 品牌）、`getDefaultAgentEnvNotesSection()`（Claude Code Notes 英文原文）、`buildDefaultSubAgentSystemPrompt()`（prompt + notes + `# Environment` + language + project root）。
+1. **§13 提示词**：`DEFAULT_AGENT_PROMPT`（AxeCoder 品牌）、`getDefaultAgentEnvNotesSection()`（同类 Agent Notes 英文原文）、`buildDefaultSubAgentSystemPrompt()`（prompt + notes + `# Environment` + language + project root）。
 2. **Agent 工具**：主 Agent 可调用 `Agent`，参数 `prompt`（必填）、`description`（可选）；内联 `runSubAgentTask` 最多 6 轮，返回 concise report 作为 tool result。
 3. **子代理约束**：`SUB_AGENT_TOOLS` 排除 `Agent`、`AskUserQuestion`；`subAgentDepth` 禁止嵌套；子会话内 Write/Bash pending 自动 apply。
 

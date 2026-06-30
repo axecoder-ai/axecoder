@@ -3,7 +3,7 @@ import { modelTaskKindForWorkshopRole, resolveModelIdForTask } from '../ai/model
 import { buildSubAgentToolList } from '../agent/agent-tool-registry'
 import { buildWorkshopStreamId } from './workshop-stream'
 import { enrichRoleSpeakInputWithSkills } from './workshop-user-skills'
-import { sopFollowUpPromptBlock, sopPhasePromptBlock, sopResearchAuditPromptBlock } from '../sop/sop-prompts'
+import { sopFollowUpPromptBlock, sopPhasePromptBlock, sopResearchAuditPromptBlock, workshopAgentParityPromptBlock } from '../sop/sop-prompts'
 import {
   resolveWorkshopReplyLanguage,
   workshopLanguageInstruction,
@@ -55,6 +55,7 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput, replyLanguage?: strin
     return [
       `[Collab Workshop · ${name} (${input.assigneeUser.role}) · Tech Lead]`,
       langLine,
+      input.workshopAgentParity ? workshopAgentParityPromptBlock() : '',
       'Same tool capabilities as Chat Agent mode: Read, Write, Grep, Glob, CodeGraph, Bash, etc.',
       'Inspect the codebase with tools before concluding; answer substantively for routing.',
       '',
@@ -76,6 +77,7 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput, replyLanguage?: strin
     return [
       `[Collab Workshop · ${name} (${input.assigneeUser.role}) · group message]`,
       langLine,
+      input.workshopAgentParity ? workshopAgentParityPromptBlock() : '',
       sopBlock,
       followUpBlock,
       auditBlock,
@@ -130,6 +132,7 @@ export const buildRoleTaskPrompt = (input: RoleSpeakInput, replyLanguage?: strin
     return [
       `[Collab Workshop · ${name} (${input.assigneeUser.role}) · execute step]`,
       langLine,
+      input.workshopAgentParity ? workshopAgentParityPromptBlock() : '',
       `[Step task] ${input.step?.title ?? ''}`,
       'Same tool capabilities as Chat Agent mode. Use tools on real code before delivering.',
       'Answer substantively; list changed/touched paths when applicable.',

@@ -16,17 +16,18 @@ import { resolveWorkshopReplyLanguage } from '../workshop/workshop-language'
 import { getConfig } from '../config-store'
 import { buildGitForgeContext } from '../git-forge/detect-forge'
 import { formatForgeEnvLines, getGitForgePromptSection } from '../git-forge/forge-prompt'
+import { listCustomSubagentNames } from './agent-custom-subagents'
 
-/** Claude Code — 静态/动态分界；仅用于组装，不写入发给模型的字符串 */
+
 export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY = '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
 
-/** Claude Code §11 `SUMMARIZE_TOOL_RESULTS_SECTION` */
+
 export const SUMMARIZE_TOOL_RESULTS_SECTION = `When working with tool results, write down any important information you might need later in your response, as the original tool result may be cleared later.`
 
-/** Claude Code `cyberRiskInstruction` — `claude-code-system-prompts-full.md` §3 */
+
 export const CYBER_RISK_INSTRUCTION = `IMPORTANT: Assist with authorized security testing, defensive security, CTF challenges, and educational contexts. Refuse requests for destructive techniques, DoS attacks, mass targeting, supply chain compromise, or detection evasion for malicious purposes. Dual-use security tools (C2 frameworks, credential testing, exploit development) require clear authorization context: pentesting engagements, CTF competitions, security research, or defensive use cases.`
 
-/** Claude Code `getSimpleIntroSection` — §2；无 Output Style 时用 software engineering tasks；身份为 AxeCoder */
+
 export const getSimpleIntroSection = (
   outputStyleConfig: AgentOutputStyleConfig | null = null,
 ): string =>
@@ -39,7 +40,7 @@ export const getSimpleIntroSection = (
 ${CYBER_RISK_INSTRUCTION}
 IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that the URLs are for helping the user with programming. You may use URLs provided by the user in their messages or local files.`
 
-/** Claude Code `getSimpleSystemSection` — `claude-code-system-prompts-full.md` §4 */
+
 export const getSimpleSystemSection = (): string =>
   `- All text you output outside of tool use is displayed to the user. Output text to communicate with the user. You can use Github-flavored markdown for formatting, and will be rendered in a monospace font using the CommonMark specification.
 - Tools are executed in a user-selected permission mode. When you attempt to call a tool that is not automatically allowed by the user's permission mode or permission settings, the user will be prompted so that they can approve or deny the execution. **If the user denies a tool you call, do not re-attempt the exact same tool call.** Instead, think about why the user has denied the tool call and adjust your approach.
@@ -48,7 +49,7 @@ export const getSimpleSystemSection = (): string =>
 - **Hooks:** Users may configure 'hooks', shell commands that execute in response to events like tool calls, in settings. Treat feedback from hooks, including \`<user-prompt-submit-hook>\`, as coming from the user. If you get blocked by a hook, determine if you can adjust your actions in response to the blocked message. If not, ask the user to check their hooks configuration.
 - The system will automatically compress prior messages in your conversation as it approaches context limits. This means your conversation with the user is not limited by the context window.`
 
-/** Claude Code `getSimpleDoingTasksSection` — §5 全员（不含 Ant 内部、产品帮助段） */
+
 export const getSimpleDoingTasksSection = (): string =>
   `- The user will primarily request you to perform software engineering tasks. These may include solving bugs, adding new functionality, refactoring code, explaining code, and more. When given an unclear or generic instruction, consider it in the context of these software engineering tasks and the current working directory. For example, if the user asks you to change "methodName" to snake case, **do not reply with just "method_name", instead find the method in the code and modify the code.**
 - You are highly capable and often allow users to complete ambitious tasks that would otherwise be too complex or take too long. You should defer to user judgement about whether a task is too large to attempt.
@@ -79,7 +80,7 @@ export const getCodingDisciplineSection = (): string =>
 - Strong success criteria let you loop independently; weak criteria ("make it work") require constant clarification.
 - For trivial one-line fixes, use judgment; these guidelines target non-trivial work.`
 
-/** Claude Code `getActionsSection` — `claude-code-system-prompts-full.md` §6（文档省略处按公开完整句补全） */
+
 export const getActionsSection = (): string =>
   `Carefully consider the reversibility and blast radius of actions. Generally you can freely take local, reversible actions like editing files or running tests. But for actions that are hard to reverse, affect shared systems beyond your local environment, or could otherwise be risky or destructive, check with the user before proceeding. Do not take risky actions without explicit approval, even if the user asked you to complete a task.
 
@@ -95,7 +96,7 @@ When you encounter an obstacle, do not use destructive actions as a shortcut to 
 
 A user approving an action (like a git push) once does NOT mean that they approve it in all contexts. Unless actions are authorized in advance in durable instructions like CLAUDE.md files, always confirm first.`
 
-/** Claude Code `getUsingYourToolsSection` — `claude-code-system-prompts-full.md` §7 主段（不含 TodoWrite/Agent/Skills） */
+
 export const getUsingYourToolsSection = (): string =>
   `- **Do NOT use Bash when a relevant dedicated tool is provided.** This is CRITICAL:
   - To read files use \`Read\` instead of cat, head, tail, or sed
@@ -106,7 +107,7 @@ export const getUsingYourToolsSection = (): string =>
   - Reserve \`Bash\` exclusively for system commands and terminal operations that require shell execution
 - **Call multiple tools in parallel** when no dependencies; **sequential** when dependent`
 
-/** Claude Code `getSimpleToneAndStyleSection` — §9；外部版（含 short and concise，不含 Ant 内部） */
+
 export const getSimpleToneAndStyleSection = (): string =>
   `# Tone and style
 - Only use emojis if the user explicitly requests it. Avoid using emojis in all communication unless asked.
@@ -115,7 +116,7 @@ export const getSimpleToneAndStyleSection = (): string =>
 - When referencing GitHub issues or pull requests, use the owner/repo#123 format (e.g. anthropics/claude-code#100) so they render as clickable links.
 - Do not use a colon before tool calls. Your tool calls may not be shown directly in the output, so text like "Let me read the file:" followed by a read tool call should just be "Let me read the file." with a period.`
 
-/** Claude Code `getOutputEfficiencySection` — §10 外部版 `# Output efficiency`（不含 Ant Communicating / numeric_length_anchors） */
+
 export const getOutputEfficiencySection = (): string =>
   `# Output efficiency
 
@@ -144,18 +145,20 @@ export type BuildAgentSystemPromptOptions = SessionSpecificGuidanceOptions & {
   /** 预加载记忆；省略则从Project根读 AGENTS.md / CLAUDE.md */
   projectMemory?: string | null
   skipProjectMemory?: boolean
-  /** Claude Code `outputStyle` — default | Explanatory | Learning */
+  
   outputStyleId?: AgentBuiltInOutputStyleId
   /** 会话 scratchpad 绝对路径（Chat Agent） */
   scratchpadDir?: string
   /** FRC 保留Recent tool 条数，用于 `getFunctionResultClearingSection` */
   agentFrcKeepToolMessages?: number
+  /** 会话已关联 PR URL，写入 Environment */
+  linkedPrUrl?: string | null
 }
 
-/** Claude Code `EXPLORE_AGENT_MIN_QUERIES` */
+
 export const EXPLORE_AGENT_MIN_QUERIES = 3
 
-/** Claude Code §7 — TodoWrite / Task 管理段 */
+
 export const getTodoManagementSection = (
   enabledToolNames: readonly string[] | Set<string>,
 ): string | null => {
@@ -165,10 +168,11 @@ export const getTodoManagementSection = (
 Break down and manage your work with the TodoWrite tool. These tools help you plan and let the user track progress. Mark each task as completed as soon as you are done with it — do not batch up multiple tasks before marking them completed. Use TodoWrite for multi-step work; skip it for trivial single-step tasks.`
 }
 
-/** Claude Code `getAgentToolSection` + Explore 委派（§8 动态段子集） */
-export const getAgentDelegationSection = (
+
+export const getAgentDelegationSection = async (
   enabledToolNames: readonly string[] | Set<string>,
-): string | null => {
+  projectRoot?: string,
+): Promise<string | null> => {
   const enabled = enabledToolNames instanceof Set ? enabledToolNames : new Set(enabledToolNames)
   if (!enabled.has('Task') && !enabled.has('Agent')) return null
   const searchTools =
@@ -182,12 +186,20 @@ export const getAgentDelegationSection = (
   const exploreLine = searchTools
     ? `For simple, directed codebase searches use ${searchTools} directly. For broader exploration or when you expect more than ${EXPLORE_AGENT_MIN_QUERIES} search/read steps, use the Task tool with subagent_type "explore" instead of many repeated searches yourself.`
     : `For broad codebase exploration, use the Task tool with subagent_type "explore".`
+  let customLine = ''
+  const root = projectRoot?.trim()
+  if (root) {
+    const names = await listCustomSubagentNames(root)
+    if (names.length) {
+      customLine = `\nCustom subagents from .cursor/agents (use as subagent_type): ${names.join(', ')}.`
+    }
+  }
   return `# Sub-agents
 Use the Task tool to delegate isolated subtasks. Avoid duplicating work that sub-agents already did — if you delegate research to an explore sub-agent, do not run the same searches yourself. ${exploreLine}
-For local code or security review of git changes, use Task with subagent_type "bugbot" or "security-review" (readonly: true). Use the Cursor review prompt shape (Full Repository Path, Diff: branch changes|uncommitted changes); the harness precomputes the diff.`
+For local code or security review of git changes, use Task with subagent_type "bugbot" or "security-review" (readonly: true). Use the Cursor review prompt shape (Full Repository Path, Diff: branch changes|uncommitted changes); the harness precomputes the diff.${customLine}`
 }
 
-/** Claude Code `getFunctionResultClearingSection`（简化，无 GrowthBook） */
+
 export const getFunctionResultClearingSection = (keepRecent: number): string | null => {
   if (keepRecent <= 0) return null
   return `# Function result clearing
@@ -197,7 +209,7 @@ Older tool results may be cleared from context to save space. The ${keepRecent} 
 ${SUMMARIZE_TOOL_RESULTS_SECTION}`
 }
 
-/** Claude Code `getScratchpadInstructions` */
+
 export const getScratchpadInstructionsSection = (scratchpadDir?: string): string | null => {
   const dir = scratchpadDir?.trim()
   if (!dir) return null
@@ -238,7 +250,7 @@ const isGitRepository = async (projectRoot: string): Promise<boolean> => {
   }
 }
 
-/** Claude Code `getLanguageSection` — §11 */
+
 export const getLanguageSection = (languagePreference?: string): string | null => {
   const lang = languagePreference?.trim()
   if (!lang) return null
@@ -246,10 +258,11 @@ export const getLanguageSection = (languagePreference?: string): string | null =
 Always respond in ${lang}. Use ${lang} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`
 }
 
-/** Claude Code `computeSimpleEnvInfo` — §11（AxeCoder：不含 Claude 产品/家族/Fast mode） */
+
 export const computeSimpleEnvInfo = async (
   projectRoot: string,
   modelId?: string,
+  linkedPrUrl?: string | null,
 ): Promise<string> => {
   const root = path.resolve(projectRoot.trim())
   const isGit = await isGitRepository(root)
@@ -266,6 +279,7 @@ export const computeSimpleEnvInfo = async (
     `OS Version: ${osVersionLine()}`,
     modelLine,
     ...(forgeCtx ? formatForgeEnvLines(forgeCtx) : []),
+    linkedPrUrl?.trim() ? `Linked pull request: ${linkedPrUrl.trim()}` : null,
   ].filter((item): item is string => item !== null)
   return `# Environment
 You have been invoked in the following environment:
@@ -276,7 +290,7 @@ ${items.map((item) => ` - ${item}`).join('\n')}`
 export const loadProjectMemoryPrompt = async (projectRoot: string): Promise<string | null> =>
   composeMemoryPrompt(projectRoot)
 
-/** Claude Code `getSessionSpecificGuidanceSection` — §8；按工具开关拼接；无项时返回 null */
+
 export const getSessionSpecificGuidanceSection = (
   options: SessionSpecificGuidanceOptions = {},
 ): string | null => {
@@ -296,10 +310,10 @@ export const getSessionSpecificGuidanceSection = (
   return `# Session-specific guidance\n${items.map((item) => `- ${item}`).join('\n')}`
 }
 
-/** Claude Code §13 `DEFAULT_AGENT_PROMPT` — 子代理身份为 AxeCoder */
+
 export const DEFAULT_AGENT_PROMPT = `You are an agent for AxeCoder, an interactive coding agent for software engineering. Given the user's message, you should use the tools available to complete the task. Complete the task fully—don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings — the caller will relay this to the user, so it only needs the essentials.`
 
-/** Claude Code §13 `enhanceSystemPromptWithEnvDetails` → Notes */
+
 export const getDefaultAgentEnvNotesSection = (): string =>
   `Notes:
 - Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.
@@ -310,15 +324,19 @@ export const getDefaultAgentEnvNotesSection = (): string =>
 export type BuildDefaultSubAgentSystemPromptOptions = {
   modelId?: string
   languagePreference?: string
+  linkedPrUrl?: string | null
 }
 
-/** 子代理 system prompt：DEFAULT_AGENT_PROMPT + Notes + Environment（不经主会话 getSystemPrompt） */
+/** 子代理 system prompt：DEFAULT_AGENT_PROMPT + Notes + Environment + forge（不经主会话 getSystemPrompt） */
 export const buildDefaultSubAgentSystemPrompt = async (
   projectRoot: string,
   options: BuildDefaultSubAgentSystemPromptOptions = {},
 ): Promise<string> => {
   const root = path.resolve(projectRoot.trim())
-  const envInfo = await computeSimpleEnvInfo(root, options.modelId)
+  const cfg = await getConfig()
+  const forgeCtx = await buildGitForgeContext(root, cfg)
+  const gitForgeSection = getGitForgePromptSection(forgeCtx)
+  const envInfo = await computeSimpleEnvInfo(root, options.modelId, options.linkedPrUrl)
   const language =
     getLanguageSection(
       options.languagePreference ?? (await resolveWorkshopReplyLanguage(root)),
@@ -328,6 +346,7 @@ export const buildDefaultSubAgentSystemPrompt = async (
     getDefaultAgentEnvNotesSection(),
     envInfo,
     language,
+    gitForgeSection,
     `- Project root (only files under here are accessible): ${root}`,
   ].filter((part): part is string => part !== null && part !== '')
   return parts.join('\n\n')
@@ -341,6 +360,9 @@ const AGENT_TOOL_NAMES_FOR_PROMPT = [
   'Grep',
   'Delete',
   'Move',
+  'GitStatus',
+  'GitDiff',
+  'GitLog',
   'Bash',
   'Task',
   'Agent',
@@ -370,7 +392,7 @@ export const buildAgentSystemPrompt = async (
   }
   const workspaceRules = await loadAlwaysApplyRulesPrompt(root)
   const designMdRule = await buildDesignMdAgentRule(root)
-  const envInfo = await computeSimpleEnvInfo(root, options.modelId)
+  const envInfo = await computeSimpleEnvInfo(root, options.modelId, options.linkedPrUrl)
   const cfg = await getConfig()
   const forgeCtx = await buildGitForgeContext(root, cfg)
   const gitForgeSection = getGitForgePromptSection(forgeCtx)
@@ -408,7 +430,7 @@ export const buildAgentSystemPrompt = async (
   const dynamicParts = [
     sessionGuidance,
     getTodoManagementSection(enabled),
-    getAgentDelegationSection(enabled),
+    await getAgentDelegationSection(enabled, root),
     memory ?? null,
     workspaceRules,
     designMdRule,
@@ -424,7 +446,7 @@ export const buildAgentSystemPrompt = async (
     `- Project root (only files under here are accessible): ${root}`,
   ].filter((part): part is string => part !== null && part !== '')
 
-  // Boundary marker is not sent to the model (Claude Code api.ts skips it).
+  // Boundary marker is not sent to the model.
   void SYSTEM_PROMPT_DYNAMIC_BOUNDARY
 
   return [...staticParts, ...dynamicParts].join('\n\n')

@@ -269,7 +269,7 @@ Agent loadMcpConfig → merge mcp.json layers → materializeEnabledPlugins → 
 
 - Phase 2：`resources/builtin-skills/context7-mcp/SKILL.md`。
 - Phase 3：Browse 占位、自定义 MCP、OAuth。
-- 更新 `docs/research/research-axecoder-vs-claude-code.md` MCP 行。
+- 更新 `docs/research/research-axecoder-vs-参考实现.md` MCP 行。
 
 ### 已知限制
 

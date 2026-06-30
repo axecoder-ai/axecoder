@@ -6,6 +6,8 @@ const ALIASES: Record<string, AgentToolName> = {
   AskQuestion: 'AskUserQuestion',
   Agent: 'Task',
   create_plan: 'CreatePlan',
+  apply_patch: 'ApplyPatch',
+  revert_turn: 'RevertTurn',
 }
 
 export const resolveAgentToolName = (raw: string): AgentToolName | undefined => {

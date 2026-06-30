@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-**需求：** 将 Claude Code 的 `Bash` 能力移植到 AxeCoder。
+**需求：** 将 同类 Agent 的 `Bash` 能力移植到 AxeCoder。
 
 **本轮目标：** 对齐 CC 对外 API（`timeout`、`description`、`run_in_background`）与后台任务 + `TaskOutput`；不引入持久 shell 与自动后台。
 

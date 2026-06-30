@@ -4,10 +4,12 @@ import {
   buildAgentPlan,
   confirmAgentAllWrites,
   confirmAgentBash,
+  confirmAgentSmartApproval,
   confirmAgentWrite,
   dismissAgentPlan,
   rejectAgentAllWrites,
   rejectAgentBash,
+  rejectAgentSmartApproval,
   rejectAgentWrite,
   rewindAgentCheckpoint,
   runUserShellCommand,
@@ -84,6 +86,16 @@ const handlers: Record<string, Handler> = {
     return rejectAgentBash(p.sessionId, p.pendingId, p.reason)
   },
 
+  confirmSmartApproval: async (params) => {
+    const p = params as { sessionId: string; pendingId: string }
+    return confirmAgentSmartApproval(p.sessionId, p.pendingId)
+  },
+
+  rejectSmartApproval: async (params) => {
+    const p = params as { sessionId: string; pendingId: string; reason?: string }
+    return rejectAgentSmartApproval(p.sessionId, p.pendingId, p.reason)
+  },
+
   answerQuestions: async (params) => {
     const p = params as {
       sessionId: string
@@ -122,6 +134,12 @@ const handlers: Record<string, Handler> = {
     return restoreCheckpointFilesOnly(p.sessionId, p.projectRoot, p.checkpointId)
   },
 
+  revertFilePatch: async (params) => {
+    const p = params as { projectRoot: string; filePath: string; patchText: string }
+    const { revertFileWithPatch } = await import('../agent/agent-revert')
+    return revertFileWithPatch(p.projectRoot, p.filePath, p.patchText)
+  },
+
   listBackgroundTasks: async (params) => {
     const sessionId = (params as { sessionId?: string }).sessionId
     return {
@@ -152,7 +170,10 @@ const writeLine = (out: Writable, msg: AgentWorkerLine) => {
 }
 
 let hostReqId = 1
-const pendingHost = new Map<number, { resolve: () => void; reject: (e: Error) => void }>()
+const pendingHost = new Map<
+  number,
+  { resolve: (v: unknown) => void; reject: (e: Error) => void }
+>()
 
 export const runAgentWorkerLoop = (
   stdin: NodeJS.ReadableStream,
@@ -162,7 +183,7 @@ export const runAgentWorkerLoop = (
 
   setAgentWorkerHostRequest(async (method, params) => {
     const id = hostReqId++
-    await new Promise<void>((resolve, reject) => {
+    return new Promise<unknown>((resolve, reject) => {
       pendingHost.set(id, { resolve, reject })
       writeLine(stdout, { type: 'host', id, method, params })
     })
@@ -189,7 +210,7 @@ const handleLine = async (line: string, stdout: Writable) => {
     const p = pendingHost.get(msg.id)
     if (!p) return
     pendingHost.delete(msg.id)
-    if (msg.ok) p.resolve()
+    if (msg.ok) p.resolve(msg.result)
     else p.reject(new Error(msg.error ?? 'host request failed'))
     return
   }

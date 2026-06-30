@@ -3,8 +3,8 @@
 **状态：** 已确认
 
 **上下文：**
-- **请求：** 1:1 实现 Claude Code §13 默认子代理提示 + 最小 Agent 工具子会话。
-- **调研来源：** `claude-code/docs/claude-code-system-prompts-full.md` §13；`00-research-links.md`
+- **请求：** 1:1 实现 同类 Agent §13 默认子代理提示 + 最小 Agent 工具子会话。
+- **调研来源：** `参考实现/docs/参考实现-system-prompts-full.md` §13；`00-research-links.md`
 - **选定基础：** 提案 2
 - **用户调整摘要：** 无；身份句 AxeCoder。
 

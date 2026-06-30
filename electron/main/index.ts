@@ -19,6 +19,7 @@ import { registerUsersIpc } from './users-ipc'
 import { registerRulesIpc } from './rules/rules-ipc'
 import { registerPermissionsIpc } from './permissions-ipc'
 import { registerSkillsIpc } from './skills/skills-ipc'
+import { registerSubagentsIpc } from './subagents/subagents-ipc'
 import { runMigrate } from './migrate-axecoder'
 import { refreshMainLocale } from './i18n'
 import { parseStartupProjectPath } from './startup-args'
@@ -511,6 +512,7 @@ app.whenReady().then(async () => {
   registerRulesIpc()
   registerPermissionsIpc()
   registerSkillsIpc()
+  registerSubagentsIpc()
   registerAiIpc()
   registerAgentIpc(() => win)
   registerWorkshopIpc(() => win)

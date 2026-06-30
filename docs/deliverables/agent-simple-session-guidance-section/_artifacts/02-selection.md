@@ -2,13 +2,13 @@
 
 ## 2a 选型摘要
 
-**需求：** 对齐 Claude Code §8 `getSessionSpecificGuidanceSection`，接入 `buildAgentSystemPrompt`。
+**需求：** 对齐 同类 Agent §8 `getSessionSpecificGuidanceSection`，接入 `buildAgentSystemPrompt`。
 
 | 维度 | 提案 1 动态函数 | 提案 2 静态常量 |
 |------|----------------|-----------------|
 | 核心思路 | 按 `enabledToolNames` / `interactive` 拼接，无项返回 null | 固定段落始终注入 |
 | 改动范围 | `agent-system-prompt.ts` + 单测 | 同上 |
-| 优点 | 与 Claude Code 一致，可扩展 Agent/Skill | 代码最少 |
+| 优点 | 与 同类 Agent 一致，可扩展 Agent/Skill | 代码最少 |
 | 缺点 | 略多 API | 与 Claude 条件语义不一致 |
 | 工作量 | 小 | 小 |
 | 适合 | 长期对齐 Claude | 一次性最小 patch |

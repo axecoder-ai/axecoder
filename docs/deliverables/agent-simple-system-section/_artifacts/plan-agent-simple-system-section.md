@@ -3,13 +3,13 @@
 ## 当前背景
 
 - 已实现 `getSimpleIntroSection`（§2–3），`buildAgentSystemPrompt` 为 intro + 工具规则 + project root。
-- Claude Code §15 要求 intro 后接 `getSimpleSystemSection`（§4）。
+- 同类 Agent §15 要求 intro 后接 `getSimpleSystemSection`（§4）。
 
 ## 需求
 
 ### 功能需求
 
-- 导出 `getSimpleSystemSection()`，六条 bullet 与 `claude-code-system-prompts-full.md` §4 英文一致。
+- 导出 `getSimpleSystemSection()`，六条 bullet 与 `参考实现-system-prompts-full.md` §4 英文一致。
 - `buildAgentSystemPrompt` 顺序：`getSimpleIntroSection()` → `getSimpleSystemSection()` → `AGENT_DOING_TASKS_SECTION` → project root。
 
 ### 非功能需求

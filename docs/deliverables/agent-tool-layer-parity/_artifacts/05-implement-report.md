@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-对齐 Claude Code `getAllBaseTools()` 缺口表，在 AxeCoder Agent 中注册并实现 **36** 个工具（10 核心 + 26 扩展），含：
+对齐 同类 Agent `getAllBaseTools()` 缺口表，在 AxeCoder Agent 中注册并实现 **36** 个工具（10 核心 + 26 扩展），含：
 
 - **待办：** TodoWrite、TaskCreate/Get/Update/List
 - **联网：** WebFetch；WebSearch（配置开关 + API Key 占位）

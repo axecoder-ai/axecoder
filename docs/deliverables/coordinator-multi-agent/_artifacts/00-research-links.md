@@ -1,7 +1,7 @@
 # 调研链接
 
 - `docs/research/research-agent-tools-matrix.md` §5 — Coordinator 多 Agent 矩阵行（AxeCoder = 部分 Workshop）
-- `docs/research/research-claude-code.md` §2 — Claude Code `src/coordinator/`、`COORDINATOR_MODE_ALLOWED_TOOLS`
+- `docs/research/research-参考实现.md` §2 — 同类 Agent `src/coordinator/`、`COORDINATOR_MODE_ALLOWED_TOOLS`
 - `docs/deliverables/workshop-multi-agent/workshop-multi-agent-交付总结.md` — Multi-Agent 模式 ↔ Workshop 映射
 - `docs/deliverables/workshop-context-parity/workshop-context-parity-交付总结.md` — 上下文对等 + Tech Lead 读码
 - `docs/deliverables/workshop-multi-agent/_artifacts/proposal-workshop-multi-agent.md` — 未采纳「统一 composer」（提案 2）

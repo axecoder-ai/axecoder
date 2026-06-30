@@ -6,7 +6,7 @@
 
 - `compactAgentMessages` 仅规则截断，摘要为丢弃条数统计。
 - 自动 compact 在 `prepareSessionBeforeModel` 超 `agentContextCompactThreshold` 时触发。
-- Claude Code `/compact` 为 LLM 摘要；矩阵 P10 待补齐。
+- 同类 Agent `/compact` 为 LLM 摘要；矩阵 P10 待补齐。
 
 ## 需求
 

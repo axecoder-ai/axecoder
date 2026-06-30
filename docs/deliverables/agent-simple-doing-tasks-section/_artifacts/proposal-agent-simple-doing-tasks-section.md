@@ -3,8 +3,8 @@
 ## 已确认解决方案提案
 
 **上下文：**
-- **请求：** 1:1 对齐 Claude Code `getSimpleDoingTasksSection`（§5 全员）；接入 `buildAgentSystemPrompt`（§15：intro → system → doing tasks → 工具路径规则）。
-- **调研来源：** `claude-code/docs/claude-code-system-prompts-full.md` §5、§15
+- **请求：** 1:1 对齐 同类 Agent `getSimpleDoingTasksSection`（§5 全员）；接入 `buildAgentSystemPrompt`（§15：intro → system → doing tasks → 工具路径规则）。
+- **调研来源：** `参考实现/docs/参考实现-system-prompts-full.md` §5、§15
 - **选定：** 提案 1
 - **用户调整：** 实现 `AskUserQuestion` 工具（结构化提问、暂停会话、用户作答后继续 Agent 循环）。
 

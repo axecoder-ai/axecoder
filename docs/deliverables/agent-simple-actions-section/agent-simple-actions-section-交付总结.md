@@ -13,7 +13,7 @@
 
 ## 1. 概述
 
-1:1 接入 Claude Code §6 `getActionsSection`，插入 `buildAgentSystemPrompt`（位于 §5 与工具路径规则之间）。
+1:1 接入 同类 Agent §6 `getActionsSection`，插入 `buildAgentSystemPrompt`（位于 §5 与工具路径规则之间）。
 
 **交付目录：** `docs/deliverables/agent-simple-actions-section/`
 

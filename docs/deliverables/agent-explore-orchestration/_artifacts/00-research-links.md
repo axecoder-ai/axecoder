@@ -2,14 +2,14 @@
 
 ## AxeCoder
 
-- `docs/research/research-axecoder-vs-claude-code.md`
+- `docs/research/research-axecoder-vs-参考实现.md`
 - `electron/main/agent/agent-loop.ts` — `prepareSessionBeforeModel`
 - `electron/main/agent/agent-frc.ts` — `clearOldToolResults`（占位清理，非 Claude 的 cache-editing microcompact）
 - `electron/main/agent/agent-todo-store.ts` — Todo 未每轮回灌
 - `electron/main/agent/agent-scratchpad.ts` — 目录已有，system prompt 未强调
 - `electron/main/agent/agent-system-prompt.ts` — §7 缺 TodoWrite/Agent 子段
 
-## Claude Code（本地快照 `/Users/cuiyunfeng/workspace/claude-code`）
+## 同类 Agent（本地快照 `/Users/cuiyunfeng/workspace/参考实现`）
 
 | 能力 | 路径 | 要点 |
 |------|------|------|

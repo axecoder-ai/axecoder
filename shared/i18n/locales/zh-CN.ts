@@ -85,6 +85,9 @@ const zhCN: MessageTree = {
       autoPlanClassifierModel: '自动规划分类模型（可选）',
       autoPlanClassifierModelHint:
         'borderline 任务（启发式 score 1–2）用便宜模型二次判定。留空则使用当前聊天模型的 fast 档。',
+      smartModeApproval: '智能审批（Smart Mode）',
+      smartModeApprovalHint:
+        '对 Bash、联网、MCP 等高风险工具执行前 Auto-review；拦截后 Agent 可请求你审批放行。关闭则与旧版行为一致。',
       loopGuard: '防呆（循环拦截）',
       loopGuardHint: '拦截重复写操作成功、同一工具错误反复失败时的空转循环。',
       loopGuardStormThreshold: '风暴阈值',
@@ -126,18 +129,31 @@ const zhCN: MessageTree = {
     },
     mcp: {
       title: 'MCP 插件',
-      desc: '管理 Model Context Protocol 插件。OAuth 登录后 Token 保存在 ~/.axecoder/mcp-oauth.json。',
+      desc: 'Context7 为全局 OAuth 插件。MongoDB / MySQL 连接串不在此填写，请在各项目内配置（见对应卡片说明）。',
       connect: '连接',
       disconnect: '断开连接',
       connecting: '连接中…',
       connected: '已连接',
       needsConnect: '请点击「连接」在浏览器中登录 Context7',
+      needsProject: 'MongoDB / MySQL 按项目启用，请先打开项目',
+      optionalProjectCredentials:
+        '可选：在项目配置中设置默认连接串；不配置也可在对话中让 Agent 使用 connect 工具。',
+      enabledWithoutCredentials:
+        '已为本项目启用。无默认连接串时，请在对话中让 Agent 使用 connect 工具指定数据库。',
+      enabled: '已启用',
+      mongodbProjectConfigExample:
+        '方式一 — 项目 .mcp.json：\n{\n  "mcpServers": {\n    "mongodb": {\n      "command": "npx",\n      "args": ["-y", "mongodb-mcp-server@latest"],\n      "env": { "MDB_MCP_CONNECTION_STRING": "mongodb+srv://..." }\n    }\n  }\n}\n\n方式二 — 项目 .axecoder/secrets.json：\n{ "mcp:mongodb:connection_string": "mongodb+srv://..." }',
+      mysqlProjectConfigExample:
+        '方式一 — 项目 .mcp.json：\n{\n  "mcpServers": {\n    "mysql": {\n      "command": "npx",\n      "args": ["-y", "@imrieul/mysql-mcp-server", "mysql://user:pass@localhost:3306/db"]\n    }\n  }\n}\n\n方式二 — 项目 .axecoder/secrets.json：\n{ "mcp:mysql:connection_string": "mysql://user:pass@localhost:3306/db" }',
+      projectConnectedHint: '已从当前项目配置加载连接串。开关仅对本项目生效。',
       testConnection: '测试连接',
       testing: '测试中…',
       connectOk: '已成功连接 Context7',
       connectFail: '连接失败：{error}',
       disconnected: '已断开连接',
-      managedByMcpJson: '已在 mcp.json 中配置，此处开关不可用',
+      managedByMcpJson: '已在项目 mcp.json 中配置，此处开关不可用',
+      managedByMcpJsonOAuth:
+        '已在 mcp.json 中配置，请使用下方「连接」完成 OAuth 登录（开关不可用）',
       testOk: '连接成功，工具：{tools}',
       testFail: '连接失败：{error}',
       oauthHint: '与 Cursor 相同：点击连接后在浏览器完成 Context7 登录，无需手动填写 API Key。',

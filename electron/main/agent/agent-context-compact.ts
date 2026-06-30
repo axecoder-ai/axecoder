@@ -6,7 +6,8 @@ import { getConfig } from '../config-store'
 import { getModelById } from '../models-store'
 import { getSecret } from '../secrets-store'
 
-const COMPACT_SUMMARY_PREFIX = '<system-reminder>\nConversation compacted. Earlier summary:\n'
+export const COMPACT_SUMMARY_PREFIX = '<system-reminder>\nConversation compacted. Earlier summary:\n'
+const COMPACT_SUMMARY_SUFFIX = '\n</system-reminder>'
 const PER_MSG_TOOL_CAP = 2000
 const PER_MSG_DEFAULT_CAP = 4000
 const DROPPED_TRANSCRIPT_CAP = 60_000
@@ -15,6 +16,20 @@ const SUMMARY_OUTPUT_CAP = 8000
 export type CompactLlmOpts = {
   modelId: string
   sessionId?: string
+  /** 多轮 compact 时合并的滚动摘要 */
+  priorSummary?: string
+}
+
+export const extractPriorCompactSummary = (messages: AgentLoopMessage[]): string => {
+  for (const m of messages) {
+    if (m.role !== 'user') continue
+    const content = m.content ?? ''
+    if (!content.startsWith(COMPACT_SUMMARY_PREFIX)) continue
+    const end = content.indexOf(COMPACT_SUMMARY_SUFFIX, COMPACT_SUMMARY_PREFIX.length)
+    if (end < 0) continue
+    return content.slice(COMPACT_SUMMARY_PREFIX.length, end).trim()
+  }
+  return ''
 }
 
 const COMPACT_LLM_SYSTEM = `You compress conversation history for a coding agent.
@@ -72,12 +87,16 @@ export const summarizeDroppedWithLlm = async (
   const routingEnabled = cfg.agentModelTierRoutingEnabled !== false
   const apiModelId = resolveApiModelId(model, 'fast', '', routingEnabled)
   const transcript = serializeMessagesForCompact(dropped)
+  const prior = opts.priorSummary?.trim()
+  const userContent = prior
+    ? `Previous conversation summary (merge and update; keep all prior facts):\n${prior}\n\nNew transcript (${dropped.length} messages):\n\n${transcript}`
+    : `Transcript (${dropped.length} messages):\n\n${transcript}`
   const res = await chatWithProvider(
     model,
     apiKey,
     [
       { role: 'system', content: COMPACT_LLM_SYSTEM },
-      { role: 'user', content: `Transcript (${dropped.length} messages):\n\n${transcript}` },
+      { role: 'user', content: userContent },
     ],
     undefined,
     apiModelId,
@@ -97,7 +116,7 @@ const buildCompactedMessages = (
 ): AgentLoopMessage[] => {
   const compactUserMsg: AgentLoopMessage = {
     role: 'user',
-    content: `${COMPACT_SUMMARY_PREFIX}${summary}\n</system-reminder>`,
+    content: `${COMPACT_SUMMARY_PREFIX}${summary}${COMPACT_SUMMARY_SUFFIX}`,
   }
   return [...system, compactUserMsg, ...tail]
 }
@@ -140,6 +159,7 @@ export const compactAgentMessagesWithLlm = async (
     const llm = await summarizeDroppedWithLlm(dropped, {
       modelId: llmOpts.modelId.trim(),
       sessionId: llmOpts.sessionId,
+      priorSummary: llmOpts.priorSummary,
     })
     if (llm.ok) {
       summary = llm.summary

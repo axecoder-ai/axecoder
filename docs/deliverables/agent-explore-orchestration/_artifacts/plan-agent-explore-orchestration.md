@@ -3,7 +3,7 @@
 ## 当前背景
 
 - AxeCoder Chat Agent 已有 Read/Grep/Agent(explore)/TodoWrite/FRC，但 Todo 不回灌、§7 缺委派指引，FRC 清理后易重复 Read。
-- Claude Code 通过 `todo_reminder` attachment、`getSessionSpecificGuidanceSection` 的 Explore 阈值、scratchpad 与 FRC 说明降低步数。
+- 同类 Agent 通过 `todo_reminder` attachment、`getSessionSpecificGuidanceSection` 的 Explore 阈值、scratchpad 与 FRC 说明降低步数。
 
 ## 需求
 

@@ -52,6 +52,14 @@ export const sopResearchAuditPromptBlock = (): string =>
     'End with a clear verdict: 有源码 / 缺源码 and list paths.',
   ].join('\n')
 
+/** Multi-Agent：连续 session，与 Software Co. fast 路径同级记忆与执行力 */
+export const workshopAgentParityPromptBlock = (): string =>
+  [
+    '[Multi-Agent · continuous session]',
+    'This role keeps full Agent memory from prior turns (reads, edits, shell). Build on earlier work—do not re-scan from scratch unless the repo changed.',
+    'Use tools on real code before concluding; write application source to disk when implementing; list changed paths.',
+  ].join('\n')
+
 /** Fast 路径：单 session 内软 SOP，不强制分阶段停表 */
 export const sopSoftOrchestrationPromptBlock = (
   intent: SopIntent,

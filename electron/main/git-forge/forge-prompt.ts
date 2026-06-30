@@ -35,7 +35,25 @@ EOF
 )"
 \`\`\`
 
-Read-only inspection (auto-approved): \`gh pr view\`, \`gh pr list\`, \`gh pr diff\`, \`gh pr checks\`, \`gh pr status\`, \`gh issue view\`, \`gh issue list\`.`
+Read-only inspection (auto-approved): \`gh pr view\`, \`gh pr list\`, \`gh pr diff\`, \`gh pr checks\`, \`gh pr status\`, \`gh issue view\`, \`gh issue list\`, \`gh run view\`, \`gh run list\`, \`gh workflow view\`, \`gh workflow list\`.`
+
+const githubCiSection = () => `# Investigating CI failures (GitHub)
+
+Use \`gh\` via Bash (forge env injects GH_HOST/GH_TOKEN). Prefer read-only commands — they auto-execute without approval.
+
+Workflow:
+1. \`gh pr checks\` or \`gh pr view --json statusCheckRollup\` for the PR
+2. \`gh run list --branch <branch> --limit 5\` to find failed workflow runs
+3. \`gh run view <run-id> --log-failed\` for failure logs
+4. Cross-check with local \`GitStatus\` / \`GitDiff\` / \`GitLog\` tools for repo state
+
+Return: failing check name, root cause, and a minimal fix suggestion.`
+
+const giteeCiSection = (repoSlug: string, apiBase: string) => `# Investigating CI failures (Gitee)
+
+Gitee has no \`gh\` CLI. Use \`curl\` with \`$GITEE_TOKEN\` against ${apiBase} for pipeline status when needed.
+Repository: ${repoSlug}
+Prefer local \`GitStatus\` / \`GitDiff\` / \`GitLog\` for working tree context.`
 
 const giteePrSection = (baseBranch: string, repoSlug: string, apiBase: string) => `# Creating pull requests (Gitee)
 
@@ -68,6 +86,20 @@ Remote appears to be a self-hosted or enterprise forge (${webBase ?? 'custom'}).
 - Otherwise use the host's documented API or CLI; ask the user if authentication method is unclear.
 - Compare branch with \`git diff ${baseBranch}...HEAD\` before opening a PR/MR.`
 
+/** CI 专段（可单独注入子代理） */
+export const getGitCiPromptSection = (ctx: GitForgeContext): string | null => {
+  if (ctx.kind === 'github') return githubCiSection()
+  if (ctx.kind === 'gitee' && ctx.repoSlug && ctx.apiBase) {
+    return giteeCiSection(ctx.repoSlug, ctx.apiBase)
+  }
+  if (ctx.kind === 'custom' || ctx.remote) {
+    return `# Investigating CI failures (custom forge)
+
+Use \`gh\` if GH_HOST is configured, otherwise the host API. Prefer \`GitStatus\` / \`GitDiff\` / \`GitLog\` for local state.`
+  }
+  return null
+}
+
 /** 注入系统 prompt 的 forge 段落 */
 export const getGitForgePromptSection = (ctx: GitForgeContext): string | null => {
   if (ctx.kind === 'unknown' && !ctx.remote) return null
@@ -75,10 +107,16 @@ export const getGitForgePromptSection = (ctx: GitForgeContext): string | null =>
   const parts = [GIT_SAFETY]
   if (ctx.kind === 'github') {
     parts.push(githubPrSection(base))
+    const ci = getGitCiPromptSection(ctx)
+    if (ci) parts.push(ci)
   } else if (ctx.kind === 'gitee' && ctx.repoSlug && ctx.apiBase) {
     parts.push(giteePrSection(base, ctx.repoSlug, ctx.apiBase))
+    const ci = getGitCiPromptSection(ctx)
+    if (ci) parts.push(ci)
   } else {
     parts.push(customForgeSection(base, ctx.webBase))
+    const ci = getGitCiPromptSection(ctx)
+    if (ci) parts.push(ci)
   }
   return parts.join('\n\n')
 }
@@ -115,6 +153,30 @@ ${ghLine}
 Follow the forge-specific workflow below. Analyze ALL commits that will be included (git diff ${base}...HEAD), draft title/body, push if needed, create or update the PR/MR, and return the URL.
 
 ${workflow}`
+}
+
+/** `/investigate-ci` 斜杠命令注入的 CI 调查 prompt */
+export const buildInvestigateCiPrompt = (ctx: GitForgeContext, linkedPrUrl?: string | null): string => {
+  const ci = getGitCiPromptSection(ctx) ?? githubCiSection()
+  const prLine = linkedPrUrl?.trim()
+    ? `- Linked PR: ${linkedPrUrl.trim()} (start with gh pr checks / gh pr view)`
+    : '- Linked PR: (none — detect branch from GitStatus or user message)'
+  const repoLine = ctx.repoSlug ? `- Repository: ${ctx.repoSlug}` : '- Repository: (unknown)'
+
+  return `${GIT_SAFETY}
+
+## Context
+- Forge: ${ctx.kind}
+${repoLine}
+${prLine}
+- Default branch: ${ctx.defaultBranch ?? 'main'}
+${ctx.kind === 'github' ? `- gh auth: ${ctx.ghAuth}` : ''}
+
+## Your task
+
+Investigate failing CI checks for this repository. Use GitStatus/GitDiff/GitLog for local git state. Use Bash+gh for remote CI (read-only gh commands auto-approve). Summarize root cause and suggest a minimal fix.
+
+${ci}`
 }
 
 /** Environment 段追加 forge 行 */

@@ -1,9 +1,9 @@
-# 方案提案：Agent LSP 与 Claude Code 1:1 对齐
+# 方案提案：Agent LSP 与 同类 Agent 1:1 对齐
 
 **状态：** 已确认
 
 **Context:**
-- **Request：** 将 Claude Code 的 `LSP` Agent 工具能力 1:1 移植到 AxeCoder（替换当前 stub）。
+- **Request：** 将 同类 Agent 的 `LSP` Agent 工具能力 1:1 移植到 AxeCoder（替换当前 stub）。
 - **Research sources：** `00-research-links.md`；CC `LSPTool.ts` / `services/lsp/*`。
 
 ---

@@ -38,6 +38,8 @@ import { emitAgentProgress } from './agent-progress-emit'
 import { getDrawIoWorkshopSession } from '../draw-io/draw-io-session-cache'
 import { setWorkshopDiagramXml, getWorkshopDiagramXml } from '../draw-io/draw-io-store'
 import { applyDrawIoSearchReplaceEdits } from '../draw-io/draw-io-xml'
+import { enterWorktree, exitWorktree } from './agent-worktree'
+import { runWorkflowTool } from './agent-workflow'
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
@@ -425,12 +427,9 @@ export const executeExtendedAgentTool = async (
     if (!cfg.agentFeatureWorktree) {
       return immediate(name, 'EnterWorktree', 'Error: Worktree disabled. Enable agentFeatureWorktree.', false)
     }
-    return immediate(
-      name,
-      'EnterWorktree',
-      `Worktree stub: would create worktree "${str(args.name) || 'axecoder-agent'}". Use git worktree manually for now.`,
-      true,
-    )
+    const res = await enterWorktree(ctx, args as Record<string, unknown>)
+    if (!res.ok) return immediate(name, 'EnterWorktree', `Error: ${res.error}`, false)
+    return immediate(name, 'EnterWorktree', res.message, true)
   }
 
   if (name === 'ExitWorktree') {
@@ -438,7 +437,9 @@ export const executeExtendedAgentTool = async (
     if (!cfg.agentFeatureWorktree) {
       return immediate(name, 'ExitWorktree', 'Error: Worktree disabled.', false)
     }
-    return immediate(name, 'ExitWorktree', 'Worktree stub: exit worktree (no-op in stub).', true)
+    const res = await exitWorktree(ctx)
+    if (!res.ok) return immediate(name, 'ExitWorktree', `Error: ${res.error}`, false)
+    return immediate(name, 'ExitWorktree', res.message, true)
   }
 
   if (name === 'Sleep') {
@@ -449,14 +450,6 @@ export const executeExtendedAgentTool = async (
     const ms = Math.min(Math.max(Number(args.ms) || 1000, 100), 60_000)
     await new Promise((r) => setTimeout(r, ms))
     return immediate(name, 'Sleep', `Slept ${ms}ms`, true)
-  }
-
-  if (name === 'Brief') {
-    const cfg = await getConfig()
-    if (!cfg.agentFeatureBrief) {
-      return immediate(name, 'Brief', 'Error: Brief disabled. Enable agentFeatureBrief.', false)
-    }
-    return immediate(name, 'Brief', `Brief request noted: ${str(args.message)}`, true)
   }
 
   if (name === 'Config') {
@@ -474,12 +467,10 @@ export const executeExtendedAgentTool = async (
     if (!cfg.agentFeatureWorkflow) {
       return immediate(name, 'Workflow', 'Error: Workflow disabled. Enable agentFeatureWorkflow.', false)
     }
-    return immediate(
-      name,
-      'Workflow',
-      `Workflow stub: "${str(args.name)}" is not registered. Add workflow definitions in a future release.`,
-      true,
-    )
+    const res = await runWorkflowTool(ctx.projectRoot, args as Record<string, unknown>)
+    if (!res.ok) return immediate(name, 'Workflow', `Error: ${res.error}`, false)
+    const header = `Workflow "${res.name}" loaded (${res.source}). Follow the playbook below:\n\n`
+    return immediate(name, `Workflow ${res.name}`, header + res.text, true)
   }
 
   if (name === 'Remember') {

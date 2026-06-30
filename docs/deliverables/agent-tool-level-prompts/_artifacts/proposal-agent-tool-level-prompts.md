@@ -3,7 +3,7 @@
 ## 已确认方案
 
 - **选定：** 提案 2 – 独立 `agent-tool-prompts.ts` + 工厂组装
-- **调整：** strict — 各工具 `description` 与参数 `description` 尽量加长，覆盖 Claude Code §14 要点与 AxeCoder `tool-executor` 真实行为；不编造未实现参数（如 Read offset/limit）。
+- **调整：** strict — 各工具 `description` 与参数 `description` 尽量加长，覆盖 同类 Agent §14 要点与 AxeCoder `tool-executor` 真实行为；不编造未实现参数（如 Read offset/limit）。
 
 ### 最终方案
 

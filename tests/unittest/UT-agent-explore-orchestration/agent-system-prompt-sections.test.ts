@@ -13,8 +13,8 @@ describe('agent-system-prompt explore sections', () => {
     expect(s).toContain('completed')
   })
 
-  it('Task 段含 Explore 阈值', () => {
-    const s = getAgentDelegationSection(new Set(['Task', 'Grep', 'Glob']))
+  it('Task 段含 Explore 阈值', async () => {
+    const s = await getAgentDelegationSection(new Set(['Task', 'Grep', 'Glob']))
     expect(s).toContain('Task')
     expect(s).toContain('explore')
     expect(s).toContain(String(EXPLORE_AGENT_MIN_QUERIES))

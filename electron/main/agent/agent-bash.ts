@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { getConfig } from '../config-store'
 import { evaluateExecPolicy } from './agent-execpolicy'
+import { rejectMcpDuplicateCli } from './agent-bash-mcp-guard'
 import { buildShellSpawnSpec } from './agent-sandbox'
 
 export const DEFAULT_BASH_TIMEOUT_MS = 120_000
@@ -39,7 +40,7 @@ export const formatBackgroundBashStarted = (taskId: string, description?: string
   return lines.join('\n')
 }
 
-/** 危险 git 命令（对齐 Claude Code Bash 约束） */
+/** 危险 git 命令约束 */
 export const isDangerousGitCommand = (command: string) => {
   const c = command.toLowerCase()
   if (/\bgit\s+push\b/.test(c) && (/--force\b/.test(c) || /\s-f\b/.test(c) || /\s--force-with-lease\b/.test(c))) {
@@ -73,6 +74,9 @@ export const runAgentBash = async (
       error: `Rejected dangerous git operation (${gitRisk}). Do not run without explicit user approval.`,
     }
   }
+
+  const mcpDup = await rejectMcpDuplicateCli(projectRoot, cmd)
+  if (mcpDup) return { ok: false, error: mcpDup }
 
   const cfg = await getConfig()
   const sandboxOn = cfg.agentOsSandboxEnabled !== false

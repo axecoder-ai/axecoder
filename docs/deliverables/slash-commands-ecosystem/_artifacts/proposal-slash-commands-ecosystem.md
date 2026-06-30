@@ -3,8 +3,8 @@
 **状态：** 已确认
 
 **上下文：**
-- **请求：** 对齐调研 `research-axecoder-vs-claude-code.md` §4：内置斜杠命令（/help、/clear、/compact、/rewind、/mcp、/hooks、/plan、/skills）、Skill 动态命令、自定义 output-styles 目录。
-- **调研来源：** `docs/research/research-axecoder-vs-claude-code.md` §4；`docs/proposals/proposal-slash-commands.md` 提案 1 基础。
+- **请求：** 对齐调研 `research-axecoder-vs-参考实现.md` §4：内置斜杠命令（/help、/clear、/compact、/rewind、/mcp、/hooks、/plan、/skills）、Skill 动态命令、自定义 output-styles 目录。
+- **调研来源：** `docs/research/research-axecoder-vs-参考实现.md` §4；`docs/proposals/proposal-slash-commands.md` 提案 1 基础。
 
 ## 已确认方案（提案 1 扩展）
 

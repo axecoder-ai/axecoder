@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-- 新增 `getSessionSpecificGuidanceSection`（Claude Code §8）：标题 `# Session-specific guidance`，按工具/交互开关拼接 bullet。
+- 新增 `getSessionSpecificGuidanceSection`（同类 Agent §8）：标题 `# Session-specific guidance`，按工具/交互开关拼接 bullet。
 - 默认 bullets：工具被拒时用 `AskUserQuestion`；需用户本机交互命令时提示 `! <command>`。
 - `buildAgentSystemPrompt` 在 §7 与 AxeCoder 路径规则之间插入该段（有内容时）。
 

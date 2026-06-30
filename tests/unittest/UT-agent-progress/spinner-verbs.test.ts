@@ -7,7 +7,7 @@ import {
 } from '../../../src/utils/spinner-verbs'
 
 describe('spinner-verbs', () => {
-  it('includes Claude Code staples', () => {
+  it('includes common verbs', () => {
     expect(SPINNER_VERBS).toContain('Thinking')
     expect(SPINNER_VERBS).toContain('Wandering')
     expect(SPINNER_VERBS).toContain('Pondering')

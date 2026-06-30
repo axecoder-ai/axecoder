@@ -7,6 +7,7 @@ import type {
   PendingAskUserPublic,
   PendingBashPublic,
   PendingPlanPublic,
+  PendingSmartApprovalPublic,
   PendingWritePublic,
 } from './agent-types'
 import type { ChatModeId } from './chat-mode'
@@ -17,6 +18,7 @@ import type {
   PendingPlanInternal,
   PendingWriteInternal,
 } from './tool-executor'
+import type { PendingSmartApprovalInternal } from './agent-smart-review'
 import { createLoopGuardState, type LoopGuardState } from './agent-loop-guard'
 
 export type StoredAgentSession = {
@@ -29,6 +31,7 @@ export type StoredAgentSession = {
   pendingBashById: Map<string, PendingBashInternal>
   pendingAskById: Map<string, PendingAskUserInternal>
   pendingPlanById: Map<string, PendingPlanInternal>
+  pendingSmartById: Map<string, PendingSmartApprovalInternal>
   turn: number
   planMode: boolean
   chatMode: ChatModeId
@@ -38,6 +41,8 @@ export type StoredAgentSession = {
   proactiveTick: number
   scratchpadDir: string
   compactedOnce: boolean
+  /** 多轮 compact 滚动摘要，供下次合并 */
+  rollingCompactSummary?: string
   /** Agent @角色：本轮以该 Users 成员 persona 回复 */
   assigneeUserId?: string
   /** 最近一次 Bash 创建的 PR/MR URL */
@@ -84,6 +89,7 @@ export const pendingToPublic = (p: PendingWriteInternal): PendingWritePublic => 
   filePath: p.filePath,
   summary: p.summary,
   patchText: p.patchText,
+  ...(p.batchFiles?.length ? { batchFiles: p.batchFiles } : {}),
 })
 
 export const pendingPlanToPublic = (p: PendingPlanInternal): PendingPlanPublic => ({
@@ -106,4 +112,14 @@ export const pendingBashToPublic = (p: PendingBashInternal): PendingBashPublic =
   ...(p.timeoutMs !== undefined ? { timeoutMs: p.timeoutMs } : {}),
   ...(p.description ? { description: p.description } : {}),
   ...(p.runInBackground ? { runInBackground: true } : {}),
+})
+
+export const pendingSmartToPublic = (
+  p: PendingSmartApprovalInternal,
+): PendingSmartApprovalPublic => ({
+  id: p.id,
+  toolName: p.toolName,
+  blockReason: p.blockReason,
+  summary: p.summary,
+  detail: p.detail,
 })

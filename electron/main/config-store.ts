@@ -17,6 +17,10 @@ const defaults: AppConfig = {
   agentAutoApplyWrites: false,
   agentOsSandboxEnabled: true,
   agentOutputStyle: 'default',
+  agentFeatureWebSearch: true,
+  agentFeatureWebRun: true,
+  agentFeatureLsp: true,
+  agentLspAutoDiagnostics: true,
   agentPermissionMode: 'default',
   agentPermissionAllowRules: [],
   agentPermissionAskRules: [],
@@ -29,6 +33,7 @@ const defaults: AppConfig = {
   agentProactiveEnabled: false,
   agentAutoPlan: 'on',
   agentAutoPlanClassifierModelId: '',
+  agentSmartModeApproval: true,
   agentHooksEnabled: true,
   agentModelTierRoutingEnabled: true,
   agentCompletionSoundEnabled: false,
@@ -81,10 +86,12 @@ export const getConfig = async (): Promise<AppConfig> => {
     agentAutoApplyWrites: raw.agentAutoApplyWrites ?? defaults.agentAutoApplyWrites,
     agentOsSandboxEnabled: raw.agentOsSandboxEnabled ?? defaults.agentOsSandboxEnabled,
     agentOutputStyle: raw.agentOutputStyle ?? defaults.agentOutputStyle,
-    agentFeatureWebSearch: raw.agentFeatureWebSearch ?? false,
+    agentFeatureWebSearch: raw.agentFeatureWebSearch ?? defaults.agentFeatureWebSearch,
     agentWebSearchApiKey: raw.agentWebSearchApiKey ?? '',
-    agentFeatureWebRun: raw.agentFeatureWebRun ?? raw.agentFeatureWebSearch ?? false,
-    agentFeatureLsp: raw.agentFeatureLsp ?? false,
+    agentFeatureWebRun:
+      raw.agentFeatureWebRun ?? raw.agentFeatureWebSearch ?? defaults.agentFeatureWebRun,
+    agentFeatureLsp: raw.agentFeatureLsp ?? defaults.agentFeatureLsp,
+    agentLspAutoDiagnostics: raw.agentLspAutoDiagnostics ?? defaults.agentLspAutoDiagnostics,
     agentFeatureCodeGraph: raw.agentFeatureCodeGraph ?? true,
     agentFeatureWorktree: raw.agentFeatureWorktree ?? false,
     agentFeatureSleep: raw.agentFeatureSleep ?? false,
@@ -105,6 +112,7 @@ export const getConfig = async (): Promise<AppConfig> => {
     agentAutoPlan: normalizeAutoPlanConfig(raw.agentAutoPlan ?? defaults.agentAutoPlan),
     agentAutoPlanClassifierModelId:
       raw.agentAutoPlanClassifierModelId ?? defaults.agentAutoPlanClassifierModelId,
+    agentSmartModeApproval: raw.agentSmartModeApproval ?? defaults.agentSmartModeApproval,
     agentHooksEnabled: raw.agentHooksEnabled ?? defaults.agentHooksEnabled,
     agentModelTierRoutingEnabled:
       raw.agentModelTierRoutingEnabled ?? defaults.agentModelTierRoutingEnabled,
@@ -163,6 +171,10 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
     agentWebSearchApiKey: partial.agentWebSearchApiKey ?? cur.agentWebSearchApiKey,
     agentFeatureWebRun: partial.agentFeatureWebRun ?? cur.agentFeatureWebRun,
     agentFeatureLsp: partial.agentFeatureLsp ?? cur.agentFeatureLsp,
+    agentLspAutoDiagnostics:
+      partial.agentLspAutoDiagnostics !== undefined
+        ? partial.agentLspAutoDiagnostics
+        : cur.agentLspAutoDiagnostics,
     agentFeatureCodeGraph: partial.agentFeatureCodeGraph ?? cur.agentFeatureCodeGraph,
     agentFeatureWorktree: partial.agentFeatureWorktree ?? cur.agentFeatureWorktree,
     agentFeatureSleep: partial.agentFeatureSleep ?? cur.agentFeatureSleep,
@@ -188,6 +200,10 @@ export const setConfig = async (partial: Partial<AppConfig>): Promise<AppConfig>
       partial.agentAutoPlanClassifierModelId !== undefined
         ? partial.agentAutoPlanClassifierModelId
         : cur.agentAutoPlanClassifierModelId,
+    agentSmartModeApproval:
+      partial.agentSmartModeApproval !== undefined
+        ? partial.agentSmartModeApproval
+        : cur.agentSmartModeApproval,
     agentHooksEnabled: partial.agentHooksEnabled ?? cur.agentHooksEnabled,
     agentModelTierRoutingEnabled:
       partial.agentModelTierRoutingEnabled ?? cur.agentModelTierRoutingEnabled,

@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-**需求：** 对齐 Claude Code §12 `outputStyles.ts` 内置输出风格（Default / Explanatory / Learning），接入 AxeCoder Agent 系统提示与用户设置。
+**需求：** 对齐 同类 Agent §12 `outputStyles.ts` 内置输出风格（Default / Explanatory / Learning），接入 AxeCoder Agent 系统提示与用户设置。
 
 **选型：** 推荐并采用提案 2（prompt 模块 + `agentOutputStyle` 配置 + General 下拉）。
 
@@ -95,7 +95,7 @@ npm test -- tests/unittest/UT-agent-system-prompt/ tests/unittest/UT-agent-glob/
 ## 10. 遗留项与后续建议
 
 - 自定义 `.claude/output-styles` 风格目录
-- 状态栏显示当前 output style（Claude Code StatusLine 同等能力）
+- 状态栏显示当前 output style（同类 Agent StatusLine 同等能力）
 
 ---
 

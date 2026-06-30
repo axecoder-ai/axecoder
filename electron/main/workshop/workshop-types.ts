@@ -111,6 +111,8 @@ export type RoleSpeakInput = {
   reuseImplementSession?: boolean
   /** Software Co.：该角色回合与 Chat Agent 同等效率（工具全开、session 复用） */
   sopAgentParity?: boolean
+  /** Multi-Agent：与 Software Co. 同级的工具全开 + session 复用（非 SOP chatMode） */
+  workshopAgentParity?: boolean
 }
 
 export type RoleSpeakOutput = {

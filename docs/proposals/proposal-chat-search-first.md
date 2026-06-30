@@ -5,9 +5,9 @@
 ## 解决方案提案
 
 **上下文：**
-- **请求：** 用户未在聊天输入区主动添加的文件，**不要**在发送时自动拼进 prompt；模型应像 Claude Code 一样，通过**查文件名（Glob）**和 **Grep** 定位内容，再用 **Read** 读取，而不是依赖背景资料侧栏的默认勾选批量注入。
+- **请求：** 用户未在聊天输入区主动添加的文件，**不要**在发送时自动拼进 prompt；模型应像 同类 Agent 一样，通过**查文件名（Glob）**和 **Grep** 定位内容，再用 **Read** 读取，而不是依赖背景资料侧栏的默认勾选批量注入。
 - **调研来源：**
-  - `docs/research/research-claude-code.md` — §3 内置工具（`GlobTool` / `GrepTool` / `FileReadTool`）、§3.2「专用工具优先、先读后改」、§4.1 `/files` 与上下文管理；模型被约束用 Glob/Grep 搜索而非预灌全文。
+  - `docs/research/research-参考实现.md` — §3 内置工具（`GlobTool` / `GrepTool` / `FileReadTool`）、§3.2「专用工具优先、先读后改」、§4.1 `/files` 与上下文管理；模型被约束用 Glob/Grep 搜索而非预灌全文。
   - `docs/research/research-ide-basics.md` — §2 已有 `fs:search`（ripgrep）未暴露给聊天模型；§6 大文件 UTF-8 全文读入内存约束。
   - `docs/proposals/proposal-chat-file-agent.md` — Agent 工具 Read/Edit/Write/**Grep** 已规划；Glob 标为二期。
   - `docs/proposals/proposal-background-materials.md` — 背景面板「默认带入 AI」与 `ChatPane` 合并 `backgroundContextPaths` 的设计。
@@ -21,7 +21,7 @@
 
 **提案 1 – 取消静默预载 + 强化 Agent 检索链（推荐，契合度最高）**
 
-- **概述：** **发送链路只保留用户显式附件**（拖拽、`@`、输入区 chip、用户勾选的「当前文件」）；**不再**把 `backgroundContextPaths` 并入 `sendFilePaths`。背景资料侧栏改为**浏览/打开/一键附加**用途，默认**零勾选**。Agent 模式为默认或主推路径：补齐 **Glob**（包装现有 `readTree` 或轻量 glob IPC），系统提示对齐 Claude Code——「无附件时必须先 Glob/Grep 再 Read」。普通 `ai:chat` 单轮模式若仍需参考文件，由用户手动附加。
+- **概述：** **发送链路只保留用户显式附件**（拖拽、`@`、输入区 chip、用户勾选的「当前文件」）；**不再**把 `backgroundContextPaths` 并入 `sendFilePaths`。背景资料侧栏改为**浏览/打开/一键附加**用途，默认**零勾选**。Agent 模式为默认或主推路径：补齐 **Glob**（包装现有 `readTree` 或轻量 glob IPC），系统提示对齐 同类 Agent——「无附件时必须先 Glob/Grep 再 Read」。普通 `ai:chat` 单轮模式若仍需参考文件，由用户手动附加。
 - **关键变更：**
   | 模块 | 变更 |
   |------|------|
@@ -32,7 +32,7 @@
   | `electron/main/agent/tool-executor.ts` | 实现 Glob（复用 `fs-ipc` 树遍历或 ripgrep `--files`） |
   | `src/App.vue` | 可保留 `backgroundContextPaths` ref 供「一键附加」按钮，**不再**默认传给 `ChatPane` 的 send 合并 |
 - **权衡：**
-  - **收益：** 与用户预期一致（红框文件不再「凭空出现」）；上下文 token 显著下降；行为对齐 `research-claude-code.md` 工具优先；Agent 已具备 Grep，补 Glob 即可覆盖「查文件名」。
+  - **收益：** 与用户预期一致（红框文件不再「凭空出现」）；上下文 token 显著下降；行为对齐 `research-参考实现.md` 工具优先；Agent 已具备 Grep，补 Glob 即可覆盖「查文件名」。
   - **风险：** 首轮多 1–2 次 tool 调用，延迟略增；模型若偷懒不搜可能答偏——需系统提示与少量 eval；旧项目 localStorage 若曾保存「全选」需迁移或忽略。
   - **契合度：** 最高 — 最小改动断开静默注入，复用已有 Agent 与 `fs:search`。
 - **验证：**
@@ -76,11 +76,11 @@
 |------|--------------------------------|----------------------|
 | 默认行为 | 绝不自动带文件 | 默认不带，可一键/可设置带 |
 | 实现量 | 小（删合并 + 改默认勾选 + Glob） | 中（UI + 设置 + 同左） |
-| 对齐 Claude Code | 高 | 高（Agent 段） |
+| 对齐 同类 Agent | 高 | 高（Agent 段） |
 | 标书批量参考 | 需手动附加或 Agent 搜 | 保留批量快捷方式 |
 | 用户可见性 | 仅显式 chip | chip + 可选确认条 |
 
-**推荐：提案 1。** 用户诉求明确是「没主动添加就不要带上」；背景侧栏应退化为**目录导航 + 可选一键附加**，检索交给 **Glob → Grep → Read**（`research-claude-code.md` §3）。
+**推荐：提案 1。** 用户诉求明确是「没主动添加就不要带上」；背景侧栏应退化为**目录导航 + 可选一键附加**，检索交给 **Glob → Grep → Read**（`research-参考实现.md` §3）。
 
 ---
 
@@ -113,5 +113,5 @@
 | `src/components/workbench/ChatPane.vue:279-285` | 静默合并背景路径 |
 | `src/utils/background-materials.ts:98-102` | 默认全选逻辑 |
 | `electron/main/agent/agent-tool-defs.ts` | Agent 工具与系统提示 |
-| `docs/research/research-claude-code.md` | Glob/Grep/Read 工具优先 |
+| `docs/research/research-参考实现.md` | Glob/Grep/Read 工具优先 |
 | `docs/proposals/proposal-chat-file-agent.md` | Agent 文件工具总提案 |

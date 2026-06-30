@@ -29,4 +29,51 @@ describe('buildAgentRoleSpeaker', () => {
     const sid = vi.mocked(runWorkshopRoleAgentTurn).mock.calls[0]?.[2]
     expect(sid).toBe('workshop-ws-1-manager')
   })
+
+  it('member 回合默认 workshopAgentParity + reuseSession', async () => {
+    const { runWorkshopRoleAgentTurn } = await import('../../../electron/main/agent/agent-loop')
+    vi.mocked(runWorkshopRoleAgentTurn).mockClear()
+    vi.mocked(runWorkshopRoleAgentTurn).mockResolvedValue({
+      ok: true,
+      report: 'done',
+    })
+    const { buildAgentRoleSpeaker } = await import(
+      '../../../electron/main/workshop/workshop-agent-speaker'
+    )
+    const speaker = buildAgentRoleSpeaker('/tmp/proj', 'm1', 'ws-1', () => undefined)
+    await speaker({
+      roleId: 'backend',
+      userBrief: 'fix bug',
+      priorSummary: '',
+      speakMode: 'member',
+      assigneeUser: {
+        id: 'u-dev',
+        displayName: 'Dev',
+        role: 'Developer',
+        isBuiltin: true,
+        builtinRole: 'developer',
+      },
+    })
+    const opts = vi.mocked(runWorkshopRoleAgentTurn).mock.calls.at(-1)?.[5]
+    expect(opts?.workshopAgentParity).toBe(true)
+    expect(opts?.reuseSession).toBe(true)
+    expect(opts?.sopAgentParity).toBeUndefined()
+  })
+})
+
+describe('resolveWorkshopAgentParity', () => {
+  it('SOP 回合不启用 workshop parity', async () => {
+    const { resolveWorkshopAgentParity } = await import(
+      '../../../electron/main/workshop/workshop-agent-speaker'
+    )
+    expect(
+      resolveWorkshopAgentParity({
+        roleId: 'backend',
+        userBrief: 'x',
+        priorSummary: '',
+        speakMode: 'member',
+        sopAgentParity: true,
+      }),
+    ).toBe(false)
+  })
 })

@@ -21,7 +21,7 @@
 - **痛点：** 用户未在聊天输入区添加文件，发送后消息仍出现 `背景资料/参数.md`、`.writcraft/参数汇总.md` 等 tag——因背景侧栏**默认全选**且 `ChatPane.sendFilePaths` **静默合并** `backgroundContextPaths`，输入区 chip 不展示（`ChatPane.vue:279-285`）。
 - **已有能力：** Agent 模式 + `agent:send` 多轮循环；工具 **Read / Edit / Write / Grep / Delete / Move**（`electron/main/agent/`）；`expandChatUserWithFiles` 仅应在用户显式 `filePaths` 时拼全文。
 - **缺口：** 无 **Glob**（按路径模式列文件）；系统提示虽写「Use Grep to find files」，未强调「无附件时禁止臆测文件内容」。
-- **参考：** `docs/research/research-claude-code.md` §3 — Glob/Grep/Read 工具优先，不预灌全文。
+- **参考：** `docs/research/research-参考实现.md` §3 — Glob/Grep/Read 工具优先，不预灌全文。
 
 ---
 
@@ -242,7 +242,7 @@ Agent 无附件时：
 ## 参考资料
 
 - `docs/proposals/proposal-chat-search-first.md`
-- `docs/research/research-claude-code.md` §3
+- `docs/research/research-参考实现.md` §3
 - `docs/plans/plan-chat-file-agent-proposal1.md`（Agent 基础已实施）
 - `src/components/workbench/ChatPane.vue:279-285`
 - `electron/main/background-materials.ts:40-77`

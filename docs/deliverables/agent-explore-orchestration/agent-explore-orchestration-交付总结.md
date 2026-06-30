@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-**需求：** 缩小 AxeCoder Chat Agent 与 Claude Code 在同类任务上的工具调用差距（避免 100+ 次无效 Read/Grep）。
+**需求：** 缩小 AxeCoder Chat Agent 与 同类 Agent 在同类任务上的工具调用差距（避免 100+ 次无效 Read/Grep）。
 
 **本轮目标：** 对齐 Claude 的 **软编排**（非强制两阶段状态机）：Todo 回灌、Explore 委派指引、FRC/scratchpad 说明、explore 报告落盘。
 

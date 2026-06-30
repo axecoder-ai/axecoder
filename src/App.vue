@@ -1205,6 +1205,7 @@ onUnmounted(() => {
             "
             @close="onChatPaneClose"
             @show-agents-sidebar="agentsSidebarVisible = true"
+            @toggle-agents-sidebar="toggleAgentsSidebar"
             @open-models-settings="openModelsSettings"
             @open-permissions-settings="openPermissionsSettings"
             @active-change="onChatActiveChange"

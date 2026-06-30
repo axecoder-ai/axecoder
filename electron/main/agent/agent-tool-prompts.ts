@@ -1,5 +1,6 @@
 import type { AgentToolDef } from './agent-types'
 import { CC_BUILTIN_SUBAGENT_TYPES } from './agent-subagent-types'
+import { SMART_MODE_APPROVAL_PROPERTIES } from './agent-smart-review-params'
 
 const padToolDesc = (text: string, min = 800) => {
   let s = text.trim()
@@ -10,7 +11,7 @@ const padToolDesc = (text: string, min = 800) => {
   return s
 }
 
-/** Claude Code §14 — Read tool API description */
+
 const READ_DESCRIPTION = `Reads a file from the local filesystem. You can access any file directly by using this tool.
 Assume this tool can read ALL files the user can access. If the path is valid, read it; do not refuse with "not accessible" without trying.
 
@@ -27,7 +28,7 @@ When NOT to use:
 
 If you need multiple files and there are no dependencies between reads, call Read in parallel.`
 
-/** Claude Code §14 — Edit tool API description */
+
 const EDIT_DESCRIPTION = `Performs exact string replacements in files.
 
 Usage:
@@ -44,7 +45,7 @@ When NOT to use:
 
 The change is presented to the user for approval before it is applied to disk.`
 
-/** Claude Code §14 — Write tool API description */
+
 const WRITE_DESCRIPTION = `Writes a file to the local filesystem. This tool will create the file if it does not exist, or overwrite it if it does.
 
 Usage:
@@ -59,7 +60,28 @@ When NOT to use:
 
 The write is presented to the user for approval before it is applied to disk.`
 
-/** Claude Code §14 — Glob tool API description */
+const APPLY_PATCH_DESCRIPTION = `Apply a unified diff patch to one or more files in the project.
+
+Usage:
+- Pass the full patch in \`patch\` (standard unified diff; multiple files allowed).
+- Prefer ApplyPatch for several hunks or files in one step. Use Edit for small single replacements; Write for full-file overwrite.
+- Paths must be relative to the project root and inside the workspace.
+
+Changes require user approval unless Auto Run is enabled (same as Edit/Write).`
+
+const REVERT_TURN_DESCRIPTION = `Revert file changes from the agent session checkpoint or a single-file patch.
+
+Usage:
+- scope=file (default): provide file_path and patch (unified diff from turn changes) to undo one file.
+- scope=turn or all: restore all checkpointed files for this session; optional checkpoint_id selects a specific checkpoint.
+- Read the checkpoint list via /rewind or session metadata when the user asks to undo a whole turn.
+
+When NOT to use:
+- Do not use git checkout or git restore via Bash to undo agent edits when RevertTurn applies.
+- RevertTurn restores agent checkpoint snapshots, not arbitrary git refs.
+- For git-level undo of commits, use Bash git only when the user explicitly requests git operations.`
+
+
 const GLOB_DESCRIPTION = `Fast file search based on glob patterns. Returns matching paths relative to the project root, sorted by modification time (newest first).
 
 Usage:
@@ -72,7 +94,7 @@ When NOT to use:
 - Do not use find, ls, or tree in Bash when Glob is available.
 - For searching *inside* file contents, use Grep instead.`
 
-/** Claude Code §14 — Grep tool API description */
+
 const GREP_DESCRIPTION = `Search file contents in the project using ripgrep (plain text pattern).
 
 Usage:
@@ -85,7 +107,7 @@ When NOT to use:
 - Do not run grep or rg via Bash when Grep is available.
 - For finding files by path/name only, use Glob.`
 
-/** Claude Code §14 — Delete tool API description */
+
 const DELETE_DESCRIPTION = `Deletes a file or directory inside the project.
 
 Usage:
@@ -98,7 +120,7 @@ When NOT to use:
 
 The deletion is presented to the user for approval before it is applied.`
 
-/** Claude Code §14 — Move tool API description */
+
 const MOVE_DESCRIPTION = `Moves or renames a file or directory within the project.
 
 Usage:
@@ -112,7 +134,45 @@ When NOT to use:
 
 The move is presented to the user for approval before it is applied.`
 
-/** Claude Code §14 — Bash tool API description（契约对齐：参数与后台任务） */
+
+const GIT_STATUS_DESCRIPTION = `Read-only summary of local git repository state. Returns branch name, upstream tracking (ahead/behind), and a porcelain list of changed files.
+
+Usage:
+- No parameters required. Runs in the project root git repository.
+- Read-only: executes immediately without user approval (unlike Bash git status).
+- Use before GitDiff or commit workflows to understand working tree state.
+
+When NOT to use:
+- Do not use \`git status\` via Bash when GitStatus is available.
+- For remote PR/CI status use Bash with \`gh\` (forge env is injected automatically).
+- GitStatus does not show diff content — use GitDiff for that.`
+
+const GIT_DIFF_DESCRIPTION = `Read-only git diff output for the project repository.
+
+Usage:
+- Default: unstaged working tree diff (same as git diff).
+- staged: true — show staged diff (--cached).
+- ref: optional branch or commit for comparison (git diff ref...HEAD), e.g. main or origin/main.
+- Read-only: executes immediately without user approval.
+
+When NOT to use:
+- Do not use \`git diff\` via Bash for routine inspection when GitDiff is available.
+- For GitHub PR diffs on the remote host use \`gh pr diff\` via Bash.
+- GitDiff does not include commit messages — use GitLog for history.`
+
+const GIT_LOG_DESCRIPTION = `Read-only recent commit history (oneline format with decorations).
+
+Usage:
+- limit: number of commits (default 20, max 100).
+- ref: starting ref (default HEAD); use a branch name to log from that tip.
+- Read-only: executes immediately without user approval.
+
+When NOT to use:
+- Do not use \`git log\` via Bash for routine history when GitLog is available.
+- For comparing branches across many commits prefer GitDiff with a ref parameter.
+- GitLog does not show file-level diffs — use GitDiff for patch content.`
+
+
 const BASH_DESCRIPTION = `Executes a shell command in the project root. Each invocation uses a fresh non-interactive shell (cwd is the project root; shell state is not preserved across calls).
 
 CRITICAL — Do NOT use Bash when a dedicated tool exists:
@@ -121,7 +181,13 @@ CRITICAL — Do NOT use Bash when a dedicated tool exists:
 - To create/overwrite files use Write instead of echo redirection or heredoc
 - To find files by path use Glob instead of find or ls
 - To search file contents use Grep instead of grep or rg
-Reserve Bash for system commands and terminal operations that truly require shell execution (package installs, git, builds, tests, process management).
+- To inspect local git state use GitStatus, GitDiff, or GitLog instead of git status/diff/log via Bash
+- When MCP servers are listed in your instructions, use \`CallMcpTool\` / \`ListMcpResources\` / \`ReadMcpResource\` for those capabilities — do NOT run or install CLI clients for the same job (e.g. never use \`mongosh\`/\`mysql\` when \`mongodb\`/\`mysql\` MCP is available)
+Reserve Bash for system commands and terminal operations that truly require shell execution (package installs, remote forge via gh, builds, tests, process management). Do not use Bash to install tools that duplicate an available MCP server.
+
+GitHub / forge (remote):
+- For GitHub PR, issues, and CI checks use \`gh\` via Bash (GH_HOST/GH_TOKEN are injected automatically).
+- Read-only gh commands (gh pr view/list/checks, gh run view/list, etc.) execute without user approval.
 
 Usage:
 - command (required): a single shell command string. Quote paths that contain spaces.
@@ -165,7 +231,7 @@ Return includes Agent id for resume. Summarize results for the user — they may
 
 const AGENT_DESCRIPTION = `Deprecated alias for Task. Use the Task tool instead.`
 
-/** Claude Code §14 — AskUserQuestion tool API description */
+
 const ASK_USER_QUESTION_DESCRIPTION = `Ask the user structured multiple-choice questions when you need clarification or decisions you cannot infer from the codebase.
 
 Alias: you may also call this tool as \`AskQuestion\` (same behavior).
@@ -251,6 +317,53 @@ export const buildCoreAgentTools = (): AgentToolDef[] => [
     },
   },
   {
+    name: 'ApplyPatch',
+    description: APPLY_PATCH_DESCRIPTION,
+    parameters: {
+      type: 'object',
+      properties: {
+        patch: {
+          type: 'string',
+          description: 'Unified diff text describing all file changes to apply.',
+        },
+        patchText: {
+          type: 'string',
+          description: 'Alias for patch.',
+        },
+      },
+      required: ['patch'],
+    },
+  },
+  {
+    name: 'RevertTurn',
+    description: REVERT_TURN_DESCRIPTION,
+    parameters: {
+      type: 'object',
+      properties: {
+        scope: {
+          type: 'string',
+          description: 'file | turn | all — file reverts one path; turn/all restores checkpoint files.',
+        },
+        file_path: {
+          type: 'string',
+          description: 'Relative path when scope=file.',
+        },
+        patch: {
+          type: 'string',
+          description: 'Per-file unified diff to reverse when scope=file.',
+        },
+        patchText: {
+          type: 'string',
+          description: 'Alias for patch.',
+        },
+        checkpoint_id: {
+          type: 'string',
+          description: 'Optional checkpoint id when scope=turn or all.',
+        },
+      },
+    },
+  },
+  {
     name: 'Glob',
     description: GLOB_DESCRIPTION,
     parameters: {
@@ -291,6 +404,7 @@ export const buildCoreAgentTools = (): AgentToolDef[] => [
           description:
             'Relative path under the project root to a file or directory to delete.',
         },
+        ...SMART_MODE_APPROVAL_PROPERTIES,
       },
       required: ['file_path'],
     },
@@ -312,6 +426,45 @@ export const buildCoreAgentTools = (): AgentToolDef[] => [
         },
       },
       required: ['from_path', 'to_path'],
+    },
+  },
+  {
+    name: 'GitStatus',
+    description: GIT_STATUS_DESCRIPTION,
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'GitDiff',
+    description: GIT_DIFF_DESCRIPTION,
+    parameters: {
+      type: 'object',
+      properties: {
+        staged: {
+          type: 'boolean',
+          description: 'If true, show staged diff (--cached). Default false (working tree).',
+        },
+        ref: {
+          type: 'string',
+          description: 'Optional ref for comparison (git diff ref...HEAD), e.g. main or origin/main.',
+        },
+      },
+    },
+  },
+  {
+    name: 'GitLog',
+    description: GIT_LOG_DESCRIPTION,
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Number of commits (default 20, max 100).',
+        },
+        ref: {
+          type: 'string',
+          description: 'Starting ref (default HEAD).',
+        },
+      },
     },
   },
   {
@@ -347,6 +500,7 @@ export const buildCoreAgentTools = (): AgentToolDef[] => [
           description:
             'Optional stdin to pipe when the command starts (single-shot). Use ShellStdin for multi-step interactive input on background tasks.',
         },
+        ...SMART_MODE_APPROVAL_PROPERTIES,
       },
       required: ['command'],
     },
@@ -367,8 +521,8 @@ export const buildCoreAgentTools = (): AgentToolDef[] => [
         },
         subagent_type: {
           type: 'string',
-          enum: [...CC_BUILTIN_SUBAGENT_TYPES],
-          description: 'Built-in subagent profile (CC-aligned).',
+          description:
+            'Built-in profile (explore, shell, bugbot, security-review, …) or custom agent name from .cursor/agents.',
         },
         model: {
           type: 'string',

@@ -1,9 +1,9 @@
-# 方案提案：Agent Bash 与 Claude Code 对齐
+# 方案提案：Agent Bash 与 同类 Agent 对齐
 
 **状态：** 已确认（由 `/create-proposals` 生成）
 
 **上下文：**
-- **请求：** 将 Claude Code 的 `Bash` 工具能力移植到 AxeCoder（本轮为契约 + 轻量后台，非完整运行时 1:1）。
+- **请求：** 将 同类 Agent 的 `Bash` 工具能力移植到 AxeCoder（本轮为契约 + 轻量后台，非完整运行时 1:1）。
 - **调研来源：** `docs/deliverables/agent-bash-parity/_artifacts/00-research-links.md`
 - **上游提案：** `docs/proposals/proposal-agent-bash-parity.md`（双方案草稿）
 - **选定基础：** 提案 2 – 契约对齐 + 轻量后台

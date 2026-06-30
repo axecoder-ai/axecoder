@@ -10,7 +10,8 @@ import {
 } from '../../../electron/main/agent/agent-mcp'
 import { setPluginEnabled, CONTEXT7_PLUGIN_ID } from '../../../electron/main/mcp-plugins-store'
 import { writeSecrets } from '../../../electron/main/secrets-store'
-import { CONTEXT7_SECRET_KEY } from '../../../electron/main/mcp-plugins-registry'
+import { setProjectSecret } from '../../../electron/main/project-secrets-store'
+import { CONTEXT7_SECRET_KEY, MONGODB_PLUGIN_ID, MONGODB_SECRET_KEY, MYSQL_PLUGIN_ID, MYSQL_SECRET_KEY } from '../../../electron/main/mcp-plugins-registry'
 import { patchMcpOAuthSession } from '../../../electron/main/mcp-oauth-store'
 
 let tmpDir = ''
@@ -76,6 +77,70 @@ describe('materializeEnabledPlugins', () => {
     })
     const servers = await materializeEnabledPlugins(new Set(['context7']))
     expect(servers).toHaveLength(0)
+  })
+
+  it('MongoDB 已配置连接串且 enabled 时注入 stdio（按项目）', async () => {
+    const projectDir = path.join(tmpDir, 'proj-a')
+    await fs.mkdir(projectDir, { recursive: true })
+    await setPluginEnabled(MONGODB_PLUGIN_ID, true, projectDir)
+    await setProjectSecret(projectDir, MONGODB_SECRET_KEY, 'mongodb+srv://u:p@cluster.example.net/db')
+    const servers = await materializeEnabledPlugins(new Set(), projectDir)
+    expect(servers).toHaveLength(1)
+    expect(servers[0].name).toBe('mongodb')
+    expect(servers[0].command).toBe('npx')
+    expect(servers[0].args).toEqual(['-y', 'mongodb-mcp-server@latest'])
+    expect(servers[0].env?.MDB_MCP_CONNECTION_STRING).toBe(
+      'mongodb+srv://u:p@cluster.example.net/db',
+    )
+    expect(servers[0].poolKey).toBe(`${path.resolve(projectDir)}::mongodb`)
+  })
+
+  it('MongoDB 不同项目使用不同 poolKey', async () => {
+    const projA = path.join(tmpDir, 'proj-a')
+    const projB = path.join(tmpDir, 'proj-b')
+    await fs.mkdir(projA, { recursive: true })
+    await fs.mkdir(projB, { recursive: true })
+    await setPluginEnabled(MONGODB_PLUGIN_ID, true, projA)
+    await setPluginEnabled(MONGODB_PLUGIN_ID, true, projB)
+    await setProjectSecret(projA, MONGODB_SECRET_KEY, 'mongodb+srv://a/db')
+    await setProjectSecret(projB, MONGODB_SECRET_KEY, 'mongodb+srv://b/db')
+    const serversA = await materializeEnabledPlugins(new Set(), projA)
+    const serversB = await materializeEnabledPlugins(new Set(), projB)
+    expect(serversA[0].poolKey).not.toBe(serversB[0].poolKey)
+    expect(serversA[0].env?.MDB_MCP_CONNECTION_STRING).toBe('mongodb+srv://a/db')
+    expect(serversB[0].env?.MDB_MCP_CONNECTION_STRING).toBe('mongodb+srv://b/db')
+  })
+
+  it('MongoDB enabled 时无连接串也注入 stdio', async () => {
+    const projectDir = path.join(tmpDir, 'proj-empty')
+    await fs.mkdir(projectDir, { recursive: true })
+    await setPluginEnabled(MONGODB_PLUGIN_ID, true, projectDir)
+    const servers = await materializeEnabledPlugins(new Set(), projectDir)
+    expect(servers).toHaveLength(1)
+    expect(servers[0].command).toBe('npx')
+    expect(servers[0].env).toBeUndefined()
+  })
+
+  it('MongoDB 按项目默认 enabled，无需手动开关', async () => {
+    const projectDir = path.join(tmpDir, 'proj-default')
+    await fs.mkdir(projectDir, { recursive: true })
+    const servers = await materializeEnabledPlugins(new Set(), projectDir)
+    expect(servers.map((s) => s.name).sort()).toEqual(['mongodb', 'mysql'])
+  })
+
+  it('MySQL 已配置连接串时注入 stdio args', async () => {
+    const projectDir = path.join(tmpDir, 'proj-mysql')
+    await fs.mkdir(projectDir, { recursive: true })
+    await setProjectSecret(projectDir, MYSQL_SECRET_KEY, 'mysql://u:p@localhost:3306/app')
+    const servers = await materializeEnabledPlugins(new Set(), projectDir)
+    const mysql = servers.find((s) => s.name === 'mysql')
+    expect(mysql?.command).toBe('npx')
+    expect(mysql?.args).toEqual([
+      '-y',
+      '@imrieul/mysql-mcp-server',
+      'mysql://u:p@localhost:3306/app',
+    ])
+    expect(mysql?.poolKey).toMatch(/^.*::mysql::[a-f0-9]{12}$/)
   })
 })
 

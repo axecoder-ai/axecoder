@@ -32,8 +32,14 @@ onMounted(() => {
   void reload()
 })
 
+const toggleDisabled = (p: McpPluginView) => {
+  if (p.managedBy === 'mcp.json') return true
+  if (p.projectScoped && !props.projectRoot?.trim()) return true
+  return false
+}
+
 const onToggle = async (p: McpPluginView, enabled: boolean) => {
-  if (p.managedBy === 'mcp.json') return
+  if (toggleDisabled(p)) return
   const prev = plugins.value
   plugins.value = plugins.value.map((x) => (x.id === p.id ? { ...x, enabled } : x))
   const res = await window.axecoder.setMcpPluginEnabled(p.id, enabled, props.projectRoot)
@@ -75,10 +81,15 @@ const onDisconnect = async (p: McpPluginView) => {
   emit('changed')
 }
 
+const projectConfigExampleKey = (id: string) => {
+  if (id === 'mysql') return 'settings.mcp.mysqlProjectConfigExample'
+  return 'settings.mcp.mongodbProjectConfigExample'
+}
+
 const onTest = async (p: McpPluginView) => {
   testingId.value = p.id
   status.value = ''
-  const res = await window.axecoder.testMcpPlugin(p.id)
+  const res = await window.axecoder.testMcpPlugin(p.id, props.projectRoot)
   testingId.value = ''
   if (res.ok) {
     status.value = t('settings.mcp.testOk', { tools: res.tools.join(', ') })
@@ -103,23 +114,43 @@ defineExpose({ reload })
           <div class="plugin-info">
             <span class="plugin-name">{{ p.displayName }}</span>
             <span v-if="p.connected" class="badge connected">{{ t('settings.mcp.connected') }}</span>
+            <span v-else-if="p.projectScoped && p.enabled" class="badge enabled">{{ t('settings.mcp.enabled') }}</span>
             <p class="plugin-desc">{{ p.description }}</p>
             <a class="plugin-link" :href="p.docUrl" target="_blank" rel="noopener noreferrer">
               {{ p.docUrl }}
             </a>
             <p v-if="p.managedBy === 'mcp.json'" class="hint">
-              {{ t('settings.mcp.managedByMcpJson') }}
+              {{
+                p.authMode === 'oauth'
+                  ? t('settings.mcp.managedByMcpJsonOAuth')
+                  : t('settings.mcp.managedByMcpJson')
+              }}
             </p>
-            <p v-else-if="!p.connected" class="hint">{{ t('settings.mcp.needsConnect') }}</p>
-            <p v-else class="hint">{{ t('settings.mcp.oauthHint') }}</p>
+            <p v-else-if="p.authMode === 'oauth' && !p.connected" class="hint">
+              {{ t('settings.mcp.needsConnect') }}
+            </p>
+            <p v-else-if="p.projectScoped && !projectRoot" class="hint">
+              {{ t('settings.mcp.needsProject') }}
+            </p>
+            <p v-else-if="p.projectScoped && p.enabled && !p.hasApiKey" class="hint">
+              {{ t('settings.mcp.enabledWithoutCredentials') }}
+            </p>
+            <p v-else-if="p.projectScoped && !p.hasApiKey" class="hint">
+              {{ t('settings.mcp.optionalProjectCredentials') }}
+            </p>
+            <p v-else-if="p.authMode === 'oauth'" class="hint">{{ t('settings.mcp.oauthHint') }}</p>
+            <p v-else-if="p.projectScoped && p.hasApiKey" class="hint">{{ t('settings.mcp.projectConnectedHint') }}</p>
+            <pre v-if="p.projectScoped && projectRoot && !p.hasApiKey" class="config-example">{{
+              t(projectConfigExampleKey(p.id))
+            }}</pre>
           </div>
           <SwitchToggle
             :model-value="p.enabled"
-            :disabled="p.managedBy === 'mcp.json' || !p.connected"
+            :disabled="toggleDisabled(p)"
             @update:model-value="(v: boolean) => onToggle(p, v)"
           />
         </div>
-        <div v-if="p.managedBy === 'plugin'" class="plugin-actions">
+        <div v-if="p.authMode === 'oauth'" class="plugin-actions">
           <div class="btn-row">
             <button
               v-if="!p.connected"
@@ -143,6 +174,18 @@ defineExpose({ reload })
               type="button"
               class="btn"
               :disabled="!p.connected || testingId === p.id"
+              @click="onTest(p)"
+            >
+              {{ testingId === p.id ? t('settings.mcp.testing') : t('settings.mcp.testConnection') }}
+            </button>
+          </div>
+        </div>
+        <div v-else-if="p.projectScoped && p.enabled" class="plugin-actions">
+          <div class="btn-row">
+            <button
+              type="button"
+              class="btn"
+              :disabled="testingId === p.id"
               @click="onTest(p)"
             >
               {{ testingId === p.id ? t('settings.mcp.testing') : t('settings.mcp.testConnection') }}
@@ -219,6 +262,14 @@ h2 {
   color: var(--wc-success, #98c379);
 }
 
+.badge.enabled {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(97, 175, 239, 0.2);
+  color: var(--wc-accent, #61afef);
+}
+
 .plugin-desc {
   margin: 6px 0 4px;
   font-size: 13px;
@@ -235,6 +286,20 @@ h2 {
   margin: 8px 0 0;
   font-size: 12px;
   color: var(--wc-text-muted);
+}
+
+.config-example {
+  margin: 8px 0 0;
+  padding: 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  border-radius: 6px;
+  border: 1px solid var(--wc-border);
+  background: var(--wc-panel);
+  color: var(--wc-text-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
 }
 
 .plugin-actions {

@@ -91,14 +91,25 @@ const formatResourceContents = (
   return parts.join('\n\n') || '(empty resource)'
 }
 
-export const disconnectMcpServer = async (serverName: string): Promise<void> => {
-  const entry = pool.get(serverName)
+const poolKeyOf = (cfg: McpServerConfig) => cfg.poolKey ?? cfg.name
+
+export const disconnectMcpServer = async (serverNameOrPoolKey: string): Promise<void> => {
+  const entry = pool.get(serverNameOrPoolKey)
   if (!entry) return
-  pool.delete(serverName)
+  pool.delete(serverNameOrPoolKey)
   try {
     await entry.transport.close()
   } catch {
     // ignore
+  }
+}
+
+/** 断开同名 server 的全部连接池项（含按项目隔离的 poolKey） */
+export const disconnectMcpServerScoped = async (serverName: string): Promise<void> => {
+  for (const key of [...pool.keys()]) {
+    if (key === serverName || key.endsWith(`::${serverName}`)) {
+      await disconnectMcpServer(key)
+    }
   }
 }
 
@@ -109,7 +120,8 @@ export const disconnectAllMcpServers = async (): Promise<void> => {
 export const getMcpClient = async (
   cfg: McpServerConfig,
 ): Promise<{ ok: true; pooled: Pooled } | { ok: false; error: string }> => {
-  const cached = pool.get(cfg.name)
+  const key = poolKeyOf(cfg)
+  const cached = pool.get(key)
   if (cached) return { ok: true, pooled: cached }
 
   let transport: Transport
@@ -129,7 +141,7 @@ export const getMcpClient = async (
       toolNames: (toolsRes.tools ?? []).map((t) => t.name),
       serverInstructions: client.getInstructions(),
     }
-    pool.set(cfg.name, pooled)
+    pool.set(key, pooled)
     return { ok: true, pooled }
   } catch (e) {
     try {
@@ -158,7 +170,7 @@ export const callMcpToolLive = async (
     if (result.isError) return { ok: false, error: text }
     return { ok: true, text }
   } catch (e) {
-    await disconnectMcpServer(cfg.name)
+    await disconnectMcpServer(poolKeyOf(cfg))
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
 }
@@ -210,7 +222,7 @@ export const readMcpResourceLive = async (
     )
     return { ok: true, text: formatResourceContents(res.contents ?? []) }
   } catch (e) {
-    await disconnectMcpServer(cfg.name)
+    await disconnectMcpServer(poolKeyOf(cfg))
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
 }

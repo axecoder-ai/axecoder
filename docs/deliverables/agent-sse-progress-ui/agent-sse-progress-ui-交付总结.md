@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-将 Agent SSE 执行进度从圆点列表改为 Claude Code CLI 风格的紧凑终端风（工具行、shimmer、推理块）。用户选定提案 1，无额外调整。交付物目录：`docs/deliverables/agent-sse-progress-ui/`。
+将 Agent SSE 执行进度从圆点列表改为 同类 Agent CLI 风格的紧凑终端风（工具行、shimmer、推理块）。用户选定提案 1，无额外调整。交付物目录：`docs/deliverables/agent-sse-progress-ui/`。
 
 ---
 

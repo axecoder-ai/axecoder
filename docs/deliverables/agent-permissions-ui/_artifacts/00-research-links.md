@@ -1,7 +1,7 @@
 # 调研链接
 
-- `docs/research/research-claude-code.md` — §5 settings.json `allowedTools`/`disallowedTools`、§4.3 `/permissions` 斜杠命令
-- `docs/research/research-axecoder-vs-claude-code.md` — 权限引擎缺口说明
+- `docs/research/research-参考实现.md` — §5 settings.json `allowedTools`/`disallowedTools`、§4.3 `/permissions` 斜杠命令
+- `docs/research/research-axecoder-vs-参考实现.md` — 权限引擎缺口说明
 - `electron/main/agent/agent-permissions.ts` — 已有 `resolveToolPermission`、三种 mode
 - `electron/main/config-store.ts` — `~/.axecoder/config.json` 持久化 `agentPermissionMode` / `agentAllowedTools` / `agentDisallowedTools`
 - `docs/deliverables/agent-runtime-prompt-gaps/_artifacts/05-implement-report.md` — 后端权限已实现、前端未暴露

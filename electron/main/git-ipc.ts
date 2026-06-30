@@ -1,41 +1,18 @@
 import { ipcMain, shell } from 'electron'
-import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { getConfig } from './config-store'
 import { buildGitForgeContext, forgeEnvForBash } from './git-forge/detect-forge'
-import { buildCommitPushPrPrompt } from './git-forge/forge-prompt'
+import { buildCommitPushPrPrompt, buildInvestigateCiPrompt } from './git-forge/forge-prompt'
 import { runAgentBash } from './agent/agent-bash'
 import { logOutput } from './output-channel'
+import { parsePorcelainLine, runGit } from './git-run'
 
-export const runGit = (cwd: string, args: string[]): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const proc = spawn('git', args, { cwd, env: process.env })
-    let out = ''
-    let err = ''
-    proc.stdout?.on('data', (d) => {
-      out += d.toString()
-    })
-    proc.stderr?.on('data', (d) => {
-      err += d.toString()
-    })
-    proc.on('close', (code) => {
-      if (code === 0) resolve(out.trim())
-      else reject(new Error(err.trim() || `git exit ${code}`))
-    })
-    proc.on('error', () => reject(new Error('Git not installed or not executable')))
-  })
+export { parsePorcelainLine, runGit } from './git-run'
 
 const resolveGitPath = (cwd: string, file: string) => {
   const f = file.trim()
   if (!f) throw new Error('Missing file path')
   return path.isAbsolute(f) ? f : path.join(cwd, f)
-}
-
-/** git status --porcelain：XY 后至少一个空格再接路径；仅暂存时路径可能紧跟在第二位状态后 */
-export const parsePorcelainLine = (line: string) => {
-  const code = line.slice(0, 2)
-  const file = (line.length > 2 && line[2] === ' ' ? line.slice(3) : line.slice(2)).trim()
-  return { code, file }
 }
 
 const parsePorcelain = (raw: string) =>
@@ -306,6 +283,18 @@ export const registerGitIpc = () => {
       return { ok: true as const, text: buildCommitPushPrPrompt(ctx) }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Could not build prompt'
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('git:investigateCiPrompt', async (_, cwd: string, linkedPrUrl?: string) => {
+    if (!cwd) return { ok: false as const, error: 'No project open' }
+    try {
+      const cfg = await getConfig()
+      const ctx = await buildGitForgeContext(cwd, cfg)
+      return { ok: true as const, text: buildInvestigateCiPrompt(ctx, linkedPrUrl) }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not build CI prompt'
       return { ok: false as const, error: msg }
     }
   })

@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-1:1 对齐 Claude Code `outputStyles.ts` 内置 **Default / Explanatory / Learning**：
+1:1 对齐 同类 Agent `outputStyles.ts` 内置 **Default / Explanatory / Learning**：
 - 新建 `agent-output-styles.ts`（`OUTPUT_STYLE_CONFIG`、`getOutputStyleSection`、`resolveAgentOutputStyle`）
 - `getSimpleIntroSection(outputStyleConfig)` — 非 default 时引用 Output Style 分支
 - `buildAgentSystemPrompt` — 按 `keepCodingInstructions` 条件包含 doing tasks；动态段在 `# Language` 之后插入 `# Output Style`

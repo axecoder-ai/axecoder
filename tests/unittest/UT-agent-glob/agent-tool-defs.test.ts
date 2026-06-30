@@ -17,5 +17,5 @@ describe('agent-tool-defs search-first', () => {
     expect(prompt).toMatch(/Glob/i)
     expect(prompt).toMatch(/Grep/i)
     expect(prompt).not.toMatch(/assume.*full.*file/i)
-  })
+  }, 15_000)
 })

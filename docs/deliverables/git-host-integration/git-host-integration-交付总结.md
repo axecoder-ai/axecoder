@@ -10,7 +10,7 @@
 
 ## 1. 概述
 
-**需求：** 将 Claude Code 的 GitHub 集成 1:1 移植到 AxeCoder，并支持 Gitee 与用户自配 Git 托管地址。
+**需求：** 将 同类 Agent 的 GitHub 集成 1:1 移植到 AxeCoder，并支持 Gitee 与用户自配 Git 托管地址。
 
 **本轮目标：** Forge 检测 + Agent PR 工作流 + gh 只读 Bash + 设置页 + `/commit-push-pr`；**不做** Anthropic GitHub App 安装向导。
 

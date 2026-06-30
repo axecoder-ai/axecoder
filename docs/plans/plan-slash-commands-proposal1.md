@@ -11,7 +11,7 @@
 |----|------|
 | **范围** | `src/slash-commands/*`；`runSlashCommand` 分发；`ChatPane.vue` `send()` 前置分支；`parse.ts` 单测 |
 | **不在范围** | `electron/main/slash-commands`、IPC `slash:execute`、`type: 'prompt'`、`SlashCommandPicker`、MCP、`/compact` `/rewind` `/export` |
-| **约束** | 对齐 `claude-code` 语义：发送前拦截（`processSlashCommand.tsx`）；命令实现**流水账**、少抽象；新增命令只增目录 + registry 一行 |
+| **约束** | 对齐 `参考实现` 语义：发送前拦截（`processSlashCommand.tsx`）；命令实现**流水账**、少抽象；新增命令只增目录 + registry 一行 |
 | **时间线（估）** | **约 1–1.5 人日**：解析+registry 0.25d → 四命令 0.5d → ChatPane 接线+门控 0.25d → 单测+手工验收 0.25d |
 
 ---
@@ -22,8 +22,8 @@
 - **已有能力可复用：**
   - 会话持久化：`persist()`、`saveChatSession`（`electron/main/chat-store.ts`）。
   - `newChat()`（`:171-188`）、`onModelPick` + `setActiveModel`（`:222-225`）、`emit('openModelsSettings')`（`:35`）。
-- **参考：** `claude-code/src/commands/<name>/index.ts` 元数据；`claude-code/src/utils/slashCommandParsing.ts` 解析子集；`claude-code/src/utils/processUserInput/processSlashCommand.tsx` 拦截后不进模型。
-- **痛点：** 用户无法用 `/clear`、`/help` 等管理会话；与 Claude Code 使用习惯不一致。
+- **参考：** `参考实现/src/commands/<name>/index.ts` 元数据；`参考实现/src/utils/slashCommandParsing.ts` 解析子集；`参考实现/src/utils/processUserInput/processSlashCommand.tsx` 拦截后不进模型。
+- **痛点：** 用户无法用 `/clear`、`/help` 等管理会话；与 同类 Agent 使用习惯不一致。
 
 ---
 
@@ -58,7 +58,7 @@
 ### 1. 目录与注册（提案 1）
 
 - **选择：** `src/slash-commands/`，每命令一目录 `help/index.ts` 导出 `SlashCommandDef`；`registry.ts` 聚合 `allCommands()`。
-- **理由：** 与提案及 `claude-code/src/commands/` 一一对应；边界清晰。
+- **理由：** 与提案及 `参考实现/src/commands/` 一一对应；边界清晰。
 - **不采用：** 提案 2 Main IPC（本期不做）。
 
 ### 2. 分发入口
@@ -72,8 +72,8 @@
 - **选择：**
   - `/clear` → 仅 `messages = []`，**同一** `session.id`，`updatedAt` 更新，`persist`。
   - `/new` → 复用 `newChat()`（新 id、新会话文件）。
-- **理由：** 对齐 Claude Code `/clear` 与别名 `new` 的差异：WritCraft 将 `new` 独立为新建标签页式会话，避免误清当前 id。
-- **备注：** `registry` 可为 `clear` 注册 `aliases: ['reset']`，**不**把 `new` 作为 clear 别名（与 `claude-code` 的 clear 别名略有不同，在 `/help` 文案中写清）。
+- **理由：** 对齐 同类 Agent `/clear` 与别名 `new` 的差异：WritCraft 将 `new` 独立为新建标签页式会话，避免误清当前 id。
+- **备注：** `registry` 可为 `clear` 注册 `aliases: ['reset']`，**不**把 `new` 作为 clear 别名（与 `参考实现` 的 clear 别名略有不同，在 `/help` 文案中写清）。
 
 ### 4. 用户消息是否留痕
 
@@ -273,9 +273,9 @@ if (text.startsWith('/')) {
 
 ---
 
-## 与 Claude Code 差异（实现时避免照抄过度）
+## 与 同类 Agent 差异（实现时避免照抄过度）
 
-| 项 | Claude Code | WritCraft V1 |
+| 项 | 同类 Agent | WritCraft V1 |
 |----|-------------|--------------|
 | `clear` 别名 `new` | 同命令 | `/new` 独立为新会话 |
 | `local-jsx` / `prompt` | 有 | 无 |
@@ -296,11 +296,11 @@ if (text.startsWith('/')) {
 ## 参考资料
 
 - `docs/proposals/proposal-slash-commands.md` — 提案全文
-- `docs/research/research-claude-code.md` — §4 斜杠命令分类
+- `docs/research/research-参考实现.md` — §4 斜杠命令分类
 - `docs/research/research-ide-basics.md` — IPC 边界
 - `docs/proposals/proposal-chat.md` — ChatPane 发送路径
 - `docs/plans/plan-chat-file-agent-proposal1.md` — Agent 与斜杠正交
-- `claude-code/src/commands.ts`、`claude-code/src/commands/clear/index.ts`
-- `claude-code/src/utils/slashCommandParsing.ts`
-- `claude-code/src/utils/processUserInput/processSlashCommand.tsx`
+- `参考实现/src/commands.ts`、`参考实现/src/commands/clear/index.ts`
+- `参考实现/src/utils/slashCommandParsing.ts`
+- `参考实现/src/utils/processUserInput/processSlashCommand.tsx`
 - `src/components/workbench/ChatPane.vue`

@@ -25,7 +25,7 @@ import {
   type LoopGuardState,
 } from './agent-loop-guard'
 import { getConfig } from '../config-store'
-import { getSubagentTypeConfig, normalizeSubagentType } from './agent-subagent-types'
+import { resolveSubagentForExecution } from './agent-custom-subagents'
 import {
   createSubagentAgentId,
   loadSubagentRecord,
@@ -114,17 +114,37 @@ export const runSubAgentTask = async (
   const prompt = taskPrompt.trim()
   if (!prompt) return { ok: false, error: 'Sub-agent prompt is required' }
 
-  const subagentType = normalizeSubagentType(options?.subagentType || 'generalPurpose')
-  const typeCfg = getSubagentTypeConfig(subagentType)
-  const resolvedModelId = options?.modelIdOverride?.trim() || modelId
+  const rawType = options?.subagentType || 'generalPurpose'
+  const resolved = await resolveSubagentForExecution(
+    projectRoot,
+    rawType,
+    options?.readonly,
+  )
+
+  const subagentType =
+    resolved.kind === 'builtin' ? resolved.type : resolved.name
+  const typeCfg =
+    resolved.kind === 'builtin' ?
+      resolved.cfg
+    : {
+        readOnly: resolved.readOnly,
+        shellOnly: false,
+        maxTurns: resolved.maxTurns,
+        modelTaskKind: resolved.modelTaskKind,
+        promptPrefix: resolved.promptPrefix,
+      }
+
+  const customModel =
+    resolved.kind === 'custom' ? resolved.model?.trim() : undefined
+  const resolvedModelId =
+    options?.modelIdOverride?.trim() || customModel || modelId
   const model = await getModelById(resolvedModelId)
   if (!model) return { ok: false, error: 'Model not found' }
   const apiKey = await getSecret(resolvedModelId)
-  const tools =
-    options?.tools ??
-    buildSubAgentToolList(subagentType, options?.readonly === true || typeCfg.readOnly)
-
   const readOnly = options?.readonly === true || typeCfg.readOnly
+  const toolProfileType = resolved.kind === 'builtin' ? resolved.type : 'generalPurpose'
+  const tools =
+    options?.tools ?? buildSubAgentToolList(toolProfileType, readOnly)
   const ctx: AgentContext = {
     projectRoot,
     readCache: new Set<string>(),

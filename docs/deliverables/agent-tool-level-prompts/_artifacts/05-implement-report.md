@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-对齐 Claude Code §14：为 AxeCoder 全部 10 个 Agent 内置工具提供 API 级长 `description` 与参数 `description`，经 `chat-with-tools` 映射到 OpenAI/Anthropic `tools[]`。
+对齐 同类 Agent §14：为 AxeCoder 全部 10 个 Agent 内置工具提供 API 级长 `description` 与参数 `description`，经 `chat-with-tools` 映射到 OpenAI/Anthropic `tools[]`。
 
 ## 修改文件
 
@@ -20,5 +20,5 @@
 
 ## 注意事项
 
-- 无 Claude Code `prompt.ts` 源码，长文按 §7/§13 + `tool-executor` 行为撰写，非逐字节 1:1
+- 无 同类 Agent `prompt.ts` 源码，长文按 §7/§13 + `tool-executor` 行为撰写，非逐字节 1:1
 - 未实现工具（TodoWrite、WebFetch 等）不在范围

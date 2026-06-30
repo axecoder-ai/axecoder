@@ -24,4 +24,4 @@
 ## 非阻塞待办
 
 - 未来新增工具时同步 `agent-tool-prompts.ts`
-- 若获得 Claude Code `prompt.ts` 快照，可 diff 微调措辞
+- 若获得 同类 Agent `prompt.ts` 快照，可 diff 微调措辞

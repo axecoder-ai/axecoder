@@ -86,6 +86,9 @@ const en: MessageTree = {
       autoPlanClassifierModel: 'Auto-plan classifier model (optional)',
       autoPlanClassifierModelHint:
         'Borderline tasks (heuristic score 1–2) use a cheap model. Empty = fast API tier of the active chat model.',
+      smartModeApproval: 'Smart Mode approval',
+      smartModeApprovalHint:
+        'Auto-review before risky Bash, web fetch, and MCP calls. When blocked, the agent can request your approval. Off restores legacy behavior.',
       loopGuard: 'Loop guard (anti-spin)',
       loopGuardHint:
         'Block repeated identical write successes and inject guidance after the same tool error repeats (storm breaker).',
@@ -129,18 +132,31 @@ const en: MessageTree = {
     },
     mcp: {
       title: 'MCP Plugins',
-      desc: 'Manage MCP plugins. OAuth tokens are stored in ~/.axecoder/mcp-oauth.json.',
+      desc: 'Context7 uses global OAuth. MongoDB / MySQL connection strings are not entered here — configure per project (see each card).',
       connect: 'Connect',
       disconnect: 'Disconnect',
       connecting: 'Connecting…',
       connected: 'Connected',
       needsConnect: 'Click Connect to sign in to Context7 in your browser',
+      needsProject: 'MongoDB / MySQL are per-project — open a project first',
+      optionalProjectCredentials:
+        'Optional: set a default connection string in project config; or use the connect tool in chat.',
+      enabledWithoutCredentials:
+        'Enabled for this project. Without a default connection string, ask the Agent to use the connect tool in chat.',
+      enabled: 'Enabled',
+      mongodbProjectConfigExample:
+        'Option A — project .mcp.json:\n{\n  "mcpServers": {\n    "mongodb": {\n      "command": "npx",\n      "args": ["-y", "mongodb-mcp-server@latest"],\n      "env": { "MDB_MCP_CONNECTION_STRING": "mongodb+srv://..." }\n    }\n  }\n}\n\nOption B — project .axecoder/secrets.json:\n{ "mcp:mongodb:connection_string": "mongodb+srv://..." }',
+      mysqlProjectConfigExample:
+        'Option A — project .mcp.json:\n{\n  "mcpServers": {\n    "mysql": {\n      "command": "npx",\n      "args": ["-y", "@imrieul/mysql-mcp-server", "mysql://user:pass@localhost:3306/db"]\n    }\n  }\n}\n\nOption B — project .axecoder/secrets.json:\n{ "mcp:mysql:connection_string": "mysql://user:pass@localhost:3306/db" }',
+      projectConnectedHint: 'Connection string loaded from this project. Toggle applies to this project only.',
       testConnection: 'Test connection',
       testing: 'Testing…',
       connectOk: 'Connected to Context7',
       connectFail: 'Connection failed: {error}',
       disconnected: 'Disconnected',
-      managedByMcpJson: 'Configured in mcp.json — toggle disabled here',
+      managedByMcpJson: 'Configured in project mcp.json — toggle disabled here',
+      managedByMcpJsonOAuth:
+        'Configured in mcp.json — use Connect below for OAuth sign-in (toggle disabled)',
       testOk: 'Connected. Tools: {tools}',
       testFail: 'Connection failed: {error}',
       oauthHint: 'Same as Cursor: click Connect and sign in via browser — no manual API key.',

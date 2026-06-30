@@ -71,7 +71,7 @@ export const labelForToolStart = (toolName: string, summary: string) =>
 export const labelForToolDone = (toolName: string, summary: string, ok: boolean) =>
   ok ? `${toolName} done` : `${toolName} failed：${summary}`
 
-/** Rotating hints when chat has no tool progress (Claude Code spinner verbs) */
+/** Rotating hints when chat has no tool progress */
 export const CHAT_IDLE_HINTS = SPINNER_VERBS.map(formatSpinnerVerb)
 
 let stepSeq = 0

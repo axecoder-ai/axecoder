@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-**需求：** 实现 `research-axecoder-vs-claude-code.md` §2 工具层全部缺口。
+**需求：** 实现 `research-axecoder-vs-参考实现.md` §2 工具层全部缺口。
 
 **目标：** Agent 注册 36 个工具、扩展 executor、Plan 模式、并行 tool、子代理类型/后台、Bash git 安全。
 

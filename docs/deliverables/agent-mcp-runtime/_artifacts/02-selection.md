@@ -12,7 +12,7 @@
 |------|-------------------|-----------------|
 | 核心思路 | `@modelcontextprotocol/sdk` 长连接 | 每调用 spawn CLI |
 | 主要改动范围 | agent-mcp*、executor、package.json | agent-mcp-bridge、executor |
-| 优点 | 延迟低、可复用、与 Claude Code 一致 | 改动文件少 |
+| 优点 | 延迟低、可复用、与 同类 Agent 一致 | 改动文件少 |
 | 缺点 / 风险 | 子进程生命周期、打包 PATH | 冷启动慢、难测 |
 | 工作量 | 中 | 小 |
 | 适合场景 | 产品级 Agent MCP | 临时验证 |

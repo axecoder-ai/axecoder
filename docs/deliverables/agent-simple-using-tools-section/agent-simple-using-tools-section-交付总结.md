@@ -13,7 +13,7 @@
 
 ## 1. 概述
 
-1:1 接入 Claude Code §7 `getUsingYourToolsSection` 主段，并实现 Agent **`Bash`** 工具（项目根执行 shell 命令）。
+1:1 接入 同类 Agent §7 `getUsingYourToolsSection` 主段，并实现 Agent **`Bash`** 工具（项目根执行 shell 命令）。
 
 ## 2. 方案
 

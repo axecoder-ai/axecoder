@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-对齐 Claude Code 的 **软编排**，降低 Chat Agent 重复 Read/Grep：
+对齐 同类 Agent 的 **软编排**，降低 Chat Agent 重复 Read/Grep：
 
 1. **System prompt**：`getTodoManagementSection`、`getAgentDelegationSection`（>3 次搜索用 `Agent(explore)`）、`getScratchpadInstructionsSection`、`getFunctionResultClearingSection`（含 SUMMARIZE 文案）。
 2. **每轮注入**：`prepareSessionBeforeModel` 通过 `<agent-context-injection>` 回灌 Todo 列表与 `scratchpad/explore-summary.md`。

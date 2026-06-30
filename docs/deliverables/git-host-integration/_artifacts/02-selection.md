@@ -2,7 +2,7 @@
 
 ## 一句话需求回顾
 
-AxeCoder 需移植 Claude Code 的 GitHub 集成（Bash+gh PR 工作流、只读 gh 自动放行、环境感知），并扩展 Gitee 与用户自配 Git 托管地址；**不做** `/install-github-app` 类 Anthropic OAuth 向导。
+AxeCoder 需移植 同类 Agent 的 GitHub 集成（Bash+gh PR 工作流、只读 gh 自动放行、环境感知），并扩展 Gitee 与用户自配 Git 托管地址；**不做** `/install-github-app` 类 Anthropic OAuth 向导。
 
 ## 方案对比表
 

@@ -152,8 +152,8 @@ export class AgentWorkerBridge {
 
     if (msg.type === 'host') {
       try {
-        await handleAgentWorkerHostRequest(msg.method, msg.params)
-        this.write({ type: 'hostRes', id: msg.id, ok: true })
+        const result = await handleAgentWorkerHostRequest(msg.method, msg.params)
+        this.write({ type: 'hostRes', id: msg.id, ok: true, result })
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err)
         this.write({ type: 'hostRes', id: msg.id, ok: false, error })

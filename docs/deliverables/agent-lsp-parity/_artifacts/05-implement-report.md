@@ -2,7 +2,7 @@
 
 ## 概要
 
-将 Claude Code `LSPTool` 对齐到 AxeCoder Agent：9 种 operation、1-based 行列、结果格式化、gitignore 过滤、按扩展名路由 LSP 进程。
+将 同类 Agent `LSPTool` 对齐到 AxeCoder Agent：9 种 operation、1-based 行列、结果格式化、gitignore 过滤、按扩展名路由 LSP 进程。
 
 ## 新增/修改
 

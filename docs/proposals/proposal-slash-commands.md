@@ -5,13 +5,13 @@
 ## 解决方案提案
 
 **上下文：**
-- **请求：** 为 WritCraft 聊天输入实现斜杠命令；**单独建目录**集中实现；借鉴本地 `claude-code` 的 `src/commands/` + `commands.ts` 注册与分发模式。
+- **请求：** 为 WritCraft 聊天输入实现斜杠命令；**单独建目录**集中实现；借鉴本地 `参考实现` 的 `src/commands/` + `commands.ts` 注册与分发模式。
 - **调研来源：**
-  - `docs/research/research-claude-code.md` — §2 架构（`src/commands/`、`src/commands.ts`）、§4 斜杠命令分类（会话/配置/诊断等约 70+）、§5 扩展（Skills/Plugins 动态命令）。
+  - `docs/research/research-参考实现.md` — §2 架构（`src/commands/`、`src/commands.ts`）、§4 斜杠命令分类（会话/配置/诊断等约 70+）、§5 扩展（Skills/Plugins 动态命令）。
   - `docs/research/research-ide-basics.md` — Renderer 仅经 `window.writcraft` IPC；Chat 已接真实会话持久化（§3.4 注：调研时曾为 mock，现状以代码为准）。
   - `docs/plans/plan-chat-file-agent-proposal1.md` — Agent 文件工具范围**明确不含**斜杠命令；与本提案正交、可并行排期。
   - `docs/proposals/proposal-chat.md` — `ChatPane.vue` 发送路径、`agent:send` / `ai:chat` 分工。
-  - **参考实现（本地快照，不进 git）：** `claude-code/src/commands.ts`（`COMMANDS` 注册、`getCommands` 懒加载）、`claude-code/src/commands/<name>/index.ts`（元数据 + `load()`）、`claude-code/src/utils/processUserInput/processSlashCommand.tsx`（发送前拦截、`local` / `prompt` / `local-jsx` 三类）、`claude-code/src/types/command.ts`。
+  - **参考实现（本地快照，不进 git）：** `参考实现/src/commands.ts`（`COMMANDS` 注册、`getCommands` 懒加载）、`参考实现/src/commands/<name>/index.ts`（元数据 + `load()`）、`参考实现/src/utils/processUserInput/processSlashCommand.tsx`（发送前拦截、`local` / `prompt` / `local-jsx` 三类）、`参考实现/src/types/command.ts`。
 - **代码现状：**
   - `ChatPane.vue` `send()`（约 `:417-484`）：trim 后直接 `agentSend` / `aiChat`，**无** `/` 前缀检测。
   - 会话：`chat-store` + `getChatSession` / `saveChatSession`；`newChat()` 已存在，可映射 `/clear` / `/new`。
@@ -28,12 +28,12 @@
   |------|------|
   | `src/slash-commands/registry.ts` | `SlashCommandDef[]`：`name`、`aliases?`、`description`、`run(ctx, args)` |
   | `src/slash-commands/<name>/index.ts` | 各命令实现（流水账式 `run`，少抽象） |
-  | `src/slash-commands/parse.ts` | 解析 `/name`、子命令 `name:sub`、参数串（可参考 `claude-code/src/utils/slashCommandParsing.js` 子集） |
+  | `src/slash-commands/parse.ts` | 解析 `/name`、子命令 `name:sub`、参数串（可参考 `参考实现/src/utils/slashCommandParsing.js` 子集） |
   | `src/slash-commands/types.ts` | `SlashContext`：`projectRoot`、`activeSession`、`modelsFile`、`emit` 回调等 |
   | `ChatPane.vue` | `send()` 开头分支；助手区展示命令结果（`role: 'assistant'` 纯文本或系统条） |
   | 可选 `SlashCommandPicker.vue` | 输入 `/` 时 typeahead（二期；V1 可仅 `/help` 列表） |
 - **V1 建议命令（按现有能力，非照搬 70+）：**
-  | 命令 | 行为 | 对标 Claude Code |
+  | 命令 | 行为 | 对标 同类 Agent |
   |------|------|------------------|
   | `/help` | 列出已注册命令与简介 | `/help` |
   | `/clear` | 清空当前会话消息（保留会话 id） | `/clear` |
@@ -76,9 +76,9 @@
 
 ---
 
-## 与 Claude Code 的对照（实现时必读）
+## 与 同类 Agent 的对照（实现时必读）
 
-| Claude Code | WritCraft 建议（提案 1 首期） |
+| 同类 Agent | WritCraft 建议（提案 1 首期） |
 |-------------|------------------------------|
 | `src/commands/<cmd>/index.ts` 元数据 + `load()` 懒加载 | `src/slash-commands/<cmd>/index.ts` 导出 `def`；V1 可同步 import，命令少时不强求 lazy |
 | `commands.ts` → `getCommands()` | `registry.ts` → `allCommands()` |
@@ -118,4 +118,4 @@ src/slash-commands/
 |------|------|
 | `plan-chat-file-agent-proposal1.md` | 文件 Agent 与斜杠命令无依赖；可先做斜杠命令改善会话管理体验 |
 | `proposal-chat-file-agent.md` | 未承诺斜杠；本提案补位 |
-| `research-claude-code.md` §4 | 命令清单为**长期 backlog**，V1 只实现上表 4–5 个 |
+| `research-参考实现.md` §4 | 命令清单为**长期 backlog**，V1 只实现上表 4–5 个 |

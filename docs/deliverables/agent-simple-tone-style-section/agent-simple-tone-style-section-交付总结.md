@@ -10,7 +10,7 @@
 
 ## 1. 概述
 
-对齐 Claude Code **§9 Tone and style**（`getSimpleToneAndStyleSection`），约束 Agent 回复语气与引用格式。
+对齐 同类 Agent **§9 Tone and style**（`getSimpleToneAndStyleSection`），约束 Agent 回复语气与引用格式。
 
 ## 2. 方案
 

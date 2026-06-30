@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-- 新增 `getSimpleIntroSection()`：结构对齐 Claude Code §2（AxeCoder 身份 + `CYBER_RISK_INSTRUCTION` + URL 规则）。
+- 新增 `getSimpleIntroSection()`：结构对齐 同类 Agent §2（AxeCoder 身份 + `CYBER_RISK_INSTRUCTION` + URL 规则）。
 - 新增 `CYBER_RISK_INSTRUCTION` 常量（§3 英文原文）。
 - `buildAgentSystemPrompt` 移至 `agent-system-prompt.ts`，组装顺序：intro → 工具/任务规则 → project root。
 - `agent-tool-defs.ts` 保留 `AGENT_TOOLS` 并 re-export 组装 API；`agent-loop.ts` 无需修改。

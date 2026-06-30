@@ -30,6 +30,7 @@ export type AgentWorkerHostResponse = {
   type: 'hostRes'
   id: number
   ok: boolean
+  result?: unknown
   error?: string
 }
 

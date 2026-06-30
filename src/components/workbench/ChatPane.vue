@@ -27,6 +27,7 @@ import ChatTurnChangesBar from './ChatTurnChangesBar.vue'
 import ChatAskUserCard from './ChatAskUserCard.vue'
 import ChatPlanCard from './ChatPlanCard.vue'
 import ChatBashCard from './ChatBashCard.vue'
+import ChatSmartApprovalCard from './ChatSmartApprovalCard.vue'
 import BackgroundTaskCard from './BackgroundTaskCard.vue'
 import AgentProgressStream from './AgentProgressStream.vue'
 import FooterTpsBadge from './FooterTpsBadge.vue'
@@ -69,6 +70,7 @@ import {
 import { playAgentCompletionSound } from '../../utils/play-completion-sound'
 import SwitchToggle from './SwitchToggle.vue'
 import WorkshopChatSection from './WorkshopChatSection.vue'
+import AgentsPanel from './AgentsPanel.vue'
 import type { SessionKind } from '../../types/axecoder'
 import {
   useChatAttachedImages,
@@ -101,6 +103,10 @@ import {
 const md = new MarkdownIt()
 
 const workshopSectionRef = ref<InstanceType<typeof WorkshopChatSection> | null>(null)
+const historyFlyoutRef = ref<InstanceType<typeof AgentsPanel> | null>(null)
+const historyFlyoutOpen = ref(false)
+const historyBtnRef = ref<HTMLElement | null>(null)
+const historyFlyoutEl = ref<HTMLElement | null>(null)
 
 const props = defineProps<{
   projectRoot: string
@@ -123,6 +129,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   showAgentsSidebar: []
+  toggleAgentsSidebar: []
   openModelsSettings: []
   openPermissionsSettings: []
   activeChange: [id: string]
@@ -1333,6 +1340,7 @@ const pushAssistantFromAgent = (
     toolLog: res.toolLog,
     pendingWrites: res.pending,
     pendingBashes: res.pendingBashes,
+    pendingSmartApprovals: res.pendingSmartApprovals,
     pendingAsks: res.pendingAsks,
     pendingPlans: res.pendingPlans,
     agentSessionId: res.sessionId,
@@ -1353,6 +1361,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
     msg.text += `\n\nConfirm failed: ${res.error}`
     msg.pendingWrites = undefined
     msg.pendingBashes = undefined
+    msg.pendingSmartApprovals = undefined
     msg.pendingAsks = undefined
     msg.pendingPlans = undefined
     return
@@ -1361,6 +1370,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
   if (res.status === 'pending') {
     msg.pendingWrites = res.pending
     msg.pendingBashes = res.pendingBashes
+    msg.pendingSmartApprovals = res.pendingSmartApprovals
     msg.pendingAsks = res.pendingAsks
     msg.pendingPlans = res.pendingPlans
     msg.agentSessionId = res.sessionId
@@ -1372,6 +1382,7 @@ const applyContinueToMessage = (msg: ChatMessage, res: AgentContinueResult) => {
   } else {
     msg.pendingWrites = undefined
     msg.pendingBashes = undefined
+    msg.pendingSmartApprovals = undefined
     msg.pendingAsks = undefined
     msg.pendingPlans = undefined
     const next = resolveAgentReplyBody(res) + suffix
@@ -1410,6 +1421,7 @@ const pushAssistantAfterAskAnswer = (
       toolLog: res.toolLog,
       pendingWrites: res.pending,
       pendingBashes: res.pendingBashes,
+      pendingSmartApprovals: res.pendingSmartApprovals,
       pendingAsks: res.pendingAsks,
       pendingPlans: res.pendingPlans,
       agentSessionId,
@@ -1489,6 +1501,34 @@ const onRejectBashPending = async (msg: ChatMessage, pendingId: string) => {
   startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
   try {
     const res = await window.axecoder.agentRejectBash(msg.agentSessionId, pendingId)
+    applyContinueToMessage(msg, res)
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
+  } finally {
+    await finishPendingRunUi(chatId)
+  }
+}
+
+const onConfirmSmartPending = async (msg: ChatMessage, pendingId: string) => {
+  const chatId = activeId.value
+  if (!msg.agentSessionId || !chatId || isRunning(chatId)) return
+  startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
+  try {
+    const res = await window.axecoder.agentConfirmSmartApproval(msg.agentSessionId, pendingId)
+    applyContinueToMessage(msg, res)
+    const session = getChatSession(chatId)
+    if (session) session.updatedAt = Date.now()
+  } finally {
+    await finishPendingRunUi(chatId)
+  }
+}
+
+const onRejectSmartPending = async (msg: ChatMessage, pendingId: string) => {
+  const chatId = activeId.value
+  if (!msg.agentSessionId || !chatId || isRunning(chatId)) return
+  startPendingRunUi(chatId, msg.agentSessionId, msg.speakerUserId)
+  try {
+    const res = await window.axecoder.agentRejectSmartApproval(msg.agentSessionId, pendingId)
     applyContinueToMessage(msg, res)
     const session = getChatSession(chatId)
     if (session) session.updatedAt = Date.now()
@@ -1754,12 +1794,16 @@ const hasPendingAsksInSession = () =>
 const hasPendingBashesInSession = () =>
   (activeSession.value?.messages ?? []).some((m) => (m.pendingBashes?.length ?? 0) > 0)
 
+const hasPendingSmartApprovalsInSession = () =>
+  (activeSession.value?.messages ?? []).some((m) => (m.pendingSmartApprovals?.length ?? 0) > 0)
+
 const hasPendingPlansInSession = () =>
   (activeSession.value?.messages ?? []).some((m) => (m.pendingPlans?.length ?? 0) > 0)
 
 const hasPendingAgentInteraction = () =>
   hasPendingWritesInSession() ||
   hasPendingBashesInSession() ||
+  hasPendingSmartApprovalsInSession() ||
   hasPendingAsksInSession() ||
   hasPendingPlansInSession()
 
@@ -1769,7 +1813,10 @@ const sessionPendingState = computed(() => {
   const sessionIds: string[] = []
   const msgBySession = new Map<string, ChatMessage>()
   for (const m of msgs) {
-    const n = (m.pendingWrites?.length ?? 0) + (m.pendingBashes?.length ?? 0)
+    const n =
+      (m.pendingWrites?.length ?? 0) +
+      (m.pendingBashes?.length ?? 0) +
+      (m.pendingSmartApprovals?.length ?? 0)
     if (n > 0 && m.agentSessionId) {
       count += n
       if (!msgBySession.has(m.agentSessionId)) {
@@ -1888,6 +1935,36 @@ const onTurnChangesUndo = async () => {
   }
 }
 
+const onTurnChangesUndoFile = async (file: AgentTurnFileChange) => {
+  const ctx = activeTurnChangesContext.value
+  if (!ctx || !props.projectRoot?.trim()) return
+  const { msg } = ctx
+  const root = props.projectRoot.trim()
+  const chatId = activeId.value
+  if (!chatId) return
+  setPendingBusy(chatId, true)
+  try {
+    const res = await window.axecoder.agentRevertFilePatch(root, file.filePath, file.patchText)
+    if (!res.ok) return
+    const files =
+      msg.turnFileChanges?.length
+        ? [...msg.turnFileChanges]
+        : pendingWritesToFileChanges(msg.pendingWrites)
+    if (!files?.length) return
+    const next = files.filter(
+      (f) => !(f.filePath === file.filePath && f.patchText === file.patchText && f.pendingId === file.pendingId),
+    )
+    if (!next.length) {
+      msg.turnFileChanges = undefined
+    } else {
+      msg.turnFileChanges = next
+    }
+    emit('filesChanged')
+  } finally {
+    setPendingBusy(chatId, false)
+  }
+}
+
 watch(
   () => activeSession.value?.messages.length,
   () => {
@@ -1900,6 +1977,7 @@ const clearPendingForSession = (sessionId: string) => {
     if (m.agentSessionId === sessionId) {
       m.pendingWrites = undefined
       m.pendingBashes = undefined
+      m.pendingSmartApprovals = undefined
       m.pendingAsks = undefined
       m.pendingPlans = undefined
     }
@@ -1920,6 +1998,7 @@ const applyContinueAcrossSession = (sessionId: string, anchor: ChatMessage, res:
     if (m !== anchor && m.agentSessionId === sessionId) {
       m.pendingWrites = undefined
       m.pendingBashes = undefined
+      m.pendingSmartApprovals = undefined
       m.pendingAsks = undefined
       m.pendingPlans = undefined
     }
@@ -2669,6 +2748,7 @@ watch(workshopMessageCount, (n, prev) => {
 })
 
 onMounted(async () => {
+  document.addEventListener('pointerdown', onHistoryDocPointerDown, true)
   setupProgressListener()
   void loadModels()
   await load()
@@ -2693,6 +2773,7 @@ watch(
 )
 
 onUnmounted(() => {
+  document.removeEventListener('pointerdown', onHistoryDocPointerDown, true)
   teardownProgressListener()
   stopIdleHintTimer()
   unbindAiStream()
@@ -2720,6 +2801,11 @@ const isEmptyChat = computed(
     !pendingBusy.value,
 )
 
+/** 无编辑器时 New Agent 空会话输入框垂直居中；有编辑器时居顶 */
+const chatEmptyCentered = computed(
+  () => !showWorkshopPanel.value && isEmptyChat.value && !props.hasOpenEditorTabs,
+)
+
 const landingShortcuts = [
   { label: 'New Agent', keys: ['+'] },
   { label: 'Show/Hide Terminal', keys: ['⌘', '`'] },
@@ -2737,6 +2823,54 @@ const progressHeadline = computed(() => {
   if (agentMode.value) return 'Starting Agent…'
   return CHAT_IDLE_HINTS[idleHintIdx.value] ?? CHAT_IDLE_HINTS[0]
 })
+
+const toggleHistoryFlyout = () => {
+  historyFlyoutOpen.value = !historyFlyoutOpen.value
+  if (historyFlyoutOpen.value) {
+    void nextTick(() => historyFlyoutRef.value?.load())
+  }
+}
+
+const toggleAgentsSidebarBtn = () => {
+  if (props.agentsSidebarVisible) emit('toggleAgentsSidebar')
+  else emit('showAgentsSidebar')
+}
+
+const onFlyoutSelect = async (payload: { id: string; kind: SessionKind }) => {
+  historyFlyoutOpen.value = false
+  if (payload.kind === 'workshop') {
+    addUnifiedTab(payload.id, 'workshop')
+    await switchUnifiedTab({ id: payload.id, kind: 'workshop' })
+  } else {
+    await selectSession(payload.id)
+  }
+}
+
+const onFlyoutDelete = async (payload: { id: string; kind: SessionKind }) => {
+  if (payload.kind === 'workshop') {
+    await window.axecoder.deleteWorkshopSession(props.projectRoot, payload.id)
+    await closeUnifiedTab({ id: payload.id, kind: 'workshop' })
+  } else {
+    await deleteSession(payload.id)
+  }
+  void historyFlyoutRef.value?.load()
+  emit('sessionsChanged')
+}
+
+const onHistoryDocPointerDown = (e: PointerEvent) => {
+  if (!historyFlyoutOpen.value) return
+  const t = e.target as Node
+  if (historyFlyoutEl.value?.contains(t)) return
+  if (historyBtnRef.value?.contains(t)) return
+  historyFlyoutOpen.value = false
+}
+
+watch(
+  () => props.agentsSidebarVisible,
+  (visible) => {
+    if (visible) historyFlyoutOpen.value = false
+  },
+)
 
 defineExpose({
   sessionMetas,
@@ -2776,6 +2910,7 @@ defineExpose({
       'workshop-in-chat': showWorkshopPanel,
       'agents-hidden': !agentsSidebarVisible,
       'chat-empty': !showWorkshopPanel && isEmptyChat,
+      'chat-empty-centered': chatEmptyCentered,
       'chat-no-session': !showWorkshopPanel && showNoSessionLanding,
     }"
   >
@@ -2804,34 +2939,64 @@ defineExpose({
         >
           ■
         </button>
-        <button
-          type="button"
-          class="tab-close"
-          title="Close tab"
-          @click.stop="closeUnifiedTab({ id: tab.id, kind: tab.kind })"
-        >
-          ×
-        </button>
       </div>
       <div class="tabs-spacer" />
-      <button
-        v-if="!agentsSidebarVisible"
-        type="button"
-        class="agents-expand"
-        title="Show session history"
-        @click="emit('showAgentsSidebar')"
-      >
-        <span class="codicon codicon-layout-sidebar-right" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        class="chat-pane-close"
-        title="Close panel"
-        aria-label="Close panel"
-        @click="emit('close')"
-      >
-        <span class="codicon codicon-close" aria-hidden="true" />
-      </button>
+      <div class="chat-tabs-actions">
+        <button type="button" class="tab-action" title="New Agent" @click="newChat">
+          <span class="codicon codicon-add" aria-hidden="true" />
+        </button>
+        <button
+          v-if="!agentsSidebarVisible"
+          ref="historyBtnRef"
+          type="button"
+          class="tab-action"
+          :class="{ active: historyFlyoutOpen }"
+          title="Session history"
+          @click="toggleHistoryFlyout"
+        >
+          <span class="codicon codicon-history" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="tab-action"
+          :title="agentsSidebarVisible ? 'Hide session history' : 'Show session history'"
+          @click="toggleAgentsSidebarBtn"
+        >
+          <span
+            class="codicon"
+            :class="
+              agentsSidebarVisible ? 'codicon-layout-sidebar-right-off' : 'codicon-layout-sidebar-right'
+            "
+            aria-hidden="true"
+          />
+        </button>
+        <button
+          type="button"
+          class="tab-action chat-pane-close"
+          title="Close panel"
+          aria-label="Close panel"
+          @click="emit('close')"
+        >
+          <span class="codicon codicon-close" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+    <div
+      v-if="historyFlyoutOpen && !agentsSidebarVisible"
+      ref="historyFlyoutEl"
+      class="agents-history-flyout"
+    >
+      <AgentsPanel
+        ref="historyFlyoutRef"
+        variant="flyout"
+        :visible="true"
+        :width="280"
+        :project-root="projectRoot"
+        :active-session-id="activeTabKind === 'agent' ? activeId : activeTabId"
+        :active-session-kind="activeTabKind"
+        @select-session="onFlyoutSelect"
+        @delete-session="onFlyoutDelete"
+      />
     </div>
     <WorkshopChatSection
       v-show="showWorkshopPanel"
@@ -3051,6 +3216,14 @@ defineExpose({
             :built="track.done"
             :busy="pendingBusy"
           />
+          <ChatSmartApprovalCard
+            v-for="ps in msg.pendingSmartApprovals ?? []"
+            :key="ps.id"
+            :pending="ps"
+            :busy="pendingBusy"
+            @confirm="onConfirmSmartPending(msg, ps.id)"
+            @reject="onRejectSmartPending(msg, ps.id)"
+          />
           <ChatBashCard
             v-for="pb in msg.pendingBashes ?? []"
             :key="pb.id"
@@ -3184,6 +3357,7 @@ defineExpose({
           @review="onTurnChangesReview"
           @open-file="onTurnChangesOpenFile"
           @undo-all="onTurnChangesUndo"
+          @undo-file="onTurnChangesUndoFile"
           @dismiss="onTurnChangesDismiss"
         />
         <div
@@ -3257,7 +3431,7 @@ defineExpose({
                   ? 'Add details…'
                   : inputAtMention
                     ? 'Add task details…'
-                    : 'Plan, Build, /commands, @file or @role'
+                    : 'Plan, Build, / for skills, @ for context'
             "
             @input="(e) => { onInputField(e); syncInputCursor() }"
             @click="syncInputCursor"
@@ -3489,21 +3663,53 @@ defineExpose({
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
 }
 
-.chat-pane.chat-empty .chat-input-area {
-  position: absolute;
-  top: calc(35px + (100% - 35px) / 2);
-  left: 0;
-  right: 0;
-  transform: translateY(-50%);
-  max-width: 720px;
+.chat-pane.chat-empty-centered .agent-chat-body {
+  display: none;
+}
+
+.chat-pane.chat-empty-centered .chat-input-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+  padding-top: 0;
+  width: min(800px, 92%);
+  max-width: min(800px, 92%);
   margin-left: auto;
   margin-right: auto;
   box-sizing: border-box;
-  pointer-events: none;
 }
 
-.chat-pane.chat-empty .chat-input-area .input-box {
-  pointer-events: auto;
+.chat-pane.chat-empty-centered .input-box {
+  width: 100%;
+  border-radius: 14px;
+}
+
+.chat-pane.chat-empty-centered .chat-input-wrap {
+  min-height: 100px;
+  padding: 14px 18px 6px;
+}
+
+.chat-pane.chat-empty-centered .chat-input {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.chat-pane.chat-empty-centered .chat-input-footer {
+  padding: 6px 12px 12px;
+}
+
+.chat-pane.chat-empty:not(.chat-empty-centered) .agent-chat-body {
+  order: 2;
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-pane.chat-empty:not(.chat-empty-centered) .chat-input-area {
+  order: 1;
+  flex-shrink: 0;
+  padding-top: 12px;
 }
 
 .chat-tabs {
@@ -3530,50 +3736,42 @@ defineExpose({
   border-bottom: 1px solid var(--wc-border);
 }
 
-.agents-expand {
-  align-self: flex-end;
+.chat-tabs-actions {
+  display: flex;
+  align-items: flex-end;
+  align-self: stretch;
+  flex-shrink: 0;
+  gap: 2px;
+  padding-right: 4px;
+  border-bottom: 1px solid var(--wc-border);
+}
+
+.tab-action {
   width: 28px;
   height: 32px;
-  margin-right: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  border-bottom: 1px solid var(--wc-border);
   color: var(--wc-text-muted);
   flex-shrink: 0;
 }
 
-.agents-expand:hover {
+.tab-action:hover,
+.tab-action.active {
   background: var(--wc-hover);
   color: var(--wc-text);
 }
 
-.agents-expand .codicon {
+.tab-action .codicon {
   font-size: 16px;
 }
 
-.chat-pane-close {
-  align-self: flex-end;
-  width: 28px;
-  height: 32px;
-  margin-right: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  border-bottom: 1px solid var(--wc-border);
-  color: var(--wc-text-muted);
-  flex-shrink: 0;
-}
-
-.chat-pane-close:hover {
-  background: var(--wc-hover);
-  color: var(--wc-text);
-}
-
-.chat-pane-close .codicon {
-  font-size: 16px;
+.agents-history-flyout {
+  position: absolute;
+  top: 35px;
+  right: 8px;
+  z-index: 30;
 }
 
 .chat-tab {
@@ -3614,21 +3812,6 @@ defineExpose({
 
 .chat-tabs > .chat-tab:first-of-type.active {
   border-left-color: transparent;
-}
-
-.tab-close {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  border-radius: 4px;
-  font-size: 14px;
-  line-height: 1;
-  color: var(--wc-text-muted);
-}
-
-.tab-close:hover {
-  background: var(--wc-hover);
-  color: var(--wc-text);
 }
 
 .tab-label {

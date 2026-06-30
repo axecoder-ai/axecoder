@@ -126,6 +126,7 @@ export const sendDrawIoWorkshopMessage = async (
     pendingBashById: new Map(),
     pendingAskById: new Map(),
     pendingPlanById: new Map(),
+    pendingSmartById: new Map(),
     turn: 0,
     planMode: false,
     chatMode: 'draw-io',

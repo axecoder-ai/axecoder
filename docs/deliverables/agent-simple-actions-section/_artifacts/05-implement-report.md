@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-- 新增 `getActionsSection()`：Claude Code §6「谨慎执行操作」英文全文（文档 `...` 按公开完整句补全；保留 `CLAUDE.md` 措辞）。
+- 新增 `getActionsSection()`：同类 Agent §6「谨慎执行操作」英文全文（文档 `...` 按公开完整句补全；保留 `CLAUDE.md` 措辞）。
 - `buildAgentSystemPrompt` 顺序对齐 §15：`intro → system → doing tasks → actions → tool rules → project root`。
 - `agent-tool-defs.ts` re-export `getActionsSection`。
 

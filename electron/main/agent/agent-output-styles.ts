@@ -1,4 +1,4 @@
-/** Claude Code `src/constants/outputStyles.ts` — 内置 Explanatory / Learning（1:1 文案，符号用 ★ / •） */
+
 
 import { getCachedCustomOutputStyles } from './agent-output-styles-custom'
 
@@ -119,7 +119,7 @@ ${EXPLANATORY_FEATURE_PROMPT}`,
   },
 }
 
-/** Claude Code `getOutputStyleSection` */
+
 export const getOutputStyleSection = (
   outputStyleConfig: AgentOutputStyleConfig | null,
 ): string | null => {

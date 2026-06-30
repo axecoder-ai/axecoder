@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-**需求：** 将 Agent 上下文 compact 从规则截断升级为 LLM 摘要，对齐 Claude Code `/compact`，保留关键决策与文件路径。
+**需求：** 将 Agent 上下文 compact 从规则截断升级为 LLM 摘要，对齐 同类 Agent `/compact`，保留关键决策与文件路径。
 
 **本轮目标：** Agent 自动/手动 compact 使用 LLM 摘要；失败回退规则版；最小改动。
 

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import type { RuleDetail, RuleListItem, RuleScope, SkillDetail, SkillListItem } from '../../types/axecoder'
+import type { RuleDetail, RuleListItem, RuleScope, SkillDetail, SkillListItem, SubagentDetail, SubagentListItem } from '../../types/axecoder'
 import { fileNameFromPath } from '../../composables/workbench-state'
 import { appConfirm } from '../../utils/appConfirm'
 import RuleFormDialog from './RuleFormDialog.vue'
 import SkillFormDialog from './SkillFormDialog.vue'
+import SubagentFormDialog from './SubagentFormDialog.vue'
 
 const emit = defineEmits<{
   changed: []
@@ -25,6 +26,11 @@ const skills = ref<SkillListItem[]>([])
 const skillFormVisible = ref(false)
 const skillEditing = ref<SkillDetail | null>(null)
 const showAllSkills = ref(false)
+
+const subagents = ref<SubagentListItem[]>([])
+const subagentFormVisible = ref(false)
+const subagentEditing = ref<SubagentDetail | null>(null)
+const showAllSubagents = ref(false)
 
 const RULES_COLLAPSE = 5
 
@@ -83,6 +89,29 @@ const skillScopeLabel = (s: SkillListItem) => {
   return 'Built-in'
 }
 
+const subagentScopeLabel = (s: SubagentListItem) => {
+  if (s.scope === 'user') return 'User'
+  if (s.scope === 'project') return projectTabLabel.value
+  return 'Built-in'
+}
+
+const filteredSubagents = computed(() => {
+  if (filter.value === 'user') return subagents.value.filter((s) => s.scope === 'user')
+  if (filter.value === 'project') return subagents.value.filter((s) => s.scope === 'project')
+  return subagents.value
+})
+
+const visibleSubagents = computed(() => {
+  const list = filteredSubagents.value
+  if (showAllSubagents.value || list.length <= RULES_COLLAPSE) return list
+  return list.slice(0, RULES_COLLAPSE)
+})
+
+const hiddenSubagentsCount = computed(() => {
+  const n = filteredSubagents.value.length - RULES_COLLAPSE
+  return showAllSubagents.value || n <= 0 ? 0 : n
+})
+
 const reload = async () => {
   loading.value = true
   try {
@@ -100,6 +129,11 @@ const reload = async () => {
       skills.value = skillRes.data.skills
       projectRoot.value = skillRes.data.projectRoot
     }
+    const subRes = await window.axecoder.listSubagents(root)
+    if (subRes.ok) {
+      subagents.value = subRes.data.subagents
+      projectRoot.value = subRes.data.projectRoot
+    }
     const imp = await window.axecoder.getRulesThirdPartyImport()
     if (imp.ok) thirdPartyImport.value = imp.enabled
   } finally {
@@ -115,6 +149,7 @@ const setFilter = (id: FilterId) => {
   filter.value = id
   showAllRules.value = false
   showAllSkills.value = false
+  showAllSubagents.value = false
 }
 
 const onThirdPartyToggle = async () => {
@@ -255,6 +290,77 @@ const onDeleteSkill = async (item: SkillListItem) => {
     return
   }
   skills.value = res.data.skills
+  emit('changed')
+}
+
+const openNewSubagent = () => {
+  if (filter.value === 'project' && !projectRoot.value) {
+    alert('Open a project first to create project subagents')
+    return
+  }
+  subagentEditing.value = null
+  subagentFormVisible.value = true
+}
+
+const openEditSubagent = async (item: SubagentListItem) => {
+  const res = await window.axecoder.readSubagent(
+    item.scope,
+    item.fileName,
+    item.scope === 'project' ? projectRoot.value ?? undefined : undefined,
+  )
+  if (!res.ok) {
+    alert(res.error)
+    return
+  }
+  subagentEditing.value = res.data
+  subagentFormVisible.value = true
+}
+
+const onSubagentSaved = async (payload: {
+  scope: 'user' | 'project'
+  fileName: string
+  name: string
+  description: string
+  body: string
+  readOnly: boolean
+  model: string
+  isBackground: boolean
+  isNew: boolean
+}) => {
+  const res = await window.axecoder.saveSubagent({
+    scope: payload.scope,
+    fileName: payload.fileName,
+    name: payload.name,
+    description: payload.description,
+    body: payload.body,
+    readOnly: payload.readOnly,
+    model: payload.model,
+    isBackground: payload.isBackground,
+    projectRoot: payload.scope === 'project' ? projectRoot.value ?? undefined : undefined,
+    isNew: payload.isNew,
+  })
+  if (!res.ok) {
+    alert(res.error)
+    return
+  }
+  subagents.value = res.data.subagents
+  projectRoot.value = res.data.projectRoot
+  emit('changed')
+}
+
+const onDeleteSubagent = async (item: SubagentListItem) => {
+  if (item.scope === 'builtin') return
+  if (!(await appConfirm(`Delete subagent "${item.description}"?`))) return
+  const res = await window.axecoder.deleteSubagent(
+    item.scope,
+    item.fileName,
+    item.scope === 'project' ? projectRoot.value ?? undefined : undefined,
+  )
+  if (!res.ok) {
+    alert(res.error)
+    return
+  }
+  subagents.value = res.data.subagents
   emit('changed')
 }
 
@@ -406,14 +512,60 @@ defineExpose({ reload })
       </p>
     </section>
 
-    <section class="block block-muted">
+    <section class="block">
       <header class="block-head">
         <div>
-          <h3>Subagents <span class="info">ⓘ</span></h3>
-          <p class="block-desc">Configure specialized subagents. Coming in a future release.</p>
+          <h3>Subagents <span class="info" title="Subagents for Task tool delegation">ⓘ</span></h3>
+          <p class="block-desc">
+            Specialized agents for Task(subagent_type). User: ~/.cursor/agents; project:
+            .cursor/agents. Custom names override built-in types with the same name.
+          </p>
         </div>
-        <button type="button" class="new-btn" disabled>+ New</button>
+        <button type="button" class="new-btn" @click="openNewSubagent">+ New</button>
       </header>
+      <div v-if="loading" class="empty">Loading…</div>
+      <div v-else-if="visibleSubagents.length" class="rule-list">
+        <div
+          v-for="s in visibleSubagents"
+          :key="`${s.scope}:${s.fileName}`"
+          class="rule-row"
+          @click="openEditSubagent(s)"
+        >
+          <div class="rule-main">
+            <span class="rule-title">{{ s.description }}</span>
+            <span class="rule-meta">
+              {{ subagentScopeLabel(s) }} · {{ s.name }}
+              <template v-if="s.readOnly"> · read-only</template>
+              <template v-if="s.isBackground"> · background</template>
+            </span>
+          </div>
+          <div class="rule-actions" @click.stop>
+            <button type="button" class="link" @click="openEditSubagent(s)">
+              {{ s.scope === 'builtin' ? 'View' : 'Edit' }}
+            </button>
+            <button
+              v-if="s.scope !== 'builtin'"
+              type="button"
+              class="link danger"
+              @click="onDeleteSubagent(s)"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+        <button
+          v-if="hiddenSubagentsCount > 0"
+          type="button"
+          class="show-all"
+          @click="showAllSubagents = true"
+        >
+          Show all ({{ hiddenSubagentsCount }} more)
+        </button>
+      </div>
+      <p v-else class="empty">No subagents yet. Create one with + New.</p>
+      <p v-if="filter === 'project' && !projectRoot" class="warn">
+        No project open: user subagents only; open a workspace for project subagents.
+      </p>
     </section>
 
     <RuleFormDialog
@@ -432,6 +584,15 @@ defineExpose({ reload })
       :default-scope="defaultSkillScope"
       @close="skillFormVisible = false"
       @save="onSkillSaved"
+    />
+
+    <SubagentFormDialog
+      :visible="subagentFormVisible"
+      :editing="subagentEditing"
+      :project-root="projectRoot"
+      :default-scope="defaultSkillScope"
+      @close="subagentFormVisible = false"
+      @save="onSubagentSaved"
     />
   </div>
 </template>

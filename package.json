@@ -1,6 +1,6 @@
 {
   "name": "axecoder",
-  "version": "0.9.8",
+  "version": "1.0.0-rc.2",
   "main": "dist-electron/main/index.js",
   "description": "代码编写桌面 IDE — Electron + Vue 3 + Monaco",
   "author": "崔老六 <cuiyunfeng@huazhengit.com>",
@@ -19,6 +19,9 @@
     }
   },
   "type": "module",
+  "bin": {
+    "axecoder-acp": "./scripts/axecoder-acp.mjs"
+  },
   "scripts": {
     "dev": "npm run codegraph:build && node scripts/gen-claude-icon.mjs && node scripts/patch-electron-plist.mjs && vite",
     "icon:gen": "node scripts/gen-icon.mjs",
@@ -48,6 +51,7 @@
     "vue-tsc": "^2.0.6"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^1.1.0",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@vscode/codicons": "^0.0.45",

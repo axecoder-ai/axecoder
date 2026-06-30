@@ -8,16 +8,22 @@ import {
 } from '../../utils/agents-panel'
 import { isAgentLinkedWorkshopId } from '../../utils/workshop-agent-link'
 
-const props = defineProps<{
-  visible: boolean
-  width: number
-  projectRoot: string
-  activeSessionId?: string
-  activeSessionKind?: SessionKind
-}>()
+const props = withDefaults(
+  defineProps<{
+    visible: boolean
+    width: number
+    projectRoot: string
+    activeSessionId?: string
+    activeSessionKind?: SessionKind
+    /** docked = 右侧展开列表；flyout = 收起后时钟弹出的浮层 */
+    variant?: 'docked' | 'flyout'
+  }>(),
+  { variant: 'docked' },
+)
 
 const emit = defineEmits<{
   toggle: []
+  close: []
   selectSession: [payload: { id: string; kind: SessionKind }]
   deleteSession: [payload: { id: string; kind: SessionKind }]
   newSession: []
@@ -26,6 +32,7 @@ const emit = defineEmits<{
 const sessions = ref<SessionListItem[]>([])
 const filter = ref('')
 const expandedGroups = ref<Record<string, boolean>>({})
+const isFlyout = computed(() => props.variant === 'flyout')
 
 const filtered = computed(() => {
   const q = filter.value.trim().toLowerCase()
@@ -41,7 +48,8 @@ const groups = computed(() => groupSessionsByDay(filtered.value))
 const displayGroups = computed(() =>
   groups.value.map((g) => {
     const expanded = !!expandedGroups.value[g.key]
-    const { visible, hasMore } = sliceGroupItems(g.items, expanded, AGENTS_GROUP_LIMIT)
+    const limit = isFlyout.value ? 12 : AGENTS_GROUP_LIMIT
+    const { visible, hasMore } = sliceGroupItems(g.items, expanded, limit)
     return { ...g, visible, hasMore, expanded }
   }),
 )
@@ -86,19 +94,34 @@ defineExpose({ load })
 </script>
 
 <template>
-  <aside v-show="visible" class="agents-panel" :style="{ width: `${width}px` }">
+  <aside
+    v-show="visible"
+    class="agents-panel"
+    :class="{
+      'agents-panel--docked': !isFlyout,
+      'agents-panel--flyout': isFlyout,
+    }"
+    :style="isFlyout ? undefined : { width: `${width}px` }"
+  >
     <div class="panel-top">
-      <div class="panel-top-bar">
+      <div v-if="!isFlyout" class="panel-top-bar">
         <button type="button" class="panel-toggle" title="Hide session history" @click="emit('toggle')">
           <span class="codicon codicon-layout-sidebar-right-off" aria-hidden="true" />
         </button>
       </div>
-      <div class="panel-top-box">
-        <input v-model="filter" type="text" class="search-agents" placeholder="Search sessions…" />
-        <button type="button" class="new-agent" @click="emit('newSession')">New Agent</button>
+      <div class="panel-top-box" :class="{ 'panel-top-box--flyout': isFlyout }">
+        <input
+          v-model="filter"
+          type="text"
+          class="search-agents"
+          :placeholder="isFlyout ? 'Search Agents…' : 'Search sessions…'"
+        />
+        <button v-if="!isFlyout" type="button" class="new-agent" @click="emit('newSession')">
+          New Agent
+        </button>
       </div>
     </div>
-    <div class="panel-list">
+    <div class="panel-list" :class="{ 'panel-list--flyout': isFlyout }">
       <div v-if="!filtered.length" class="empty">No sessions yet</div>
       <template v-else>
         <section v-for="g in displayGroups" :key="g.key" class="agent-group">
@@ -119,9 +142,24 @@ defineExpose({ load })
               </span>
               <div class="agent-text">
                 <div class="agent-title">{{ s.title }}</div>
-                <div class="agent-sub">{{ formatTime(s.updatedAt) }}</div>
+                <div v-if="!isFlyout" class="agent-sub">{{ formatTime(s.updatedAt) }}</div>
+              </div>
+              <div v-if="isFlyout" class="agent-flyout-actions">
+                <button type="button" class="agent-more" title="More" aria-label="More" @click.stop>
+                  <span class="codicon codicon-ellipsis" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  class="agent-delete"
+                  title="Delete session"
+                  aria-label="Delete session"
+                  @click.stop="emit('deleteSession', { id: s.id, kind: s.kind })"
+                >
+                  <span class="codicon codicon-trash" aria-hidden="true" />
+                </button>
               </div>
               <button
+                v-else
                 type="button"
                 class="agent-delete"
                 title="Delete session"
@@ -156,6 +194,19 @@ defineExpose({ load })
   position: relative;
 }
 
+.agents-panel--docked {
+  border-left: 1px solid var(--wc-border);
+}
+
+.agents-panel--flyout {
+  width: 280px;
+  max-height: min(520px, 72vh);
+  border: 1px solid var(--wc-border-light);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
 .panel-top {
   flex-shrink: 0;
 }
@@ -177,6 +228,10 @@ defineExpose({ load })
   padding: 8px 10px 0;
 }
 
+.panel-top-box--flyout {
+  padding: 10px 10px 0;
+}
+
 .search-agents {
   width: 100%;
   min-width: 0;
@@ -187,6 +242,11 @@ defineExpose({ load })
   border-radius: 6px;
   font-size: 12px;
   color: var(--wc-text);
+}
+
+.agents-panel--flyout .search-agents {
+  background: var(--wc-panel);
+  border-color: transparent;
 }
 
 .search-agents::placeholder {
@@ -242,6 +302,10 @@ defineExpose({ load })
   padding: 4px 12px 12px;
 }
 
+.panel-list--flyout {
+  padding: 4px 8px 10px;
+}
+
 .empty {
   font-size: 12px;
   color: var(--wc-text-dim);
@@ -253,6 +317,11 @@ defineExpose({ load })
   font-weight: 500;
   color: var(--wc-text-dim);
   padding: 12px 0 6px;
+}
+
+.agents-panel--flyout .group-label {
+  padding: 10px 4px 4px;
+  font-size: 12px;
 }
 
 .agent-list {
@@ -267,6 +336,12 @@ defineExpose({ load })
   border-radius: 6px;
   cursor: pointer;
   position: relative;
+}
+
+.agents-panel--flyout .agent-item {
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
 }
 
 .agent-item:hover {
@@ -286,6 +361,10 @@ defineExpose({ load })
   align-items: center;
   justify-content: center;
   color: var(--wc-text-muted);
+}
+
+.agents-panel--flyout .agent-icon {
+  margin-top: 0;
 }
 
 .agent-icon .codicon {
@@ -336,16 +415,33 @@ defineExpose({ load })
   color: var(--wc-text-muted);
 }
 
+.agent-flyout-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.agent-item:hover .agent-flyout-actions,
+.agent-item.active .agent-flyout-actions {
+  opacity: 1;
+}
+
+.agent-more,
 .agent-delete {
   flex-shrink: 0;
   width: 22px;
   height: 22px;
-  margin-top: 1px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
   color: var(--wc-text-dim);
+}
+
+.agents-panel--docked .agent-delete {
+  margin-top: 1px;
   opacity: 0.55;
 }
 
@@ -354,10 +450,12 @@ defineExpose({ load })
   opacity: 1;
 }
 
+.agent-more .codicon,
 .agent-delete .codicon {
   font-size: 14px;
 }
 
+.agent-more:hover,
 .agent-delete:hover {
   background: var(--wc-hover);
   color: var(--wc-text);

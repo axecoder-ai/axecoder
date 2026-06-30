@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-对齐 `research-axecoder-vs-claude-code.md` **§5 会话、执行与安全体验**：checkpoint/`/rewind`、会话斜杠、子代理 UI、Ollama Agent；并更正「并行 tool call 顺序执行」的过时表述。
+对齐 `research-axecoder-vs-参考实现.md` **§5 会话、执行与安全体验**：checkpoint/`/rewind`、会话斜杠、子代理 UI、Ollama Agent；并更正「并行 tool call 顺序执行」的过时表述。
 
 **选型：** 推荐并采用提案 1，无额外调整。
 
@@ -86,7 +86,7 @@
 | `src/components/workbench/ChatPane.vue` | 修改 | 子代理 UI |
 | `electron/main/ai/chat-with-tools.ts` | 修改 | Ollama tools |
 | `tests/unittest/UT-agent-session-exec-security/` | 新增 | 单测 |
-| `docs/research/research-axecoder-vs-claude-code.md` | 修改 | §5 更新 |
+| `docs/research/research-axecoder-vs-参考实现.md` | 修改 | §5 更新 |
 
 ---
 

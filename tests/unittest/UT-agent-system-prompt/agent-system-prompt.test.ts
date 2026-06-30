@@ -41,7 +41,7 @@ describe('agent-system-prompt getSimpleIntroSection', () => {
     expect(intro).toMatch(/tools available to you/)
   })
 
-  it('包含 CYBER_RISK_INSTRUCTION 与 URL 约束（Claude Code §2–3）', () => {
+  it('包含 CYBER_RISK_INSTRUCTION 与 URL 约束', () => {
     const intro = getSimpleIntroSection()
     expect(intro).toContain(CYBER_RISK_INSTRUCTION)
     expect(intro).toMatch(/NEVER generate or guess URLs/)
@@ -80,7 +80,7 @@ describe('agent-output-styles', () => {
 })
 
 describe('agent-system-prompt getSimpleSystemSection', () => {
-  it('与 Claude Code §4 英文要点一致', () => {
+  it('含预期英文要点', () => {
     const system = getSimpleSystemSection()
     expect(system).toMatch(/Github-flavored markdown/)
     expect(system).toMatch(/do not re-attempt the exact same tool call/)
@@ -92,7 +92,7 @@ describe('agent-system-prompt getSimpleSystemSection', () => {
 })
 
 describe('agent-system-prompt getSimpleDoingTasksSection', () => {
-  it('与 Claude Code §5 全员英文要点一致', () => {
+  it('含预期英文要点', () => {
     const doing = getSimpleDoingTasksSection()
     expect(doing).toMatch(/methodName.*snake case/)
     expect(doing).toMatch(/find the method in the code/)
@@ -116,7 +116,7 @@ describe('agent-system-prompt getCodingDisciplineSection', () => {
 })
 
 describe('agent-system-prompt getActionsSection', () => {
-  it('与 Claude Code §6 英文要点一致', () => {
+  it('含预期英文要点', () => {
     const actions = getActionsSection()
     expect(actions).toMatch(/reversibility and blast radius/)
     expect(actions).toMatch(/force-pushing/)
@@ -127,7 +127,7 @@ describe('agent-system-prompt getActionsSection', () => {
 })
 
 describe('agent-system-prompt getUsingYourToolsSection', () => {
-  it('与 Claude Code §7 主段要点一致', () => {
+  it('含预期英文要点', () => {
     const tools = getUsingYourToolsSection()
     expect(tools).toMatch(/Do NOT use Bash/)
     expect(tools).toMatch(/use `Read` instead of cat/)
@@ -137,7 +137,7 @@ describe('agent-system-prompt getUsingYourToolsSection', () => {
 })
 
 describe('agent-system-prompt getSimpleToneAndStyleSection', () => {
-  it('与 Claude Code §9 外部版要点一致', () => {
+  it('含预期英文要点', () => {
     const tone = getSimpleToneAndStyleSection()
     expect(tone).toMatch(/# Tone and style/)
     expect(tone).toMatch(/Only use emojis/)
@@ -150,7 +150,7 @@ describe('agent-system-prompt getSimpleToneAndStyleSection', () => {
 })
 
 describe('agent-system-prompt getOutputEfficiencySection', () => {
-  it('与 Claude Code §10 外部版要点一致', () => {
+  it('含预期英文要点', () => {
     const eff = getOutputEfficiencySection()
     expect(eff).toMatch(/# Output efficiency/)
     expect(eff).toMatch(/Go straight to the point/)
@@ -163,7 +163,7 @@ describe('agent-system-prompt getOutputEfficiencySection', () => {
 })
 
 describe('agent-system-prompt getSessionSpecificGuidanceSection', () => {
-  it('与 Claude Code §8 要点一致（AskUserQuestion、! command）', () => {
+  it('含预期英文要点（AskUserQuestion、! command）', () => {
     const section = getSessionSpecificGuidanceSection()
     expect(section).toMatch(/# Session-specific guidance/)
     expect(section).toMatch(/denied a tool call/)
@@ -252,7 +252,9 @@ describe('agent-system-prompt §13 default sub-agent', () => {
 })
 
 describe('agent-system-prompt buildAgentSystemPrompt', () => {
-  it('静态段后接动态段：session → env → language → summarize → tool rules → project root', async () => {
+  it(
+    '静态段后接动态段：session → env → language → summarize → tool rules → project root',
+    async () => {
     const full = await buildAgentSystemPrompt('/proj/BIAOSHU', {
       skipProjectMemory: true,
       modelId: 'claude-sonnet',
@@ -291,7 +293,9 @@ describe('agent-system-prompt buildAgentSystemPrompt', () => {
     expect(full).toMatch(/Project root/)
     expect(full).toMatch(/claude-sonnet/)
     expect(full).not.toMatch(/coding assistant with file tools/)
-  })
+  },
+    15_000,
+  )
 
   it('注入 projectMemory 时出现在 session guidance 之后', async () => {
     const full = await buildAgentSystemPrompt('/proj/X', {

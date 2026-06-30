@@ -3,8 +3,8 @@
 **状态：** 已确认（由 `/create-proposals` 生成）
 
 **上下文：**
-- **请求：** 降低 Chat Agent 相对 Claude Code 的无效工具轮次；对齐 Claude 的 Todo 回灌、Explore 委派指引、FRC 说明与 scratchpad，不实现硬阶段状态机。
-- **调研来源：** `docs/research/research-axecoder-vs-claude-code.md`；`claude-code/src/constants/prompts.ts`、`exploreAgent.ts`、`attachments.ts`、`TodoWriteTool.ts`
+- **请求：** 降低 Chat Agent 相对 同类 Agent 的无效工具轮次；对齐 Claude 的 Todo 回灌、Explore 委派指引、FRC 说明与 scratchpad，不实现硬阶段状态机。
+- **调研来源：** `docs/research/research-axecoder-vs-参考实现.md`；`参考实现/src/constants/prompts.ts`、`exploreAgent.ts`、`attachments.ts`、`TodoWriteTool.ts`
 - **上游提案：** `docs/proposals/proposal-agent-explore-orchestration.md`（双方案草稿）
 - **选定基础：** 提案 1 – 轻量编排回灌（Claude 对齐变体 `p1-claude`）
 - **用户调整摘要：**
@@ -15,7 +15,7 @@
 
 ### 最终方案 – Chat 软编排（Claude 对齐）
 
-- **概述：** 在现有 Agent 循环上增加与 Claude Code 同构的三层能力：（1）system prompt 补充 TodoWrite / Agent(Explore) / 并行 / 勿重复子代理工作；（2）每轮 `prepareSessionBeforeModel` 注入当前 Todo 列表（及可选 scratchpad 探索摘要）为 `<system-reminder>`；（3）补强 FRC 与 scratchpad 说明，引导模型在 assistant 文本中留存要点。Explore 子代理完成后可将报告写入 `scratchpad/explore-summary.md` 供后续轮次读取。
+- **概述：** 在现有 Agent 循环上增加与 同类 Agent 同构的三层能力：（1）system prompt 补充 TodoWrite / Agent(Explore) / 并行 / 勿重复子代理工作；（2）每轮 `prepareSessionBeforeModel` 注入当前 Todo 列表（及可选 scratchpad 探索摘要）为 `<system-reminder>`；（3）补强 FRC 与 scratchpad 说明，引导模型在 assistant 文本中留存要点。Explore 子代理完成后可将报告写入 `scratchpad/explore-summary.md` 供后续轮次读取。
 
 - **相对选定提案的变更：** 明确排除 Workshop；不实现提案 2 阶段门控；Explore 报告落盘为可选增强（子代理返回时写入）。
 
@@ -43,4 +43,4 @@
 
 ### 未采纳方案说明
 
-- **未选：** 提案 2 – 显式两阶段状态机。Claude Code 普通 Chat 无此机制；用户要求对齐 Claude 实现。
+- **未选：** 提案 2 – 显式两阶段状态机。同类 Agent 普通 Chat 无此机制；用户要求对齐 Claude 实现。

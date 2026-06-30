@@ -3,7 +3,7 @@
 为 WritCraft 聊天输入框增加**斜杠命令**（用户输入 `/命令名`）。命令在 Renderer 的 `src/slash-commands/` 实现，由 `ChatPane.send()` 在调用 `ai:chat` / `agent:send` **之前**拦截执行，**不会**把该行发给模型。
 
 设计文档：`docs/plans/plan-slash-commands-proposal1.md`  
-参考：`claude-code/src/commands/<name>/index.ts`、`src/utils/slashCommandParsing.ts`
+参考：`参考实现/src/commands/<name>/index.ts`、`src/utils/slashCommandParsing.ts`
 
 ## 开始前
 

@@ -1,7 +1,7 @@
 import type { AgentToolName } from './agent-types'
 import type { ModelTaskKind } from '../ai/model-resolve'
 
-/** CC Task 内置 subagent_type（保留 plan 兼容旧会话） */
+/** Task 内置 subagent_type（保留 plan 兼容旧会话） */
 export const CC_BUILTIN_SUBAGENT_TYPES = [
   'generalPurpose',
   'explore',
@@ -28,13 +28,13 @@ export type SubagentTypeConfig = {
 
 const PREFIX_EXPLORE = `You are an explore subagent (read-only). Search thoroughly, return a concise factual report. Do not edit files or run shell commands unless readonly allows Bash for diagnostics.`
 
-const PREFIX_SHELL = `You are a shell subagent. Prefer Bash for git, npm test, and terminal work; use Read/Grep/Glob only when needed. Do not edit files.`
+const PREFIX_SHELL = `You are a shell subagent. Prefer GitStatus/GitDiff/GitLog for local git state; use Bash for builds, tests, and gh CI commands. Do not edit files.`
 
 const PREFIX_DOCS = `You are a docs-researcher subagent. Prefer WebFetch/WebSearch when configured; otherwise use Read/Grep on local docs. Return citations and summaries.`
 
-const PREFIX_CI = `You are a ci-investigator subagent. Focus on failing CI checks: read logs, grep configs, run targeted non-destructive commands. Return root cause and fix suggestions.`
+const PREFIX_CI = `You are a ci-investigator subagent. Focus on failing CI checks on GitHub/Gitee: use GitStatus for branch context; use read-only gh commands (gh pr checks, gh run view --log-failed) via Bash — they auto-approve. Grep CI configs locally. Return root cause and fix suggestions.`
 
-const PREFIX_GIT = `You are a git-commit subagent. Inspect git status/diff, draft commit messages; only commit if the user prompt explicitly requests it.`
+const PREFIX_GIT = `You are a git-commit subagent. Use GitStatus and GitDiff to inspect changes; use GitLog for recent commits. Draft commit messages; only commit via Bash if the user prompt explicitly requests it.`
 
 const PREFIX_BEST_OF_N = `You are a best-of-n-runner subagent. Run isolated experiments in worktrees when available; compare outcomes briefly.`
 
@@ -124,6 +124,11 @@ const CONFIGS: Record<CcSubagentType, SubagentTypeConfig> = {
   },
 }
 
+export const isBuiltinSubagentType = (raw: string): boolean => {
+  const t = raw.trim().toLowerCase()
+  return (CC_BUILTIN_SUBAGENT_TYPES as readonly string[]).includes(t)
+}
+
 export const normalizeSubagentType = (raw: string): CcSubagentType => {
   const t = raw.trim().toLowerCase()
   if ((CC_BUILTIN_SUBAGENT_TYPES as readonly string[]).includes(t)) {
@@ -137,7 +142,15 @@ export const getSubagentTypeConfig = (raw: string): SubagentTypeConfig => {
   return CONFIGS[key]
 }
 
-const SHELL_ALLOWED = new Set<AgentToolName>(['Bash', 'Read', 'Grep', 'Glob'])
+const SHELL_ALLOWED = new Set<AgentToolName>([
+  'Bash',
+  'Read',
+  'Grep',
+  'Glob',
+  'GitStatus',
+  'GitDiff',
+  'GitLog',
+])
 
 /** CC 对齐：按 subagent_type 过滤工具列表 */
 export const filterToolsForCcSubagent = (

@@ -13,7 +13,7 @@
 
 ## 1. 概述
 
-**需求：** 对齐 Claude Code §14，为全部 Agent 内置工具实现 API `tools[].description` 与参数长说明。
+**需求：** 对齐 同类 Agent §14，为全部 Agent 内置工具实现 API `tools[].description` 与参数长说明。
 
 **选型：** 推荐并采用提案 2；用户要求 strict 篇幅。
 
@@ -89,7 +89,7 @@ npm test -- tests/unittest/UT-agent-tool-level-prompts/ tests/unittest/UT-agent-
 
 ## 10. 遗留项与后续建议
 
-- 获得 Claude Code `src/tools/*/prompt.ts` 后可 diff 微调措辞。
+- 获得 同类 Agent `src/tools/*/prompt.ts` 后可 diff 微调措辞。
 - 新增内置工具时同步 prompts 模块。
 
 ---

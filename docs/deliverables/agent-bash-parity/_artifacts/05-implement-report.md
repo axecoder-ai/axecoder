@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-按已确认方案 2，将 Claude Code `Bash` 工具**对外契约**对齐到 AxeCoder：
+按已确认方案 2，将 同类 Agent `Bash` 工具**对外契约**对齐到 AxeCoder：
 
 - 参数：`timeout`（兼容 `timeout_ms`）、`description`、`run_in_background`
 - 前台：用户批准后仍用 `runAgentBash` 阻塞执行

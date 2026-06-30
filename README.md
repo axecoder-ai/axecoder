@@ -2,7 +2,7 @@
 
 > Desktop IDE for coding — Electron + Vue 3 + Monaco, with a built-in AI Agent coding assistant
 
-AxeCoder is a cross-platform desktop code editor built around a **Claude Code–style AI Agent**. Open a project, chat with the model, and let the Agent read/write files, run commands, search the codebase, and coordinate sub-agents — all from a VS Code–like workbench. Beyond single-agent coding, it ships **Draw.IO** (AI diagrams via next-ai-draw-io) and **Software Co.** (MetaGPT-style multi-role SOP for PRD → code → QA). Built-in **AI Performance** and **AI Request Trace** panels give you real-time visibility into latency, token usage, and every model/tool call.
+AxeCoder is a cross-platform desktop code editor built around a **built-in AI Agent**. Open a project, chat with the model, and let the Agent read/write files, run commands, search the codebase, and coordinate sub-agents — all from a VS Code–like workbench. Beyond single-agent coding, it ships **Draw.IO** (AI diagrams via next-ai-draw-io) and **Software Co.** (MetaGPT-style multi-role SOP for PRD → code → QA). Built-in **AI Performance** and **AI Request Trace** panels give you real-time visibility into latency, token usage, and every model/tool call.
 
 ## 📸 Screenshots
 
@@ -22,7 +22,7 @@ AxeCoder is a cross-platform desktop code editor built around a **Claude Code–
 
 ### AI Agent
 
-- **42 built-in tools** — Claude Code–aligned core set (Read / Edit / Write / Bash / Grep / Glob / Agent / Task …) plus extensions: WebSearch, WebFetch, LSP, MCP, Skills, Plan Mode, worktree helpers, and more
+- **42 built-in tools** — core agent set (Read / Edit / Write / Bash / Grep / Glob / Agent / Task …) plus extensions: WebSearch, WebFetch, LSP, MCP, Skills, Plan Mode, worktree helpers, and more
 - **Multi-turn agent loop** — automatic tool use with permission prompts, checkpoints/rollback, context compaction, and loop-guard against runaway calls
 - **Parallel sub-agents** — spawn `generalPurpose` / `explore` / `plan` sub-agents to research or execute in parallel
 - **Workshop (embedded modes)** — three chat modes share a split-pane layout (chat + workspace):

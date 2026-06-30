@@ -10,6 +10,10 @@ const GH_READ_ONLY_PREFIXES = [
   'gh issue status',
   'gh auth status',
   'gh repo view',
+  'gh run view',
+  'gh run list',
+  'gh workflow view',
+  'gh workflow list',
 ]
 
 const stripEnvPrefix = (command: string): string => {

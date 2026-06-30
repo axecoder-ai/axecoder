@@ -70,6 +70,8 @@ export type AppSettings = {
   aiRateLimitRetryDelaySec?: number
   agentAutoPlan?: 'off' | 'on'
   agentAutoPlanClassifierModelId?: string
+  /** Smart Mode：高风险工具 Auto-review + 智能审批（默认开） */
+  agentSmartModeApproval?: boolean
   agentLoopGuardEnabled?: boolean
   agentLoopGuardStormThreshold?: number
   agentLoopGuardRepeatSuccessThreshold?: number
@@ -180,10 +182,11 @@ export type McpPluginView = {
   description: string
   docUrl: string
   enabled: boolean
-  authMode: 'oauth' | 'api_key'
+  authMode: 'oauth' | 'api_key' | 'env'
   connected: boolean
   hasApiKey: boolean
   managedBy: 'plugin' | 'mcp.json'
+  projectScoped?: boolean
 }
 
 export type McpPluginsListResult =
@@ -328,6 +331,48 @@ export type SkillsReadResult =
   | { ok: true; data: SkillDetail }
   | { ok: false; error: string }
 
+export type SubagentScope = 'user' | 'project' | 'builtin'
+
+export type SubagentListItem = {
+  scope: SubagentScope
+  fileName: string
+  name: string
+  description: string
+  readOnly: boolean
+  model: string
+  isBackground: boolean
+}
+
+export type SubagentDetail = SubagentListItem & {
+  body: string
+}
+
+export type SubagentsListResult = {
+  subagents: SubagentListItem[]
+  projectRoot: string | null
+}
+
+export type SubagentSaveInput = {
+  scope: 'user' | 'project'
+  fileName: string
+  name: string
+  description: string
+  body: string
+  readOnly: boolean
+  model: string
+  isBackground: boolean
+  projectRoot?: string
+  isNew?: boolean
+}
+
+export type SubagentsMutationResult =
+  | { ok: true; data: SubagentsListResult }
+  | { ok: false; error: string }
+
+export type SubagentsReadResult =
+  | { ok: true; data: SubagentDetail }
+  | { ok: false; error: string }
+
 export type AiChatMessage = {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -346,15 +391,17 @@ export type AiStreamPayload = {
 
 export type AgentPendingWrite = {
   id: string
-  tool: 'Edit' | 'Write' | 'Delete' | 'Move'
+  tool: 'Edit' | 'Write' | 'Delete' | 'Move' | 'ApplyPatch'
   filePath: string
   summary: string
   patchText: string
+  batchFiles?: { filePath: string; patchText: string }[]
 }
 
 export type AgentTurnFileChange = {
+  pendingId?: string
   filePath: string
-  tool: 'Edit' | 'Write' | 'Delete' | 'Move'
+  tool: 'Edit' | 'Write' | 'Delete' | 'Move' | 'ApplyPatch'
   patchText: string
   additions: number
   deletions: number
@@ -380,6 +427,14 @@ export type AgentPendingBash = {
   timeoutMs?: number
   description?: string
   runInBackground?: boolean
+}
+
+export type AgentPendingSmartApproval = {
+  id: string
+  toolName: string
+  blockReason: string
+  summary: string
+  detail: string
 }
 
 export type AgentPendingPlan = {
@@ -472,6 +527,7 @@ export type AgentSendResult =
       sessionId: string
       pending: AgentPendingWrite[]
       pendingBashes?: AgentPendingBash[]
+      pendingSmartApprovals?: AgentPendingSmartApproval[]
       pendingAsks?: AgentPendingAskUser[]
       pendingPlans?: AgentPendingPlan[]
       assistantText: string
@@ -613,6 +669,7 @@ export type ChatMessage = {
   pendingAsks?: AgentPendingAskUser[]
   /** 待用户confirm执行的 Bash 命令 */
   pendingBashes?: AgentPendingBash[]
+  pendingSmartApprovals?: AgentPendingSmartApproval[]
   /** 待用户 Build 的实施计划 */
   pendingPlans?: AgentPendingPlan[]
   /** Build 后的计划步骤进度（保留卡片） */
@@ -996,8 +1053,8 @@ export type AxeCoderFs = {
     enabled: boolean,
     projectRoot?: string,
   ) => Promise<McpPluginMutationResult>
-  setMcpPluginApiKey: (id: string, apiKey: string) => Promise<McpPluginMutationResult>
-  testMcpPlugin: (id: string) => Promise<McpPluginTestResult>
+  setMcpPluginApiKey: (id: string, apiKey: string, projectRoot?: string) => Promise<McpPluginMutationResult>
+  testMcpPlugin: (id: string, projectRoot?: string) => Promise<McpPluginTestResult>
   listUsers: () => Promise<UsersFile>
   saveUser: (input: UserSaveInput) => Promise<UsersMutationResult>
   deleteUser: (id: string) => Promise<UsersMutationResult>
@@ -1018,6 +1075,18 @@ export type AxeCoderFs = {
     folderName: string,
     projectRoot?: string,
   ) => Promise<SkillsMutationResult>
+  listSubagents: (projectRoot?: string | null) => Promise<SubagentsMutationResult>
+  readSubagent: (
+    scope: SubagentScope,
+    fileName: string,
+    projectRoot?: string,
+  ) => Promise<SubagentsReadResult>
+  saveSubagent: (input: SubagentSaveInput) => Promise<SubagentsMutationResult>
+  deleteSubagent: (
+    scope: 'user' | 'project',
+    fileName: string,
+    projectRoot?: string,
+  ) => Promise<SubagentsMutationResult>
   expandChatUserWithFiles: (
     projectRoot: string,
     text: string,
@@ -1076,6 +1145,8 @@ export type AxeCoderFs = {
   ) => Promise<{ ok: true; text: string; exitCode: number | null } | { ok: false; error: string }>
   chatCompact: (
     messages: AiChatMessage[],
+    modelId?: string,
+    sessionId?: string,
   ) => Promise<{ ok: true; messages: AiChatMessage[]; summary: string } | { ok: false; error: string }>
   agentHooksHelp: () => Promise<{ ok: true; text: string } | { ok: false; error: string }>
   agentListMcp: (projectRoot?: string) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
@@ -1192,6 +1263,11 @@ export type AxeCoderFs = {
     | { ok: true; restoredFiles: number }
     | { ok: false; error: string }
   >
+  agentRevertFilePatch: (
+    projectRoot: string,
+    filePath: string,
+    patchText: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
   agentListBackgroundTasks: (sessionId?: string) => Promise<{
     ok: true
     tasks: {
@@ -1248,6 +1324,12 @@ export type AxeCoderFs = {
     pendingId: string,
     reason?: string,
   ) => Promise<AgentContinueResult>
+  agentConfirmSmartApproval: (sessionId: string, pendingId: string) => Promise<AgentContinueResult>
+  agentRejectSmartApproval: (
+    sessionId: string,
+    pendingId: string,
+    reason?: string,
+  ) => Promise<AgentContinueResult>
   onAgentProgress: (callback: (payload: AgentProgressPayload) => void) => () => void
   gitStatus: (cwd: string) => Promise<GitStatusResult>
   gitStage: (cwd: string, file: string) => Promise<GitSimpleResult>
@@ -1269,6 +1351,10 @@ export type AxeCoderFs = {
   gitForgeStatus: (cwd: string) => Promise<GitForgeStatusResult>
   gitCommitPushPrPrompt: (
     cwd: string,
+  ) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+  gitInvestigateCiPrompt: (
+    cwd: string,
+    linkedPrUrl?: string,
   ) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
   gitOpenUrl: (url: string) => Promise<{ ok: true } | { ok: false; error: string }>
   terminalStart: (

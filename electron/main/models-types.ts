@@ -42,7 +42,7 @@ export type AppLocale = 'en' | 'zh-CN'
 
 export type AppTheme = 'vscode' | 'aura-light' | 'aura-dark' | 'claude'
 
-/** Claude Code built-in output styles (`outputStyles.ts`) */
+
 export type AgentOutputStyleId = 'default' | 'Explanatory' | 'Learning'
 
 export type AppConfig = {
@@ -66,6 +66,8 @@ export type AppConfig = {
   /** Wave4：Playwright 浏览器自动化 WebRun */
   agentFeatureWebRun?: boolean
   agentFeatureLsp?: boolean
+  /** Write/Edit/ApplyPatch 后自动附带 LSP error/warning 到工具回报 */
+  agentLspAutoDiagnostics?: boolean
   /** 内置 CodeGraph 代码知识图谱（tree-sitter + SQLite） */
   agentFeatureCodeGraph?: boolean
   agentFeatureWorktree?: boolean
@@ -92,6 +94,8 @@ export type AppConfig = {
   agentAutoPlan?: 'off' | 'on'
   /** 分类用模型条目 id；空则用当前聊天模型的 fast 档 */
   agentAutoPlanClassifierModelId?: string
+  /** Smart Mode：高风险工具执行前 Auto-review + 智能审批卡（默认开） */
+  agentSmartModeApproval?: boolean
   agentHooksEnabled?: boolean
   /** 为 false 时主/子任务均使用 activeModelId */
   agentModelTierRoutingEnabled?: boolean

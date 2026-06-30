@@ -45,6 +45,7 @@ export const sessionHasPendingInteraction = (messages: ChatMessage[]) =>
     (m) =>
       (m.pendingWrites?.length ?? 0) > 0 ||
       (m.pendingBashes?.length ?? 0) > 0 ||
+      (m.pendingSmartApprovals?.length ?? 0) > 0 ||
       (m.pendingAsks?.length ?? 0) > 0 ||
       (m.pendingPlans?.length ?? 0) > 0,
   )

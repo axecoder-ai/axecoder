@@ -4,13 +4,13 @@
 
 - Agent 系统提示在 `agent-tool-defs.ts` 中单字符串 `AGENT_SYSTEM_PROMPT_BASE`，无独立 intro 段。
 - `agent-loop.ts` 通过 `buildAgentSystemPrompt(projectRoot)` 注入 `role: system`。
-- Claude Code 在 `getSystemPrompt` 首部使用 `getSimpleIntroSection` + `CYBER_RISK_INSTRUCTION` + URL 规则。
+- 同类 Agent 在 `getSystemPrompt` 首部使用 `getSimpleIntroSection` + `CYBER_RISK_INSTRUCTION` + URL 规则。
 
 ## 需求
 
 ### 功能需求
 
-- 导出 `getSimpleIntroSection()`，内容与 Claude Code §2 结构一致：身份 + cyber + URL。
+- 导出 `getSimpleIntroSection()`，内容与 同类 Agent §2 结构一致：身份 + cyber + URL。
 - 身份句使用 AxeCoder 品牌（用户调整）。
 - `buildAgentSystemPrompt` 顺序：`getSimpleIntroSection()` → 工具/任务规则 → project root 行。
 - `agent-tool-defs.ts` re-export，保持 `agent-loop` import 稳定。
@@ -28,7 +28,7 @@
 
 ### 2. 文案
 
-- `CYBER_RISK_INSTRUCTION`：与 `claude-code-system-prompts-full.md` §3 英文一致。
+- `CYBER_RISK_INSTRUCTION`：与 `参考实现-system-prompts-full.md` §3 英文一致。
 - Intro 身份：`You are AxeCoder, an interactive agent that helps users with software engineering tasks...`
 - 原 `You are AxeCoder coding assistant with file tools.` 从 doing-tasks 段删除，避免重复。
 

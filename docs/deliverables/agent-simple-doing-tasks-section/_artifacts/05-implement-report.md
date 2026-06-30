@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-1. **§5 `getSimpleDoingTasksSection()`**：Claude Code 全员英文 bullet 1:1 接入（不含 Ant 内部、产品帮助段）。
+1. **§5 `getSimpleDoingTasksSection()`**：同类 Agent 全员英文 bullet 1:1 接入（不含 Ant 内部、产品帮助段）。
 2. **`getAgentToolPathRulesSection()`**：原 `AGENT_DOING_TASKS_SECTION` 更名，保留 AxeCoder 工具路径规则。
 3. **`buildAgentSystemPrompt`**：顺序 intro → system → doing tasks → tool rules → project root。
 4. **`AskUserQuestion` 工具**：参数校验、会话 `pendingAskById` 暂停、`agent:answerQuestions` IPC、Chat 面板 `ChatAskUserCard` 提交答案后继续循环。

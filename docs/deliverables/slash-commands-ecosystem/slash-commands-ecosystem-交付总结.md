@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-**需求：** 对齐 `research-axecoder-vs-claude-code.md` §4 斜杠命令与扩展生态缺口。
+**需求：** 对齐 `research-axecoder-vs-参考实现.md` §4 斜杠命令与扩展生态缺口。
 
 **目标：** 注册内置斜杠命令、Skill 动态 `/skillName`、自定义 output-styles 目录。
 

@@ -8,7 +8,7 @@
 
 ## 概述
 
-落地 `research-axecoder-vs-claude-code.md` **§3** 所列、系统提示已承诺但此前无运行时的能力。
+落地 `research-axecoder-vs-参考实现.md` **§3** 所列、系统提示已承诺但此前无运行时的能力。
 
 ## 实现要点
 

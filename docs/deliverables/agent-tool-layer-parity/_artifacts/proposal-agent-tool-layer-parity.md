@@ -3,8 +3,8 @@
 ## 已确认解决方案提案
 
 **上下文：**
-- **请求：** 实现 `research-axecoder-vs-claude-code.md` §2 全部工具层缺口 + Bash/子代理增强；Wave 4 须最小可调用（配置开关）。
-- **调研来源：** `docs/research/research-axecoder-vs-claude-code.md`、`docs/research/research-claude-code.md` §3；`electron/main/agent/*`。
+- **请求：** 实现 `research-axecoder-vs-参考实现.md` §2 全部工具层缺口 + Bash/子代理增强；Wave 4 须最小可调用（配置开关）。
+- **调研来源：** `docs/research/research-axecoder-vs-参考实现.md`、`docs/research/research-参考实现.md` §3；`electron/main/agent/*`。
 - **上游提案：** `docs/proposals/proposal-agent-tool-layer-parity.md`（双方案草稿）
 - **选定基础：** 提案 2 – 单次大单集全量 1:1
 - **用户调整摘要：** Wave 4（WebSearch、LSP、Worktree、Sleep、Brief、Config、Workflow 等）必须注册工具并可调用；未配置时返回明确错误而非静默缺失。

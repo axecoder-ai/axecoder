@@ -9,7 +9,18 @@ import {
 import { buildRoleTaskPrompt, parseSubagentReport } from './workshop-subagent-speaker'
 import { enrichRoleSpeakInputWithSkills } from './workshop-user-skills'
 import { resolveWorkshopReplyLanguage } from './workshop-language'
-import type { RoleSpeaker } from './workshop-types'
+import type { RoleSpeaker, RoleSpeakInput } from './workshop-types'
+
+/** Multi-Agent 成员/Tech Lead 回合：对齐 Software Co. 的 session 复用与工具全开 */
+export const resolveWorkshopAgentParity = (input: RoleSpeakInput): boolean => {
+  if (input.workshopAgentParity != null) return input.workshopAgentParity
+  if (input.sopAgentParity || input.sopPhase) return false
+  return (
+    input.speakMode === 'member' ||
+    input.speakMode === 'execute' ||
+    input.speakMode === 'manager_chat'
+  )
+}
 
 export const buildAgentRoleSpeaker = (
   projectRoot: string,
@@ -21,9 +32,11 @@ export const buildAgentRoleSpeaker = (
     const root = projectRoot.trim()
     if (!root) throw new Error('Open a project first')
     const enriched = await enrichRoleSpeakInputWithSkills(input, root)
+    const workshopParity = resolveWorkshopAgentParity(enriched)
+    const enrichedWithParity = { ...enriched, workshopAgentParity: workshopParity }
     const name = enriched.assigneeUser?.displayName?.trim() || enriched.roleId
     const replyLanguage = await resolveWorkshopReplyLanguage(root)
-    const taskPrompt = buildRoleTaskPrompt(enriched, replyLanguage)
+    const taskPrompt = buildRoleTaskPrompt(enrichedWithParity, replyLanguage)
     const streamKey =
       enriched.sopAgentParity && enriched.assigneeUser
         ? `u-${enriched.assigneeUser.id}-sop`
@@ -43,9 +56,14 @@ export const buildAgentRoleSpeaker = (
     const res = await runWorkshopRoleAgentTurn(root, roleModelId, sessionId, taskPrompt, name, {
       speakMode: enriched.speakMode,
       userImages,
-      reuseSession: !!(enriched.reuseImplementSession || enriched.sopAgentParity),
+      reuseSession: !!(
+        enriched.reuseImplementSession ||
+        enriched.sopAgentParity ||
+        workshopParity
+      ),
       sopBuiltinRole: enriched.assigneeUser?.builtinRole,
       sopAgentParity: enriched.sopAgentParity,
+      workshopAgentParity: workshopParity,
     })
     if (!res.ok) throw new Error(res.error)
     const users = enriched.users ?? []

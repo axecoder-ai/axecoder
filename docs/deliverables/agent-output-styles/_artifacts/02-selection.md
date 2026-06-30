@@ -2,7 +2,7 @@
 
 ## 2a 选型摘要
 
-**需求：** 对齐 Claude Code `outputStyles.ts` 内置 Default / Explanatory / Learning，接入 `buildAgentSystemPrompt` 与可选配置。
+**需求：** 对齐 同类 Agent `outputStyles.ts` 内置 Default / Explanatory / Learning，接入 `buildAgentSystemPrompt` 与可选配置。
 
 | 维度 | 提案 1 仅后端 | 提案 2 后端 + UI |
 |------|---------------|------------------|

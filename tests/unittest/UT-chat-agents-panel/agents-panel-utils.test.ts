@@ -79,17 +79,23 @@ describe('isToday', () => {
 describe('groupSessionsByDay', () => {
   const now = new Date(2026, 4, 28, 12, 0, 0).getTime()
 
-  it('groups into Today and Earlier', () => {
+  it('groups into Today, Yesterday, Last 7 Days and Earlier', () => {
     const sessions = [
       meta('a', new Date(2026, 4, 28, 10, 0, 0).getTime()),
-      meta('b', new Date(2026, 4, 20, 10, 0, 0).getTime()),
+      meta('b', new Date(2026, 4, 27, 10, 0, 0).getTime()),
+      meta('c', new Date(2026, 4, 25, 10, 0, 0).getTime()),
+      meta('d', new Date(2026, 4, 10, 10, 0, 0).getTime()),
     ]
     const groups = groupSessionsByDay(sessions, now)
-    expect(groups).toHaveLength(2)
+    expect(groups).toHaveLength(4)
     expect(groups[0].label).toBe('Today')
     expect(groups[0].items.map((s) => s.id)).toEqual(['a'])
-    expect(groups[1].label).toBe('Earlier')
+    expect(groups[1].label).toBe('Yesterday')
     expect(groups[1].items.map((s) => s.id)).toEqual(['b'])
+    expect(groups[2].label).toBe('Last 7 Days')
+    expect(groups[2].items.map((s) => s.id)).toEqual(['c'])
+    expect(groups[3].label).toBe('Earlier')
+    expect(groups[3].items.map((s) => s.id)).toEqual(['d'])
   })
 
   it('空列表返回空分组', () => {

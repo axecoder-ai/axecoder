@@ -4,7 +4,7 @@
 
 **上下文：**
 - **请求：** Main 进程内真实 MCP 客户端，替代 CallMcpTool/ReadMcpResource 的 Cursor IDE stub。
-- **调研来源：** `docs/research/research-axecoder-vs-claude-code.md`、`agent-mcp.ts`、`agent-tool-layer-parity` 审查待办。
+- **调研来源：** `docs/research/research-axecoder-vs-参考实现.md`、`agent-mcp.ts`、`agent-tool-layer-parity` 审查待办。
 - **选定：** 提案 1 – Main 进程 MCP SDK 连接池；无额外调整。
 
 ### 最终方案

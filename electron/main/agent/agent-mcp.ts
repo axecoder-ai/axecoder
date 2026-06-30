@@ -2,8 +2,14 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { axecoderPath } from '../axecoder-dir'
-import { BUILTIN_MCP_PLUGINS } from '../mcp-plugins-registry'
+import {
+  BUILTIN_MCP_PLUGINS,
+  getMcpPluginByServerName,
+  type McpPluginDefinition,
+} from '../mcp-plugins-registry'
+import { hasMcpOAuthTokens } from '../mcp-oauth-store'
 import { isPluginEnabled, pluginToServerConfig } from '../mcp-plugins-store'
+import { getSecret } from '../secrets-store'
 import {
   callMcpToolLive,
   describeMcpServerForPrompt,
@@ -21,6 +27,8 @@ export type McpServerConfig = {
   cwd?: string
   /** 内置 MCP 插件 OAuth（Settings → MCP Connect） */
   oauthPluginId?: string
+  /** 连接池键；按项目隔离 stdio 时与 name 不同 */
+  poolKey?: string
 }
 
 /** 从低优先级到高优先级；同名 server 后者覆盖前者 */
@@ -81,6 +89,57 @@ const mergeMcpServers = (layers: McpServerConfig[][]): McpServerConfig[] => {
   return [...byName.values()]
 }
 
+const enrichBuiltinOAuthServer = async (
+  server: McpServerConfig,
+  def: McpPluginDefinition,
+): Promise<McpServerConfig> => {
+  if (server.headers && Object.keys(server.headers).length > 0) return server
+  if (server.command) return server
+
+  if (await hasMcpOAuthTokens(def.id)) {
+    return {
+      ...server,
+      url: def.oauthUrl ?? def.url,
+      oauthPluginId: def.id,
+    }
+  }
+
+  if (def.secretKey && def.headerKey) {
+    const key = (await getSecret(def.secretKey)).trim()
+    if (key) {
+      const baseUrl = def.url.replace(/\/oauth$/, '') || def.url
+      return {
+        ...server,
+        url: server.url ?? baseUrl,
+        headers: { [def.headerKey]: key },
+        oauthPluginId: undefined,
+      }
+    }
+  }
+
+  return {
+    ...server,
+    url: def.oauthUrl ?? def.url,
+    oauthPluginId: def.id,
+  }
+}
+
+/** mcp.json 层：按 serverName 匹配内置 OAuth 插件并注入元数据 */
+export const enrichBuiltinOAuthServers = async (
+  servers: McpServerConfig[],
+): Promise<McpServerConfig[]> => {
+  const out: McpServerConfig[] = []
+  for (const server of servers) {
+    const def = getMcpPluginByServerName(server.name)
+    if (def?.authMode === 'oauth') {
+      out.push(await enrichBuiltinOAuthServer(server, def))
+    } else {
+      out.push(server)
+    }
+  }
+  return out
+}
+
 const loadMcpJsonLayers = async (
   projectRoot?: string,
 ): Promise<{ servers: McpServerConfig[]; loadedPaths: string[] }> => {
@@ -98,7 +157,9 @@ const loadMcpJsonLayers = async (
       /* try next */
     }
   }
-  return { servers: mergeMcpServers(layers), loadedPaths }
+  const merged = mergeMcpServers(layers)
+  const servers = await enrichBuiltinOAuthServers(merged)
+  return { servers, loadedPaths }
 }
 
 /** 各层 mcp.json 合并后的 server 名（不含内置插件层） */
@@ -109,12 +170,13 @@ export const getMcpJsonServerNames = async (projectRoot?: string): Promise<Set<s
 
 export const materializeEnabledPlugins = async (
   existingNames: Set<string>,
+  projectRoot?: string,
 ): Promise<McpServerConfig[]> => {
   const out: McpServerConfig[] = []
   for (const def of BUILTIN_MCP_PLUGINS) {
     if (existingNames.has(def.serverName)) continue
-    if (!(await isPluginEnabled(def.id))) continue
-    const cfg = await pluginToServerConfig(def)
+    if (!(await isPluginEnabled(def.id, projectRoot))) continue
+    const cfg = await pluginToServerConfig(def, projectRoot)
     if (!cfg) continue
     out.push(cfg)
   }
@@ -126,7 +188,7 @@ const mergeWithPlugins = async (
   projectRoot?: string,
 ): Promise<McpServerConfig[]> => {
   const names = new Set(fileServers.map((s) => s.name))
-  const pluginServers = await materializeEnabledPlugins(names)
+  const pluginServers = await materializeEnabledPlugins(names, projectRoot)
   return [...fileServers, ...pluginServers]
 }
 

@@ -38,7 +38,8 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
         role: m.role === 'assistant' ? ('assistant' as const) : ('user' as const),
         content: m.apiContent ?? m.text,
       }))
-      const res = await window.axecoder.chatCompact(apiMessages)
+      const modelId = s.modelId?.trim() || ctx.getModelsFile().activeModelId?.trim() || undefined
+      const res = await window.axecoder.chatCompact(apiMessages, modelId, s.id)
       if (!res.ok) return { ok: false, message: res.error ?? 'Compact failed' }
       const next = res.messages ?? apiMessages
       s.messages = next.map((m) => ({
@@ -163,6 +164,16 @@ export const registerBuiltinSlashCommands = (): SlashCommandDef[] => [
       const res = await window.axecoder.gitCommitPushPrPrompt(ctx.projectRoot)
       if (!res.ok) return { ok: false, message: res.error ?? 'Could not build PR prompt' }
       return { ok: true, message: 'Starting commit-push-PR workflow…', sendPrompt: res.text }
+    },
+  },
+  {
+    name: 'investigate-ci',
+    aliases: ['ci'],
+    description: 'Investigate failing CI checks (gh + git-forge; GitStatus/GitDiff for local state)',
+    run: async (ctx) => {
+      const res = await window.axecoder.gitInvestigateCiPrompt(ctx.projectRoot)
+      if (!res.ok) return { ok: false, message: res.error ?? 'Could not build CI prompt' }
+      return { ok: true, message: 'Starting CI investigation…', sendPrompt: res.text }
     },
   },
   {

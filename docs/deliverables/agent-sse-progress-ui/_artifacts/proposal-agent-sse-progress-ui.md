@@ -3,7 +3,7 @@
 **状态：** 已确认（由 `/create-proposals` 生成）
 
 **上下文：**
-- **请求：** 聊天侧栏 Agent 执行中 SSE 进度 UI 对齐 Claude Code CLI 终端风（工具行、shimmer、推理块），IDE 深色主题。
+- **请求：** 聊天侧栏 Agent 执行中 SSE 进度 UI 对齐 同类 Agent CLI 终端风（工具行、shimmer、推理块），IDE 深色主题。
 - **调研来源：** `docs/deliverables/agent-sse-progress-ui/_artifacts/00-research-links.md`
 - **上游提案：** 同路径双方案草稿
 - **选定基础：** 提案 1 – 终端风独立组件 + 结构化进度步

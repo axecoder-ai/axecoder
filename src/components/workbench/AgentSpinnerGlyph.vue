@@ -10,7 +10,7 @@ const props = withDefaults(
   },
 )
 
-// 与 claude-code SpinnerGlyph 一致：小点 → 雪花 → 再收回
+// 小点 → 雪花 → 再收回
 const FRAMES = ['·', '✢', '✳', '✶', '✻', '✽', ...[...['·', '✢', '✳', '✶', '✻', '✽']].reverse()] as const
 
 const frame = ref(0)

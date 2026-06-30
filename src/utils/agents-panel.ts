@@ -65,6 +65,18 @@ export const isToday = (ts: number, now = Date.now()): boolean => {
   )
 }
 
+export const isYesterday = (ts: number, now = Date.now()): boolean => {
+  const d = new Date(ts)
+  const n = new Date(now)
+  const y = new Date(n)
+  y.setDate(y.getDate() - 1)
+  return (
+    d.getFullYear() === y.getFullYear() &&
+    d.getMonth() === y.getMonth() &&
+    d.getDate() === y.getDate()
+  )
+}
+
 export type AgentSessionGroup = {
   key: string
   label: string
@@ -76,13 +88,20 @@ export const groupSessionsByDay = (
   now = Date.now(),
 ): AgentSessionGroup[] => {
   const today: SessionListItem[] = []
+  const yesterday: SessionListItem[] = []
+  const last7: SessionListItem[] = []
   const older: SessionListItem[] = []
+  const weekMs = 7 * 24 * 60 * 60 * 1000
   for (const s of sessions) {
     if (isToday(s.updatedAt, now)) today.push(s)
+    else if (isYesterday(s.updatedAt, now)) yesterday.push(s)
+    else if (now - s.updatedAt < weekMs) last7.push(s)
     else older.push(s)
   }
   const groups: AgentSessionGroup[] = []
   if (today.length) groups.push({ key: 'today', label: 'Today', items: today })
+  if (yesterday.length) groups.push({ key: 'yesterday', label: 'Yesterday', items: yesterday })
+  if (last7.length) groups.push({ key: 'last7', label: 'Last 7 Days', items: last7 })
   if (older.length) groups.push({ key: 'older', label: 'Earlier', items: older })
   return groups
 }

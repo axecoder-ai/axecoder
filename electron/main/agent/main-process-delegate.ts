@@ -1,6 +1,6 @@
 import type { AgentProgressPayload } from '../../../src/utils/agent-progress'
 
-type HostRequestFn = (method: string, params: unknown) => Promise<void>
+type HostRequestFn = (method: string, params: unknown) => Promise<unknown>
 
 let hostRequestFn: HostRequestFn | null = null
 
@@ -11,9 +11,9 @@ export const setAgentWorkerHostRequest = (fn: HostRequestFn | null): void => {
   hostRequestFn = fn
 }
 
-export const requestMainProcess = async (method: string, params: unknown): Promise<void> => {
-  if (!hostRequestFn) return
-  await hostRequestFn(method, params)
+export const requestMainProcess = async (method: string, params: unknown): Promise<unknown> => {
+  if (!hostRequestFn) return undefined
+  return hostRequestFn(method, params)
 }
 
 export const delegateEmitAgentProgress = (payload: AgentProgressPayload): void => {

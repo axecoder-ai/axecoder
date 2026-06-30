@@ -23,7 +23,7 @@
 | `src/components/workbench/ChatPane.vue` | 子代理 UI |
 | `src/utils/agent-progress.ts` | subagent payload |
 | `electron/main/ai/chat-with-tools.ts` | Ollama tools |
-| `docs/research/research-axecoder-vs-claude-code.md` | §5 状态更新 |
+| `docs/research/research-axecoder-vs-参考实现.md` | §5 状态更新 |
 
 ## 注意事项
 

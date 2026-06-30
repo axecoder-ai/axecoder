@@ -6,7 +6,7 @@
 
 ## 功能
 
-- §8 与 Claude Code `prompts.ts` 中当前 AxeCoder 可用子集一致（AskUserQuestion + interactive bang 提示）。
+- §8 与 同类 Agent `prompts.ts` 中当前 AxeCoder 可用子集一致（AskUserQuestion + interactive bang 提示）。
 - 动态 `null` 与 `interactive: false` 行为有单测覆盖。
 
 ## 质量

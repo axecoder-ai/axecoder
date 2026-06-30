@@ -82,6 +82,10 @@ const onAgentAutoPlan = (v: boolean) => {
   emit('save', { agentAutoPlan: v ? 'on' : 'off' })
 }
 
+const onAgentSmartMode = (v: boolean) => {
+  emit('save', { agentSmartModeApproval: v })
+}
+
 const onAutoPlanClassifierModel = (e: Event) => {
   const v = (e.target as HTMLInputElement).value.trim()
   emit('save', { agentAutoPlanClassifierModelId: v })
@@ -286,6 +290,18 @@ const onSemanticHl = (v: boolean) => {
             @change="onWebSearchApiKey"
           />
           <p class="pref-hint pref-hint--inline">{{ t('settings.agent.webSearchCloudHint') }}</p>
+        </div>
+      </div>
+      <div class="pref-item">
+        <div class="pref-info">
+          <span class="pref-label">{{ t('settings.agent.smartModeApproval') }}</span>
+          <p class="pref-hint">{{ t('settings.agent.smartModeApprovalHint') }}</p>
+        </div>
+        <div class="pref-control">
+          <SwitchToggle
+            :model-value="settings.agentSmartModeApproval !== false"
+            @update:model-value="onAgentSmartMode"
+          />
         </div>
       </div>
       <div class="pref-item">

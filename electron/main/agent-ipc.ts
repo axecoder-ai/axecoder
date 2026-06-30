@@ -17,11 +17,13 @@ import {
   dismissAgentPlan,
   confirmAgentAllWrites,
   confirmAgentBash,
+  confirmAgentSmartApproval,
   confirmAgentWrite,
   formatHooksHelp,
   listAgentSessions,
   rejectAgentAllWrites,
   rejectAgentBash,
+  rejectAgentSmartApproval,
   rejectAgentWrite,
   rewindAgentCheckpoint,
   runUserShellCommand,
@@ -32,7 +34,7 @@ import { getSession } from './agent/agent-session-store'
 import { axecoderPath } from './axecoder-dir'
 import type { AgentLoopMessage } from './agent/agent-types'
 import { compactAgentMessagesWithLlm } from './agent/agent-context-compact'
-import { compactChatHistory } from './chat-compact'
+import { compactChatHistoryWithLlm } from './chat-compact'
 import { listMcpResources } from './agent/agent-mcp'
 import {
   discoverCustomCommands,
@@ -165,6 +167,22 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
       ),
   )
 
+  ipcMain.handle('agent:confirmSmartApproval', async (_, sessionId: string, pendingId: string) =>
+    withAgentRuntime(
+      () => confirmAgentSmartApproval(sessionId, pendingId),
+      (b) => b.call('confirmSmartApproval', { sessionId, pendingId }),
+    ),
+  )
+
+  ipcMain.handle(
+    'agent:rejectSmartApproval',
+    async (_, sessionId: string, pendingId: string, reason?: string) =>
+      withAgentRuntime(
+        () => rejectAgentSmartApproval(sessionId, pendingId, reason),
+        (b) => b.call('rejectSmartApproval', { sessionId, pendingId, reason }),
+      ),
+  )
+
   ipcMain.handle('agent:runUserShell', async (_, projectRoot: string, command: string) =>
     withAgentRuntime(
       () => runUserShellCommand(projectRoot, command),
@@ -174,14 +192,22 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
 
   ipcMain.handle(
     'chat:compact',
-    async (_, messages: { role: string; content: string }[]) => {
-      const compacted = compactChatHistory(
-        messages.map((m) => ({
-          role: m.role as 'user' | 'assistant' | 'system',
-          content: m.content,
-        })),
-      )
-      return { ok: true as const, ...compacted }
+    async (
+      _,
+      messages: { role: string; content: string }[],
+      modelId?: string,
+      sessionId?: string,
+    ) => {
+      const mapped = messages.map((m) => ({
+        role: m.role as 'user' | 'assistant' | 'system',
+        content: m.content,
+      }))
+      const llmOpts =
+        typeof modelId === 'string' && modelId.trim()
+          ? { modelId: modelId.trim(), sessionId: typeof sessionId === 'string' ? sessionId : undefined }
+          : undefined
+      const compacted = await compactChatHistoryWithLlm(mapped, 20, llmOpts)
+      return { ok: true as const, messages: compacted.messages, summary: compacted.summary }
     },
   )
 
@@ -406,6 +432,20 @@ export const registerAgentIpc = (_getMainWindow: () => BrowserWindow | null) => 
       return withAgentRuntime(
         () => restoreCheckpointFilesOnly(sessionId.trim(), projectRoot.trim(), checkpointId),
         (b) => b.call('restoreCheckpointFiles', { sessionId, projectRoot, checkpointId }),
+      )
+    },
+  )
+
+  ipcMain.handle(
+    'agent:revertFilePatch',
+    async (_, projectRoot: string, filePath: string, patchText: string) => {
+      if (!projectRoot?.trim()) return { ok: false as const, error: t('errors.noProject') }
+      if (!filePath?.trim()) return { ok: false as const, error: 'Missing file path' }
+      if (!patchText?.trim()) return { ok: false as const, error: 'Missing patch' }
+      const { revertFileWithPatch } = await import('./agent/agent-revert')
+      return withAgentRuntime(
+        () => revertFileWithPatch(projectRoot.trim(), filePath.trim(), patchText),
+        (b) => b.call('revertFilePatch', { projectRoot, filePath, patchText }),
       )
     },
   )

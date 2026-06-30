@@ -3,7 +3,7 @@
 ## 已确认解决方案提案
 
 **上下文：**
-- **请求：** Agent 上下文 compact 升级为 LLM 摘要式，对齐 Claude Code `/compact`。
+- **请求：** Agent 上下文 compact 升级为 LLM 摘要式，对齐 同类 Agent `/compact`。
 - **调研来源：** `docs/research/research-agent-tools-matrix.md` §12/§17；`agent-context-compact.ts`；`agent-loop.ts`
 - **选定基础：** 提案 1 – Agent 内嵌 LLM 摘要 + 规则回退
 - **用户调整摘要：** 无额外调整（用户跳过选型，采用推荐方案）

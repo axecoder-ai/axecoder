@@ -60,6 +60,19 @@ describe('workshop-subagent-speaker', () => {
     expect(p).toContain('CodeGraph')
   })
 
+  it('workshopAgentParity 注入连续 session 提示', () => {
+    const p = buildRoleTaskPrompt({
+      roleId: 'backend',
+      userBrief: 'fix',
+      priorSummary: '',
+      speakMode: 'member',
+      workshopAgentParity: true,
+      assigneeUser: { id: 'u-d', displayName: 'Dev', role: 'Dev', isBuiltin: true, builtinRole: 'developer' },
+    })
+    expect(p).toContain('continuous session')
+    expect(p).toContain('full Agent memory')
+  })
+
   it('经理报告含澄清且未读代码时 needsUser', () => {
     const r = detectNeedsUserClarification(
       'manager',

@@ -4,7 +4,7 @@
 
 ### 一句话需求回顾
 
-在 AxeCoder Agent 系统提示中实现 Claude Code 的 `getSimpleIntroSection` 结构（角色 + `CYBER_RISK_INSTRUCTION` + URL 约束），并纳入 `buildAgentSystemPrompt`；用户要求模块化落盘且开场身份使用 AxeCoder 品牌。
+在 AxeCoder Agent 系统提示中实现 同类 Agent 的 `getSimpleIntroSection` 结构（角色 + `CYBER_RISK_INSTRUCTION` + URL 约束），并纳入 `buildAgentSystemPrompt`；用户要求模块化落盘且开场身份使用 AxeCoder 品牌。
 
 ### 方案对比表
 
@@ -15,7 +15,7 @@
 | 优点 | 改动最小 | 后续可继续拆 §4–§7 section |
 | 缺点 / 风险 | 文件变臃肿 | 多一层 import |
 | 工作量（粗估） | 小 | 中 |
-| 适合场景 | 只落地 intro 一段 | 计划逐步对齐 Claude Code prompts 结构 |
+| 适合场景 | 只落地 intro 一段 | 计划逐步对齐 同类 Agent prompts 结构 |
 
 ### 关键差异说明
 
@@ -38,7 +38,7 @@
 ## 2b. 用户最终选择
 
 - **选定提案：** 提案 2 – 独立 `agent-system-prompt.ts` 模块化
-- **调整说明：** 开场身份改为 AxeCoder（非 Claude Code 原文逐字身份句）
+- **调整说明：** 开场身份改为 AxeCoder（非 同类 Agent 原文逐字身份句）
 
 ## 2c. 落盘时间
 

@@ -12,7 +12,7 @@
 
 ## 1. 概述
 
-**需求：** 在 AxeCoder Agent 中实现 Claude Code `getSimpleIntroSection` 结构（开场 + 网络安全 + URL 约束），并纳入 `buildAgentSystemPrompt`。
+**需求：** 在 AxeCoder Agent 中实现 同类 Agent `getSimpleIntroSection` 结构（开场 + 网络安全 + URL 约束），并纳入 `buildAgentSystemPrompt`。
 
 **本轮目标：** 模块化落盘、单测覆盖、不改变 `agent-loop` 调用方式。
 
@@ -25,7 +25,7 @@
 ## 2. 方案
 
 - 新建 `electron/main/agent/agent-system-prompt.ts`：
-  - `CYBER_RISK_INSTRUCTION`（Claude Code §3 英文原文）
+  - `CYBER_RISK_INSTRUCTION`（同类 Agent §3 英文原文）
   - `getSimpleIntroSection()`（§2 结构；身份句为 AxeCoder）
   - `buildAgentSystemPrompt(projectRoot)`
 - `agent-tool-defs.ts` 仅保留 `AGENT_TOOLS`，re-export 组装函数。
@@ -105,7 +105,7 @@
 
 ## 10. 遗留项与后续建议
 
-- 对齐 `getSimpleSystemSection`、`getSimpleDoingTasksSection` 等（Claude Code §4+）
+- 对齐 `getSimpleSystemSection`、`getSimpleDoingTasksSection` 等（同类 Agent §4+）
 - Output Style 配置就绪后扩展 `getSimpleIntroSection` 分支文案
 - 可选：在设置中提供「极简系统提示」开关
 

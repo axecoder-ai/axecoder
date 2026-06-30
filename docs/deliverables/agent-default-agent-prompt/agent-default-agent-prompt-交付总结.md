@@ -10,7 +10,7 @@
 
 ## 1. 概述
 
-对齐 Claude Code §13：默认子代理系统提示（`DEFAULT_AGENT_PROMPT` + 环境 Notes）与最小 **Agent** 工具，使主 Agent 可委派子任务并收到 concise report。用户选定提案 2；身份句为 **AxeCoder**。
+对齐 同类 Agent §13：默认子代理系统提示（`DEFAULT_AGENT_PROMPT` + 环境 Notes）与最小 **Agent** 工具，使主 Agent 可委派子任务并收到 concise report。用户选定提案 2；身份句为 **AxeCoder**。
 
 交付物目录：`docs/deliverables/agent-default-agent-prompt/`（过程稿见 `_artifacts/`）。
 

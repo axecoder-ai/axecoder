@@ -10,7 +10,7 @@
 
 ## 概述
 
-对齐 Claude Code `getOutputEfficiencySection`（外部版），约束 Agent **文字输出**要简洁、先给结论、少复述用户。
+对齐 同类 Agent `getOutputEfficiencySection`（外部版），约束 Agent **文字输出**要简洁、先给结论、少复述用户。
 
 ## 方案
 

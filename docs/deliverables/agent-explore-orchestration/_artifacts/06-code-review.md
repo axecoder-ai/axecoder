@@ -7,7 +7,7 @@
 ## 功能
 
 - 对照已确认方案：Chat-only、软编排、四项能力均已落地。
-- 与 Claude Code 路径一致：prompt 段 + 每轮 attachment 式注入 + explore 报告 scratchpad。
+- 与 同类 Agent 路径一致：prompt 段 + 每轮 attachment 式注入 + explore 报告 scratchpad。
 
 ## 质量
 
